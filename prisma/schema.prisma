@@ -1,0 +1,324 @@
+// Veschi data model. See docs/spec.md ("Модель данных") and docs/decisions.md.
+//
+// Ownership: every catalog record is either personal (ownerId) or shared
+// (householdId) — exactly one of the two is set. The MVP only creates personal
+// records; households exist in the schema so the model does not need to change
+// later. The "exactly one" rule is enforced by CHECK constraints in the
+// migration SQL and by the service layer.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users, sessions, households
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  login           String   @unique
+  passwordHash    String
+  name            String
+  // Workbench used last; picked when the current position is outside every geofence.
+  lastWorkbenchId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lastWorkbench Item?        @relation("UserLastWorkbench", fields: [lastWorkbenchId], references: [id], onDelete: SetNull)
+  sessions      Session[]
+  memberships   Membership[]
+
+  ownedTypes        ItemType[]       @relation("ItemTypeOwner")
+  ownedItems        Item[]           @relation("ItemOwner")
+  takenItems        Item[]           @relation("ItemTakenBy")
+  ownedStickers     Sticker[]        @relation("StickerOwner")
+  ownedBatches      StickerBatch[]   @relation("StickerBatchOwner")
+  ownedDictionaries EnumDictionary[] @relation("EnumDictionaryOwner")
+}
+
+model Session {
+  // SHA-256 of the session token; the raw token only lives in the cookie.
+  id        String   @id
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Household {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships  Membership[]
+  invitations  Invitation[]
+  types        ItemType[]
+  items        Item[]
+  stickers     Sticker[]
+  batches      StickerBatch[]
+  dictionaries EnumDictionary[]
+}
+
+enum HouseholdRole {
+  ADMIN
+  MEMBER
+}
+
+model Membership {
+  userId      String        @db.Uuid
+  householdId String        @db.Uuid
+  role        HouseholdRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@id([userId, householdId])
+}
+
+model Invitation {
+  id          String   @id @default(uuid()) @db.Uuid
+  householdId String   @db.Uuid
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model ItemType {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String?  @db.Uuid
+  householdId String?  @db.Uuid
+  name        String
+  // Object key of the single photo in S3/MinIO (WebP).
+  photoKey    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User?      @relation("ItemTypeOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items     Item[]
+  params    Param[]    @relation("TypeParams")
+  refParams Param[]    @relation("ParamRefType")
+
+  @@index([ownerId])
+  @@index([householdId])
+}
+
+enum ItemStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Item {
+  id          String     @id @default(uuid()) @db.Uuid
+  ownerId     String?    @db.Uuid
+  householdId String?    @db.Uuid
+  // Required for every item except workbenches (enforced by the service layer).
+  typeId      String?    @db.Uuid
+  // Own name of this instance; when empty the type name is shown.
+  name        String?
+  quantity    Int        @default(1)
+  // Where the item lies; null = top level.
+  parentId    String?    @db.Uuid
+  // Container the item was taken from (set while the item is on a workbench).
+  homeId      String?    @db.Uuid
+  // Record this part was split from when taking part of the quantity.
+  splitFromId String?    @db.Uuid
+  // Who took the item to a workbench.
+  takenById   String?    @db.Uuid
+  takenAt     DateTime?
+  status      ItemStatus @default(ACTIVE)
+  archivedAt  DateTime?
+
+  isWorkbench Boolean @default(false)
+  // Optional geofence of a workbench.
+  geoLat      Float?
+  geoLng      Float?
+  geoRadiusM  Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     User?      @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  type      ItemType?  @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  parent    Item?      @relation("ItemParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Item[]     @relation("ItemParent")
+  home      Item?      @relation("ItemHome", fields: [homeId], references: [id], onDelete: SetNull)
+  homed     Item[]     @relation("ItemHome")
+  splitFrom Item?      @relation("ItemSplit", fields: [splitFromId], references: [id], onDelete: SetNull)
+  splits    Item[]     @relation("ItemSplit")
+  takenBy   User?      @relation("ItemTakenBy", fields: [takenById], references: [id], onDelete: SetNull)
+
+  sticker            Sticker?
+  params             Param[]  @relation("ItemParams")
+  refParams          Param[]  @relation("ParamRefItem")
+  lastWorkbenchUsers User[]   @relation("UserLastWorkbench")
+
+  @@index([ownerId, status])
+  @@index([householdId, status])
+  @@index([parentId])
+  @@index([typeId])
+}
+
+// ---------------------------------------------------------------------------
+// Stickers
+// ---------------------------------------------------------------------------
+
+enum StickerStatus {
+  FREE
+  BOUND
+  WRITTEN_OFF
+}
+
+// One generated PDF sheet set; kept so a lost PDF can be downloaded again.
+model StickerBatch {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String?  @db.Uuid
+  householdId String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User?      @relation("StickerBatchOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  stickers  Sticker[]
+}
+
+model Sticker {
+  id          String        @id @default(uuid()) @db.Uuid
+  // 6 characters without the dash, upper case, e.g. "K7M4QX". Unique server-wide.
+  code        String        @unique @db.Char(6)
+  caption     String?
+  status      StickerStatus @default(FREE)
+  // Bound item; kept for written-off stickers so restoring the item rebinds it.
+  itemId      String?       @unique @db.Uuid
+  batchId     String?       @db.Uuid
+  // Position of the sticker inside its batch (print order).
+  position    Int           @default(0)
+  ownerId     String?       @db.Uuid
+  householdId String?       @db.Uuid
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  item      Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  batch     StickerBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  owner     User?         @relation("StickerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household?    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, status])
+  @@index([batchId])
+}
+
+// ---------------------------------------------------------------------------
+// Parameters
+// ---------------------------------------------------------------------------
+
+model EnumDictionary {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String?  @db.Uuid
+  householdId String?  @db.Uuid
+  name        String
+  multiple    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User?        @relation("EnumDictionaryOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household?   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  options   EnumOption[]
+  params    Param[]
+
+  @@index([ownerId])
+}
+
+model EnumOption {
+  id           String   @id @default(uuid()) @db.Uuid
+  dictionaryId String   @db.Uuid
+  label        String
+  position     Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dictionary EnumDictionary   @relation(fields: [dictionaryId], references: [id], onDelete: Cascade)
+  values     ParamEnumValue[]
+
+  @@index([dictionaryId, position])
+}
+
+enum ParamValueType {
+  STRING
+  NUMBER
+  RANGE
+  ENUM
+  URL
+  FILE
+  DATE
+  REF
+  BOOLEAN
+}
+
+// A key:value parameter of a type (shared by all its items) or of one item.
+// Exactly one of typeId / itemId is set. Which value columns are used depends
+// on valueType (see src/lib/domain/params.ts).
+model Param {
+  id        String         @id @default(uuid()) @db.Uuid
+  typeId    String?        @db.Uuid
+  itemId    String?        @db.Uuid
+  key       String
+  valueType ParamValueType
+  position  Int            @default(0)
+
+  textValue    String? // STRING, URL
+  numberValue  Float? // NUMBER; RANGE minimum
+  numberMax    Float? // RANGE maximum
+  unit         String? // NUMBER, RANGE
+  dateValue    DateTime? @db.Date // DATE
+  boolValue    Boolean? // BOOLEAN
+  fileKey      String? // FILE: object key in S3/MinIO
+  fileName     String? // FILE: original file name
+  fileMime     String? // FILE: content type
+  fileSize     Int? // FILE: bytes
+  refItemId    String?   @db.Uuid // REF to an item
+  refTypeId    String?   @db.Uuid // REF to a type
+  dictionaryId String?   @db.Uuid // ENUM
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  type       ItemType?        @relation("TypeParams", fields: [typeId], references: [id], onDelete: Cascade)
+  item       Item?            @relation("ItemParams", fields: [itemId], references: [id], onDelete: Cascade)
+  refItem    Item?            @relation("ParamRefItem", fields: [refItemId], references: [id], onDelete: SetNull)
+  refType    ItemType?        @relation("ParamRefType", fields: [refTypeId], references: [id], onDelete: SetNull)
+  dictionary EnumDictionary?  @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
+  enumValues ParamEnumValue[]
+
+  @@index([typeId])
+  @@index([itemId])
+}
+
+model ParamEnumValue {
+  paramId  String @db.Uuid
+  optionId String @db.Uuid
+
+  param  Param      @relation(fields: [paramId], references: [id], onDelete: Cascade)
+  option EnumOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+
+  @@id([paramId, optionId])
+}
