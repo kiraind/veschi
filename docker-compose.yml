@@ -1,0 +1,69 @@
+# Local run of Veschi with its dependencies: `docker compose up --build`,
+# then open http://localhost:3000 (login admin / admin-password).
+# For development start only the dependencies: `docker compose up -d postgres minio`.
+# Not a production setup: the passwords below are for local use only.
+
+name: veschi
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: veschi
+      POSTGRES_PASSWORD: veschi
+      POSTGRES_DB: veschi
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U veschi -d veschi']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The official minio/minio image is no longer published on Docker Hub; this is
+  # the last Bitnami build of MinIO. Any S3-compatible MinIO works the same way.
+  minio:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    environment:
+      MINIO_ROOT_USER: veschi
+      MINIO_ROOT_PASSWORD: veschi-secret
+      # Start the server directly, without Bitnami's temporary setup run (which
+      # would pass the healthcheck and then stop for a moment).
+      MINIO_SKIP_CLIENT: 'yes'
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # web console
+    volumes:
+      - minio-data:/bitnami/minio/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:9000/minio/health/live']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://veschi:veschi@postgres:5432/veschi
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: veschi
+      S3_SECRET_KEY: veschi-secret
+      S3_BUCKET: veschi
+      ADMIN_LOGIN: admin
+      ADMIN_PASSWORD: admin-password
+      ADMIN_NAME: Админ
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  minio-data:

@@ -1,10 +1,29 @@
+import { Prisma } from '@prisma/client';
 import { error, json, type RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { AppError, UnauthorizedError, ValidationError } from './errors';
 import type { Actor } from './scope';
 
+// Russian messages for validation errors that have no custom message.
+z.config(z.locales.ru());
+
 export interface ApiErrorBody {
 	error: { code: string; message: string; details?: unknown };
+}
+
+/**
+ * Prisma errors that mean "no such record": a malformed UUID in the URL
+ * (P2023, or 22P02 from raw SQL) or a missing record (P2025).
+ */
+function isNotFoundDbError(e: unknown): boolean {
+	if (e instanceof Prisma.PrismaClientKnownRequestError) {
+		return (
+			e.code === 'P2023' ||
+			e.code === 'P2025' ||
+			(e.code === 'P2010' && (e.meta as { code?: string } | undefined)?.code === '22P02')
+		);
+	}
+	return false;
 }
 
 /** Converts any thrown error into a JSON error response. */
@@ -15,9 +34,17 @@ export function errorResponse(e: unknown): Response {
 	}
 	if (e instanceof z.ZodError) {
 		const body: ApiErrorBody = {
-			error: { code: 'validation', message: 'Некорректные данные', details: e.issues }
+			error: {
+				code: 'validation',
+				message: e.issues[0]?.message ?? 'Некорректные данные',
+				details: e.issues
+			}
 		};
 		return json(body, { status: 400 });
+	}
+	if (isNotFoundDbError(e)) {
+		const body: ApiErrorBody = { error: { code: 'not_found', message: 'Не найдено' } };
+		return json(body, { status: 404 });
 	}
 	console.error(e);
 	const body: ApiErrorBody = { error: { code: 'internal', message: 'Внутренняя ошибка сервера' } };

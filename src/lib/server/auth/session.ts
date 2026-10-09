@@ -93,16 +93,21 @@ export async function authenticate(login: string, password: string): Promise<str
 	return (await verifyPassword(user.passwordHash, password)) ? user.id : null;
 }
 
+/** Changes the password and signs out every other session of the user. */
 export async function changePassword(
 	userId: string,
 	currentPassword: string,
-	newPassword: string
+	newPassword: string,
+	keepSessionId?: string | null
 ): Promise<boolean> {
 	const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
 	if (!(await verifyPassword(user.passwordHash, currentPassword))) return false;
-	await db.user.update({
-		where: { id: userId },
-		data: { passwordHash: await hashPassword(newPassword) }
-	});
+	const passwordHash = await hashPassword(newPassword);
+	await db.$transaction([
+		db.user.update({ where: { id: userId }, data: { passwordHash } }),
+		db.session.deleteMany({
+			where: { userId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) }
+		})
+	]);
 	return true;
 }
