@@ -89,8 +89,9 @@
 </script>
 
 {#if data.user}
+	<!-- Only on wide screens: on phones the tab bar and «Ещё» cover everything. -->
 	<Navbar
-		class="sticky top-0 z-30 border-b border-gray-200 pt-[env(safe-area-inset-top)] dark:border-gray-700"
+		class="sticky top-0 z-30 border-b border-gray-200 pt-[env(safe-area-inset-top)] max-md:hidden dark:border-gray-700"
 		fluid
 	>
 		<NavBrand href="/">
@@ -121,7 +122,7 @@
 {/if}
 
 <main
-	class="mx-auto max-w-3xl px-4 pt-3 {data.user
+	class="mx-auto max-w-3xl px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] md:pt-3 {data.user
 		? 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-16'
 		: 'pb-16'}"
 >
