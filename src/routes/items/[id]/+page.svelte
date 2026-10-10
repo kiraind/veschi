@@ -2,6 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
+	import Description from '$lib/components/Description.svelte';
 	import EditButton from '$lib/components/EditButton.svelte';
 	import ItemContents from '$lib/components/ItemContents.svelte';
 	import ParamSection from '$lib/components/ParamSection.svelte';
@@ -15,11 +16,7 @@
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
-	import {
-		AdjustmentsHorizontalOutline,
-		ArrowsRepeatOutline,
-		PlusOutline
-	} from 'flowbite-svelte-icons';
+	import { ChevronSortOutline, ArrowsRepeatOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -33,6 +30,7 @@
 	let taking = $state(false);
 	let adding = $state(false);
 	let renaming = $state(false);
+	let describing = $state(false);
 	let changingQuantity = $state(false);
 
 	/** Why the quantity of this item is always 1, if it is. */
@@ -61,6 +59,11 @@
 		}
 	}
 
+	/** The action buttons under the photo: tall, with the icon over the label on phones. */
+	const actionClass =
+		'h-16 flex-1 flex-col gap-1 px-2 whitespace-nowrap sm:h-11 sm:flex-none sm:flex-row sm:gap-0 sm:px-4';
+	const actionIconClass = 'h-6 w-6 flex-none sm:me-1.5 sm:h-5 sm:w-5';
+
 	/** How much «Переложить» moves (asked only when there is more than one). */
 	let moveQuantity = $state(1);
 	/** «Положить сюда существующую»: the picked item while asking how much of it. */
@@ -80,6 +83,11 @@
 
 	async function rename(name: string) {
 		await api.patch(`/api/items/${item.id}`, { name });
+		await invalidateAll();
+	}
+
+	async function describe(description: string) {
+		await api.patch(`/api/types/${card.type!.id}`, { description });
 		await invalidateAll();
 	}
 
@@ -142,12 +150,12 @@
 <p class="text-sm text-gray-500 dark:text-gray-400"><PathTrail path={card.path} /></p>
 
 <div class="mt-1 mb-3">
-	<div class="flex items-start gap-1">
-		<h1 class="text-2xl font-bold wrap-anywhere">{item.displayName}</h1>
-		{#if active && !item.isWorkbench}
-			<EditButton label="Изменить название" onclick={() => (renaming = true)} />
-		{/if}
-	</div>
+	<h1 class="text-2xl font-bold wrap-anywhere">
+		{item.displayName}{#if active && !item.isWorkbench}<EditButton
+				label="Изменить название"
+				onclick={() => (renaming = true)}
+			/>{/if}
+	</h1>
 	<div class="mt-1 flex flex-wrap items-center gap-2">
 		{#if card.type}
 			<a href="/types/{card.type.id}">{card.type.name}</a>
@@ -155,7 +163,10 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
 		{#if card.type?.isContainer}<Badge color="indigo">контейнер</Badge>{/if}
-		{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+		{#if item.quantity > 1 && !(active && !item.isWorkbench)}<Badge
+				color="gray"
+				class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
+			>{/if}
 		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
 </div>
@@ -181,29 +192,23 @@
 
 {#if active && !item.isWorkbench}
 	<ButtonGroup class="my-3 w-full sm:w-auto">
-		<Button
-			color="alternative"
-			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
-			onclick={toggleTaking}
-		>
-			<WorkbenchIcon icon={null} class="me-1.5 h-5 w-5 flex-none" />
+		<Button color="alternative" class={actionClass} onclick={toggleTaking}>
+			<WorkbenchIcon icon={null} class={actionIconClass} />
 			На стол
 		</Button>
-		<Button
-			color="alternative"
-			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
-			onclick={toggleMoving}
-		>
-			<ArrowsRepeatOutline class="me-1.5 h-5 w-5 flex-none" />
+		<Button color="alternative" class={actionClass} onclick={toggleMoving}>
+			<ArrowsRepeatOutline class={actionIconClass} />
 			Переложить
 		</Button>
+		<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
 		<Button
 			color="alternative"
-			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
+			class={actionClass}
+			aria-label="Количество: {item.quantity} шт. Изменить"
 			onclick={() => (changingQuantity = true)}
 		>
-			<AdjustmentsHorizontalOutline class="me-1.5 h-5 w-5 flex-none" />
-			Изменить
+			<ChevronSortOutline class={actionIconClass} />
+			{item.quantity} шт.
 		</Button>
 	</ButtonGroup>
 	{#if taking}
@@ -256,10 +261,13 @@
 		/>
 	</Card>
 
-	{#if card.type?.description}
-		<p class="mt-6 whitespace-pre-line text-gray-700 dark:text-gray-300">
-			{card.type.description}
-		</p>
+	{#if card.type && (card.type.description || active)}
+		<div class="mt-6">
+			<Description
+				text={card.type.description}
+				onedit={active ? () => (describing = true) : undefined}
+			/>
+		</div>
 	{/if}
 
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
@@ -336,12 +344,24 @@
 	<TextEditSheet
 		bind:open={renaming}
 		title="Название"
-		label="Своё название этой вещи"
+		label="Название этой конкретной вещи"
 		value={item.name ?? ''}
 		placeholder={card.type?.name ?? ''}
 		helper={card.type ? `Пусто — показывается название типа «${card.type.name}».` : ''}
 		onsave={rename}
 	/>
+	{#if card.type}
+		<TextEditSheet
+			bind:open={describing}
+			title="Описание типа «{card.type.name}»"
+			label="Описание"
+			value={card.type.description ?? ''}
+			multiline
+			helper="Описание общее для всех вещей типа."
+			placeholder="Что это, для чего, чем отличается — поиск находит и по описанию"
+			onsave={describe}
+		/>
+	{/if}
 	<QuantitySheet
 		bind:open={changingQuantity}
 		item={{

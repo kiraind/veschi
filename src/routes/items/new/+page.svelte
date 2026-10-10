@@ -113,7 +113,7 @@
 	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />
 
 	<div>
-		<Label for="item-name">Своё название (необязательно)</Label>
+		<Label for="item-name">Название этой конкретной вещи (необязательно)</Label>
 		<Input
 			id="item-name"
 			class="mt-1"
@@ -121,6 +121,15 @@
 			placeholder="Например, Коробка с микросхемами"
 		/>
 	</div>
+
+	{#if !selectedType}
+		<div>
+			<Checkbox bind:checked={newTypeIsContainer}>Это контейнер</Checkbox>
+			<Helper class="mt-1 ps-6">
+				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
+			</Helper>
+		</div>
+	{/if}
 
 	{#if !isContainer}
 		<div>
@@ -142,15 +151,6 @@
 					required
 				/>
 			{/if}
-		</div>
-	{/if}
-
-	{#if !selectedType}
-		<div>
-			<Checkbox bind:checked={newTypeIsContainer}>Это контейнер</Checkbox>
-			<Helper class="mt-1 ps-6">
-				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
-			</Helper>
 		</div>
 	{/if}
 

@@ -225,8 +225,11 @@ export interface WorkbenchItem {
 	takenAt: Date | null;
 	takenByName: string | null;
 	hasChildren: boolean;
-	/** Home container path including the home itself; empty = top level. */
-	homePath: PathNode[];
+	/**
+	 * Home container path including the home itself; empty = top level. Each container
+	 * carries the code of its sticker, so «Вернуть» can say which box to look for.
+	 */
+	homePath: (PathNode & { stickerCode: string | null })[];
 	canReturn: boolean;
 	/** Why «Вернуть на место» is unavailable. */
 	returnBlockedReason: string | null;
@@ -290,9 +293,28 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 			})
 		).map((h) => [h.id, { id: h.id, name: itemDisplayName(h), isWorkbench: h.isWorkbench }])
 	);
+	const pathIds = [
+		...new Set(
+			[...homePaths.values()]
+				.flat()
+				.map((n) => n.id)
+				.concat(homeIds)
+		)
+	];
+	const stickerCodes = new Map(
+		(
+			await db.sticker.findMany({
+				where: { itemId: { in: pathIds }, status: 'BOUND' },
+				select: { itemId: true, code: true }
+			})
+		).map((s) => [s.itemId, s.code])
+	);
 	return items.map((i) => {
 		const home = i.homeId ? homeNames.get(i.homeId) : undefined;
-		const homePath = home ? [...(homePaths.get(home.id) ?? []), home] : [];
+		const homePath = (home ? [...(homePaths.get(home.id) ?? []), home] : []).map((n) => ({
+			...n,
+			stickerCode: stickerCodes.get(n.id) ?? null
+		}));
 		const blocker = returnBlocker(i.home, homePath);
 		return {
 			id: i.id,

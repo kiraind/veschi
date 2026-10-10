@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="%theme%" class="%theme-class%">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -7,6 +7,20 @@
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icons/apple-touch-icon.png" />
+		<script>
+			// «Системная» theme: follow the device's light / dark setting, before the first paint
+			// and whenever it changes. «Светлая» / «Тёмная» are set by the server (hooks.server.ts).
+			(function () {
+				var root = document.documentElement;
+				var media = matchMedia('(prefers-color-scheme: dark)');
+				function apply() {
+					var theme = root.dataset.theme;
+					root.classList.toggle('dark', theme === 'dark' || (theme === 'system' && media.matches));
+				}
+				apply();
+				media.addEventListener('change', apply);
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

@@ -38,7 +38,9 @@
 					href="/items/{entry.id}">{entry.name}</a
 				>
 				{#if entry.onWorkbench}<Badge color="yellow">на столе</Badge>{/if}
-				{#if entry.quantity > 1}<Badge color="gray">{entry.quantity} шт.</Badge>{/if}
+				{#if entry.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
+						>{entry.quantity} шт.</Badge
+					>{/if}
 				{#if entry.childCount > 0}
 					<button
 						class="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"

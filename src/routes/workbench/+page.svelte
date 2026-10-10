@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '$lib/api';
-	import { formatPath } from '$lib/domain/item';
+	import { formatPath, pathNodeName } from '$lib/domain/item';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
 	import QuantityField from '$lib/components/QuantityField.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
@@ -54,7 +56,21 @@
 		if (error?.id !== item.id) delete amounts[item.id];
 	}
 
-	const returnHome = (item: { id: string; quantity: number }) => putAway(item, 'return', {});
+	type Listed = PageData['items'][number];
+
+	/** «Вернуть на место» first shows where exactly to put the item; «Готово» returns it. */
+	let returning = $state<Listed | null>(null);
+	let returningOpen = $state(false);
+
+	function askReturn(item: Listed) {
+		returning = item;
+		returningOpen = true;
+	}
+
+	async function confirmReturn(item: Listed) {
+		await putAway(item, 'return', {});
+		if (error?.id !== item.id) returningOpen = false;
+	}
 
 	const relocate = (item: { id: string; quantity: number }, containerId: string) =>
 		putAway(item, 'relocate', { containerId });
@@ -96,7 +112,10 @@
 										class="min-w-0 font-semibold break-words text-primary-700 hover:underline dark:text-primary-500"
 										>{item.name}</a
 									>
-									{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+									{#if item.quantity > 1}<Badge
+											color="gray"
+											class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
+										>{/if}
 								</div>
 								<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
 									Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}
@@ -115,7 +134,7 @@
 							{/if}
 							<div class="flex flex-wrap gap-2">
 								<Button
-									onclick={() => returnHome(item)}
+									onclick={() => askReturn(item)}
 									disabled={!item.canReturn || busyId === item.id || !!partProblem(item)}
 								>
 									Вернуть на место
@@ -166,3 +185,42 @@
 		{/if}
 	</section>
 {/each}
+
+<Sheet bind:open={returningOpen} title="Вернуть «{returning?.name ?? ''}»">
+	{#if returning}
+		{@const item = returning}
+		{@const amount = amounts[item.id] ?? item.quantity}
+		<p class="mb-2 text-gray-500 dark:text-gray-400">
+			Положите{#if item.quantity > 1}&nbsp;{amount} шт.{/if}
+			{item.homePath.length ? 'сюда:' : 'на верхний уровень.'}
+		</p>
+		{#if item.homePath.length}
+			<ol class="mb-4 space-y-1 text-lg">
+				{#each item.homePath as node, i (node.id)}
+					<li
+						class="flex items-start gap-1.5 wrap-anywhere {i === item.homePath.length - 1
+							? 'font-semibold'
+							: ''}"
+						style:padding-inline-start="{i * 1.25}rem"
+					>
+						{#if i > 0}<span class="flex-none text-gray-400 dark:text-gray-500" aria-hidden="true"
+								>↳</span
+							>{/if}
+						<span class="min-w-0">
+							{pathNodeName(node)}{#if node.stickerCode}<span
+									class="ms-2 font-mono text-base font-normal whitespace-nowrap text-gray-500 dark:text-gray-400"
+									>{formatCode(node.stickerCode)}</span
+								>{/if}
+						</span>
+					</li>
+				{/each}
+			</ol>
+		{/if}
+		{#if error?.id === item.id}<p class="mb-2 text-sm text-red-600 dark:text-red-500" role="alert">
+				{error.message}
+			</p>{/if}
+		<Button class="w-full" onclick={() => confirmReturn(item)} disabled={busyId === item.id}>
+			Готово
+		</Button>
+	{/if}
+</Sheet>

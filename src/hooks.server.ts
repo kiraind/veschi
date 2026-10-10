@@ -9,6 +9,7 @@ import {
 } from '$lib/server/auth/session';
 import { UnauthorizedError } from '$lib/server/errors';
 import { initApp } from '$lib/server/init';
+import { THEME_COOKIE, parseTheme } from '$lib/domain/theme';
 
 export const init: ServerInit = async () => {
 	if (!building) await initApp();
@@ -51,5 +52,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, `/login?next=${encodeURIComponent(pathname + search)}`);
 	}
 
-	return resolve(event);
+	// The theme from «Настройки» goes into <html> so the page is rendered in it (app.html).
+	const theme = parseTheme(event.cookies.get(THEME_COOKIE));
+	return resolve(event, {
+		transformPageChunk: ({ html }) =>
+			html.replace('%theme%', theme).replace('%theme-class%', theme === 'dark' ? 'dark' : '')
+	});
 };
