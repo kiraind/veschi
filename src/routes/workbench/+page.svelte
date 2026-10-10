@@ -9,6 +9,7 @@
 	import Sheet from '$lib/components/Sheet.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
+	import Thumb from '$lib/components/Thumb.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
 	import { CogOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
@@ -105,21 +106,24 @@
 				{#each bench.items as item (item.id)}
 					<li>
 						<Card class="max-w-none space-y-3 p-4">
-							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<a
-										href="/items/{item.id}"
-										class="min-w-0 font-semibold break-words text-primary-700 hover:underline dark:text-primary-500"
-										>{item.name}</a
-									>
-									{#if item.quantity > 1}<Badge
-											color="gray"
-											class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
-										>{/if}
-								</div>
-								<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
-									Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}
-									{#if item.takenByName}· достал(а) {item.takenByName}{/if}
+							<div class="flex items-start gap-3">
+								<Thumb photoKey={item.photoKey} size={56} container={item.isContainer} />
+								<div class="min-w-0">
+									<div class="flex flex-wrap items-center gap-2">
+										<a
+											href="/items/{item.id}"
+											class="min-w-0 font-semibold break-words text-primary-700 hover:underline dark:text-primary-500"
+											>{item.name}</a
+										>
+										{#if item.quantity > 1}<Badge
+												color="gray"
+												class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
+											>{/if}
+									</div>
+									<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
+										Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}
+										{#if item.takenByName}· достал(а) {item.takenByName}{/if}
+									</div>
 								</div>
 							</div>
 

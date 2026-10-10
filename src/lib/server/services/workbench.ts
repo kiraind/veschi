@@ -221,6 +221,9 @@ export interface WorkbenchItem {
 	id: string;
 	name: string;
 	quantity: number;
+	/** The type's photo. */
+	photoKey: string | null;
+	isContainer: boolean;
 	workbenchId: string;
 	takenAt: Date | null;
 	takenByName: string | null;
@@ -265,7 +268,7 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 			...visibleTo(actor)
 		},
 		include: {
-			type: { select: { name: true } },
+			type: { select: { name: true, photoKey: true, isContainer: true } },
 			takenBy: { select: { name: true } },
 			home: {
 				select: {
@@ -320,6 +323,8 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 			id: i.id,
 			name: itemDisplayName(i),
 			quantity: i.quantity,
+			photoKey: i.type?.photoKey ?? null,
+			isContainer: i.type?.isContainer ?? false,
 			workbenchId: itemPaths.get(i.id)?.[0]?.id ?? i.parentId ?? '',
 			takenAt: i.takenAt,
 			takenByName: i.takenBy?.name ?? null,
