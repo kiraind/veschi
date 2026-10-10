@@ -18,6 +18,7 @@
 </script>
 
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Card, Radio } from 'flowbite-svelte';
 	import { api } from '$lib/api';
@@ -34,9 +35,21 @@
 		icon: string | null;
 	}
 
-	let { item }: { item: { id: string; quantity: number; name: string } } = $props();
+	/**
+	 * «На стол»: picks a workbench (by geofence, else the last one) and takes the
+	 * item or part of it there. With `button = false` the caller opens it through
+	 * `open` (e.g. from a button group).
+	 */
+	let {
+		item,
+		open = $bindable(false),
+		button = true
+	}: {
+		item: { id: string; quantity: number; name: string };
+		open?: boolean;
+		button?: boolean;
+	} = $props();
 
-	let open = $state(false);
 	let loading = $state(false);
 	let busy = $state(false);
 	let error = $state('');
@@ -47,8 +60,11 @@
 	const selected = $derived(benches.find((b) => b.id === selectedId) ?? null);
 	const quantityProblem = $derived(quantityError(item.quantity, quantity));
 
+	$effect(() => {
+		if (open) untrack(start);
+	});
+
 	async function start() {
-		open = true;
 		loading = true;
 		error = '';
 		quantity = item.quantity;
@@ -84,7 +100,7 @@
 </script>
 
 {#if !open}
-	<Button onclick={start}>На стол</Button>
+	{#if button}<Button onclick={() => (open = true)}>На стол</Button>{/if}
 {:else}
 	<Card class="max-w-none gap-3 p-4">
 		{#if loading}

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
-	import { Badge, Button } from 'flowbite-svelte';
+	import { Badge, Button, Checkbox, Helper } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import ParamSection from '$lib/components/ParamSection.svelte';
+	import EditButton from '$lib/components/EditButton.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
+	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
 
@@ -14,6 +16,30 @@
 	const type = $derived(data.card.type);
 	const total = $derived(data.card.items.reduce((sum, i) => sum + i.quantity, 0));
 	let error = $state('');
+	let renaming = $state(false);
+	let describing = $state(false);
+	let containerBusy = $state(false);
+	let containerError = $state('');
+
+	async function save(changes: { name?: string; description?: string; isContainer?: boolean }) {
+		await api.patch(`/api/types/${type.id}`, changes);
+		await invalidateAll();
+	}
+
+	/** The checkbox saves at once; a refused change (contents, quantities) puts it back. */
+	async function setContainer(event: Event & { currentTarget: HTMLInputElement }) {
+		const checked = event.currentTarget.checked;
+		containerBusy = true;
+		containerError = '';
+		try {
+			await save({ isContainer: checked });
+		} catch (e) {
+			event.currentTarget.checked = !checked;
+			containerError = e instanceof ApiError ? e.message : String(e);
+		} finally {
+			containerBusy = false;
+		}
+	}
 
 	async function remove() {
 		if (!(await confirmAction({ title: `Удалить тип «${type.name}»?` }))) return;
@@ -35,13 +61,11 @@
 		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
 	>
 </p>
-<h1 class="text-2xl font-bold break-words">{type.name}</h1>
-<div class="mt-1 mb-3 flex flex-col gap-1">
-	{#if type.isContainer}<div><Badge color="indigo">контейнер</Badge></div>{/if}
-	{#if type.description}
-		<p class="whitespace-pre-line text-gray-700 dark:text-gray-300">{type.description}</p>
-	{/if}
+<div class="flex items-start gap-1">
+	<h1 class="text-2xl font-bold break-words">{type.name}</h1>
+	<EditButton label="Изменить название" onclick={() => (renaming = true)} />
 </div>
+{#if type.isContainer}<div class="mt-1 mb-3"><Badge color="indigo">контейнер</Badge></div>{/if}
 
 <PhotoField
 	photoKey={type.photoKey}
@@ -58,11 +82,34 @@
 	}}
 />
 
+<div class="mt-4">
+	<Checkbox checked={type.isContainer} disabled={containerBusy} onchange={setContainer}
+		>Контейнер</Checkbox
+	>
+	<Helper class="mt-1 ps-6">
+		В вещи этого типа можно класть другие вещи; количество у каждой — 1. Снять отметку можно, когда
+		в них пусто.
+	</Helper>
+	{#if containerError}<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">
+			{containerError}
+		</p>{/if}
+</div>
+
+<div class="mt-6 flex items-start gap-1">
+	{#if type.description}
+		<p class="min-w-0 flex-1 pt-2 whitespace-pre-line text-gray-700 dark:text-gray-300">
+			{type.description}
+		</p>
+	{:else}
+		<p class="min-w-0 flex-1 pt-2 text-sm text-gray-500 dark:text-gray-400">Без описания</p>
+	{/if}
+	<EditButton label="Изменить описание" onclick={() => (describing = true)} />
+</div>
+
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 <ParamSection params={data.card.params} target={{ kind: 'type', id: type.id }} />
 
 <div class="mt-4 flex flex-wrap gap-2">
-	<Button color="alternative" href="/types/{type.id}/edit">Изменить</Button>
 	<Button color="alternative" href="/items/new?type={type.id}">
 		<PlusOutline class="me-1 h-4 w-4" />Вещь этого типа
 	</Button>
@@ -87,3 +134,21 @@
 	</ul>
 {/if}
 {#if error}<p class="mt-2 text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+
+<TextEditSheet
+	bind:open={renaming}
+	title="Название типа"
+	label="Название"
+	value={type.name}
+	required
+	onsave={(name) => save({ name })}
+/>
+<TextEditSheet
+	bind:open={describing}
+	title="Описание: {type.name}"
+	label="Описание"
+	value={type.description ?? ''}
+	multiline
+	placeholder="Что это, для чего, чем отличается — поиск находит и по описанию"
+	onsave={(description) => save({ description })}
+/>

@@ -7,7 +7,7 @@ import { createItem, getItemCard, listContents, moveItem, updateItem } from './i
 import { keyed, setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
 import { updateType } from './types';
-import { createWorkbench, relocate, take } from './workbench';
+import { createWorkbench, take } from './workbench';
 
 describe('items', () => {
 	let actor: Actor;
