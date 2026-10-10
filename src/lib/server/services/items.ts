@@ -1,5 +1,6 @@
 import type { StickerStatus } from '@prisma/client';
 import { z } from 'zod';
+import { idSchema } from '$lib/domain/id';
 import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
@@ -9,7 +10,6 @@ import { getParamsOf, replaceParams } from './params';
 import {
 	assertCanPlace,
 	assertIsContainer,
-	assertNothingInside,
 	containerTypeInclude,
 	getPath,
 	isContainerItem,
@@ -30,17 +30,18 @@ const quantity = z
 	.int('Количество — целое число')
 	.min(1, 'Количество — не меньше 1')
 	.max(1_000_000);
-const typeChoice = {
-	typeId: z.uuid().optional(),
-	newTypeName: z.string().trim().min(1).max(200).optional()
-};
+
+/** A sticker marks one thing, so a stickered record always holds exactly one. */
+export const STICKER_QUANTITY =
+	'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь';
 
 export const createItemSchema = z
 	.object({
-		...typeChoice,
+		typeId: idSchema.optional(),
+		newTypeName: z.string().trim().min(1).max(200).optional(),
 		name: ownName,
 		quantity: quantity.default(1),
-		parentId: z.uuid().nullish(),
+		parentId: idSchema.nullish(),
 		/** A new type (newTypeName) is a container type. */
 		newTypeIsContainer: z.boolean().default(false),
 		stickerCode: z.string().trim().min(1).optional(),
@@ -51,19 +52,14 @@ export const createItemSchema = z
 		path: ['typeId']
 	});
 
-export const updateItemSchema = z
-	.object({
-		...typeChoice,
-		name: ownName.optional(),
-		quantity: quantity.optional()
-	})
-	.refine((v) => !(v.typeId && v.newTypeName), {
-		message: 'Либо существующий тип, либо новый',
-		path: ['typeId']
-	});
+/** The type of an existing item never changes; a new item is created instead. */
+export const updateItemSchema = z.object({
+	name: ownName.optional(),
+	quantity: quantity.optional()
+});
 
 export const moveItemSchema = z.object({
-	parentId: z.uuid().nullable(),
+	parentId: idSchema.nullable(),
 	/** Part of the quantity; omitted → the whole record. */
 	quantity: z.number().int().positive().optional()
 });
@@ -156,6 +152,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 					isContainer: data.newTypeIsContainer
 				});
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
+		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const item = await tx.item.create({
 			data: {
@@ -173,42 +170,24 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 }
 
 /**
- * Changes the own name, quantity (≥ 1) or type of an active, ordinary item.
- * An item of a container type has quantity 1; moving a container to a
- * non-container type needs it empty.
+ * Changes the own name or quantity (≥ 1) of an active, ordinary item. The
+ * quantity of a container or of an item with a sticker is always 1.
  */
 export async function updateItem(actor: Actor, id: string, input: unknown): Promise<void> {
 	const data = updateItemSchema.parse(input);
 	await db.$transaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id, ...visibleTo(actor) },
-			include: { type: true }
+			include: { type: true, sticker: true }
 		});
 		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол меняется на странице стола');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
-		const type = data.typeId
-			? await findVisibleType(actor, data.typeId, tx)
-			: data.newTypeName
-				? await findOrCreateType(actor, data.newTypeName, tx)
-				: item.type;
-		if (type?.isContainer) {
-			if (data.quantity !== undefined && data.quantity !== 1) {
-				throw new ValidationError(CONTAINER_QUANTITY);
-			}
-			if (data.quantity === undefined && item.quantity !== 1) {
-				throw new ValidationError(
-					`${CONTAINER_QUANTITY}, а их сейчас ${item.quantity} шт. — укажите количество 1`
-				);
-			}
+		if (data.quantity !== undefined && data.quantity !== item.quantity) {
+			if (item.type?.isContainer) throw new ValidationError(CONTAINER_QUANTITY);
+			if (item.sticker?.status === 'BOUND') throw new ValidationError(STICKER_QUANTITY);
 		}
-		if (item.type?.isContainer && !type?.isContainer) {
-			await assertNothingInside(id, tx);
-		}
-		await tx.item.update({
-			where: { id },
-			data: { typeId: type?.id, name: data.name, quantity: data.quantity }
-		});
+		await tx.item.update({ where: { id }, data: { name: data.name, quantity: data.quantity } });
 	});
 }
 

@@ -28,7 +28,7 @@ export interface SearchGroup {
 
 /** SQL counterpart of `visibleTo(actor)` for an item alias. */
 function visibleSql(actor: Actor): Prisma.Sql {
-	return Prisma.sql`(i."ownerId" = ${actor.userId}::uuid OR i."householdId" = ANY(${actor.householdIds}::uuid[]))`;
+	return Prisma.sql`(i."ownerId" = ${actor.userId}::text OR i."householdId" = ANY(${actor.householdIds}::text[]))`;
 }
 
 /**

@@ -44,6 +44,13 @@ describe('items', () => {
 			expect(card.path.map((n) => n.name)).toEqual(['Полка']);
 		});
 
+		it('gets a cuid id, as do new types', async () => {
+			const { id } = await createItem(actor, { newTypeName: 'Пинцет' });
+			const item = await db.item.findUniqueOrThrow({ where: { id } });
+			expect(item.id).toMatch(/^c[0-9a-z]{24}$/);
+			expect(item.typeId).toMatch(/^c[0-9a-z]{24}$/);
+		});
+
 		it('reuses an existing type with the same name, case-insensitively', async () => {
 			const a = await createItem(actor, { newTypeName: 'коробка' });
 			expect((await db.item.findUniqueOrThrow({ where: { id: a.id } })).typeId).toBe(boxType);
@@ -56,6 +63,14 @@ describe('items', () => {
 			const { id } = await createItem(actor, { typeId: boxType, stickerCode: 'k7m-4qx' });
 			const sticker = await db.sticker.findUniqueOrThrow({ where: { code: 'K7M4QX' } });
 			expect(sticker).toMatchObject({ status: 'BOUND', itemId: id });
+		});
+
+		it('takes a sticker only for a single thing', async () => {
+			await db.sticker.create({ data: { code: 'K7M4QX', ownerId: actor.userId } });
+			await expect(
+				createItem(actor, { typeId: thingType, quantity: 3, stickerCode: 'K7M4QX' })
+			).rejects.toThrow('У вещи с наклейкой количество всегда 1');
+			expect(await db.item.count()).toBe(0);
 		});
 
 		it('rolls back when the sticker cannot be bound', async () => {
@@ -103,11 +118,13 @@ describe('items', () => {
 	});
 
 	describe('updateItem', () => {
-		it('changes name, quantity and type', async () => {
-			const { id } = await createItem(actor, { typeId: boxType, name: 'Старое' });
-			await updateItem(actor, id, { name: '', quantity: 3, newTypeName: 'Ящик' });
+		it('changes name and quantity, never the type', async () => {
+			const { id } = await createItem(actor, { typeId: thingType, name: 'Старое' });
+			await updateItem(actor, id, { name: '', quantity: 3, typeId: boxType, newTypeName: 'Ящик' });
 			const card = await getItemCard(actor, id);
-			expect(card.item).toMatchObject({ name: null, displayName: 'Ящик', quantity: 3 });
+			expect(card.item).toMatchObject({ name: null, quantity: 3 });
+			expect(card.type?.id).toBe(thingType);
+			expect(await db.itemType.count({ where: { name: 'Ящик' } })).toBe(0);
 		});
 
 		it('rejects quantity 0', async () => {
@@ -124,57 +141,23 @@ describe('items', () => {
 			});
 		});
 
-		it('changes to a container type only with quantity 1', async () => {
-			const { id } = await createItem(actor, { typeId: thingType, quantity: 5 });
-			await expect(updateItem(actor, id, { typeId: boxType })).rejects.toThrow('а их сейчас 5 шт.');
-			await expect(updateItem(actor, id, { typeId: boxType, quantity: 2 })).rejects.toThrow(
+		it('keeps the quantity of a container at 1', async () => {
+			const id = await box('Полка');
+			await expect(updateItem(actor, id, { quantity: 2 })).rejects.toThrow(
 				'У контейнера количество всегда 1'
 			);
-			expect(await db.item.findUniqueOrThrow({ where: { id } })).toMatchObject({
-				typeId: thingType,
-				quantity: 5
-			});
-			await updateItem(actor, id, { typeId: boxType, quantity: 1 });
-			const card = await getItemCard(actor, id);
-			expect(card.item).toMatchObject({ isContainer: true, quantity: 1 });
-			expect(card.type).toMatchObject({ id: boxType, isContainer: true });
+			await updateItem(actor, id, { name: 'Полка 2', quantity: 1 });
+			expect((await getItemCard(actor, id)).item).toMatchObject({ name: 'Полка 2', quantity: 1 });
 		});
 
-		it('changes from a container type to another only while empty', async () => {
-			const shelf = await box('Полка');
-			const inside = (await createItem(actor, { typeId: thingType, parentId: shelf })).id;
-			await expect(updateItem(actor, shelf, { typeId: thingType })).rejects.toThrow(
-				'Внутри лежат вещи'
+		it('keeps the quantity of an item with a sticker at 1', async () => {
+			await db.sticker.create({ data: { code: 'K7M4QX', ownerId: actor.userId } });
+			const { id } = await createItem(actor, { typeId: thingType, stickerCode: 'K7M4QX' });
+			await expect(updateItem(actor, id, { quantity: 2 })).rejects.toThrow(
+				'У вещи с наклейкой количество всегда 1'
 			);
-			await expect(updateItem(actor, shelf, { newTypeName: 'Полка' })).rejects.toThrow(
-				'Внутри лежат вещи'
-			);
-			expect(await db.itemType.count({ where: { name: 'Полка' } })).toBe(0);
-
-			const otherBoxType = await db.itemType.create({
-				data: { ownerId: actor.userId, name: 'Ящик', isContainer: true }
-			});
-			await updateItem(actor, shelf, { typeId: otherBoxType.id });
-			expect((await getItemCard(actor, shelf)).children.map((c) => c.id)).toEqual([inside]);
-
-			await moveItem(actor, inside, null);
-			await updateItem(actor, shelf, { typeId: thingType, quantity: 4 });
-			expect((await getItemCard(actor, shelf)).item).toMatchObject({
-				isContainer: false,
-				quantity: 4
-			});
-		});
-
-		it('changes from a container type only when nothing taken from it is on a bench', async () => {
-			const shelf = await box('Полка');
-			const knife = (await createItem(actor, { typeId: thingType, parentId: shelf })).id;
-			const bench = await createWorkbench(actor, { name: 'Гараж' });
-			await take(actor, knife, { workbenchId: bench.id });
-			await expect(updateItem(actor, shelf, { typeId: thingType })).rejects.toThrow(
-				'на рабочем столе'
-			);
-			await relocate(actor, knife, null);
-			await updateItem(actor, shelf, { typeId: thingType });
+			await updateItem(actor, id, { name: 'Мой', quantity: 1 });
+			expect((await getItemCard(actor, id)).item).toMatchObject({ name: 'Мой', quantity: 1 });
 		});
 	});
 
@@ -365,10 +348,6 @@ describe('items', () => {
 				'«Нож» — не контейнер'
 			);
 			await expect(moveItem(actor, spoon, plain)).rejects.toThrow('не контейнер');
-
-			await updateItem(actor, plain, { typeId: boxType });
-			await moveItem(actor, spoon, plain);
-			expect((await db.item.findUniqueOrThrow({ where: { id: spoon } })).parentId).toBe(plain);
 		});
 
 		it('puts things into every item once its type becomes a container', async () => {
@@ -384,7 +363,7 @@ describe('items', () => {
 			const shelf = await box('Полка');
 			const inside = (await createItem(actor, { typeId: thingType, parentId: shelf })).id;
 			await discard(actor, inside, {});
-			await updateItem(actor, shelf, { typeId: thingType });
+			await updateType(actor, boxType, { isContainer: false });
 			await restore(actor, inside);
 			expect((await db.item.findUniqueOrThrow({ where: { id: inside } })).parentId).toBeNull();
 		});

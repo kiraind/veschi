@@ -21,12 +21,12 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String   @id @default(cuid())
   login           String   @unique
   passwordHash    String
   name            String
   // Workbench used last; picked when the current position is outside every geofence.
-  lastWorkbenchId String?  @db.Uuid
+  lastWorkbenchId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -46,7 +46,7 @@ model User {
 model Session {
   // SHA-256 of the session token; the raw token only lives in the cookie.
   id        String   @id
-  userId    String   @db.Uuid
+  userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
@@ -56,7 +56,7 @@ model Session {
 }
 
 model Household {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -77,8 +77,8 @@ enum HouseholdRole {
 }
 
 model Membership {
-  userId      String        @db.Uuid
-  householdId String        @db.Uuid
+  userId      String
+  householdId String
   role        HouseholdRole @default(MEMBER)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -90,8 +90,8 @@ model Membership {
 }
 
 model Invitation {
-  id          String   @id @default(uuid()) @db.Uuid
-  householdId String   @db.Uuid
+  id          String   @id @default(cuid())
+  householdId String
   tokenHash   String   @unique
   expiresAt   DateTime
   createdAt   DateTime @default(now())
@@ -105,9 +105,9 @@ model Invitation {
 // ---------------------------------------------------------------------------
 
 model ItemType {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerId     String?  @db.Uuid
-  householdId String?  @db.Uuid
+  id          String   @id @default(cuid())
+  ownerId     String?
+  householdId String?
   name        String
   // Free-text description; search matches it too.
   description String?
@@ -134,23 +134,23 @@ enum ItemStatus {
 }
 
 model Item {
-  id          String     @id @default(uuid()) @db.Uuid
-  ownerId     String?    @db.Uuid
-  householdId String?    @db.Uuid
+  id          String     @id @default(cuid())
+  ownerId     String?
+  householdId String?
   // Required for every item except workbenches (enforced by the service layer).
-  typeId      String?    @db.Uuid
+  typeId      String?
   // Own name of this instance; when empty the type name is shown.
   name        String?
   // Always 1 for containers (items of a container type) and workbenches.
   quantity    Int        @default(1)
   // Where the item lies; null = top level.
-  parentId    String?    @db.Uuid
+  parentId    String?
   // Container the item was taken from (set while the item is on a workbench).
-  homeId      String?    @db.Uuid
+  homeId      String?
   // Record this part was split from when taking part of the quantity.
-  splitFromId String?    @db.Uuid
+  splitFromId String?
   // Who took the item to a workbench.
-  takenById   String?    @db.Uuid
+  takenById   String?
   takenAt     DateTime?
   status      ItemStatus @default(ACTIVE)
   archivedAt  DateTime?
@@ -200,9 +200,9 @@ enum StickerStatus {
 
 // One generated PDF sheet set; kept so a lost PDF can be downloaded again.
 model StickerBatch {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerId     String?  @db.Uuid
-  householdId String?  @db.Uuid
+  id          String   @id @default(cuid())
+  ownerId     String?
+  householdId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -212,18 +212,18 @@ model StickerBatch {
 }
 
 model Sticker {
-  id          String        @id @default(uuid()) @db.Uuid
+  id          String        @id @default(cuid())
   // 6 characters without the dash, upper case, e.g. "K7M4QX". Unique server-wide.
   code        String        @unique @db.Char(6)
   caption     String?
   status      StickerStatus @default(FREE)
   // Bound item; kept for written-off stickers so restoring the item rebinds it.
-  itemId      String?       @unique @db.Uuid
-  batchId     String?       @db.Uuid
+  itemId      String?       @unique
+  batchId     String?
   // Position of the sticker inside its batch (print order).
   position    Int           @default(0)
-  ownerId     String?       @db.Uuid
-  householdId String?       @db.Uuid
+  ownerId     String?
+  householdId String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -241,9 +241,9 @@ model Sticker {
 // ---------------------------------------------------------------------------
 
 model EnumDictionary {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerId     String?  @db.Uuid
-  householdId String?  @db.Uuid
+  id          String   @id @default(cuid())
+  ownerId     String?
+  householdId String?
   name        String
   multiple    Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -260,8 +260,8 @@ model EnumDictionary {
 }
 
 model EnumOption {
-  id           String   @id @default(uuid()) @db.Uuid
-  dictionaryId String   @db.Uuid
+  id           String   @id @default(cuid())
+  dictionaryId String
   label        String
   position     Int
   createdAt    DateTime @default(now())
@@ -289,15 +289,15 @@ enum ParamValueType {
 // option list (ENUM), shared by every type and item that has a value for it.
 // Names are unique per owner (case-insensitive, checked by the service layer).
 model ParamDef {
-  id           String         @id @default(uuid()) @db.Uuid
-  ownerId      String?        @db.Uuid
-  householdId  String?        @db.Uuid
+  id           String         @id @default(cuid())
+  ownerId      String?
+  householdId  String?
   name         String
   valueType    ParamValueType
   // NUMBER, RANGE: unit of every value («мм», «В»).
   unit         String?
   // ENUM: the parameter's own option list.
-  dictionaryId String?        @unique @db.Uuid
+  dictionaryId String?        @unique
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -315,10 +315,10 @@ model ParamDef {
 // repeat the definition's; which value columns are used depends on valueType
 // (see src/lib/domain/params.ts).
 model Param {
-  id        String         @id @default(uuid()) @db.Uuid
-  defId     String         @db.Uuid
-  typeId    String?        @db.Uuid
-  itemId    String?        @db.Uuid
+  id        String         @id @default(cuid())
+  defId     String
+  typeId    String?
+  itemId    String?
   valueType ParamValueType
   position  Int            @default(0)
 
@@ -331,9 +331,9 @@ model Param {
   fileName     String? // FILE: original file name
   fileMime     String? // FILE: content type
   fileSize     Int? // FILE: bytes
-  refItemId    String?   @db.Uuid // REF to an item
-  refTypeId    String?   @db.Uuid // REF to a type
-  dictionaryId String?   @db.Uuid // ENUM
+  refItemId    String? // REF to an item
+  refTypeId    String? // REF to a type
+  dictionaryId String? // ENUM
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -352,11 +352,24 @@ model Param {
 }
 
 model ParamEnumValue {
-  paramId  String @db.Uuid
-  optionId String @db.Uuid
+  paramId  String
+  optionId String
 
   param  Param      @relation(fields: [paramId], references: [id], onDelete: Cascade)
   option EnumOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
 
   @@id([paramId, optionId])
+}
+
+// ---------------------------------------------------------------------------
+// Legacy ids
+// ---------------------------------------------------------------------------
+
+// UUID ids from before the switch to cuid (2026-10, see docs/decisions.md):
+// old links to /items/<uuid>, /types/<uuid>, /params/<uuid> redirect through it.
+model LegacyId {
+  oldId String @id
+  // "Item", "ItemType" or "ParamDef".
+  model String
+  newId String
 }

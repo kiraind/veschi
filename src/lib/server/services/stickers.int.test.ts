@@ -109,7 +109,7 @@ describe('stickers', () => {
 	it('renders the batch PDF with one page per sheet; other users cannot get it', async () => {
 		const batch = await issueBatch(actor, { captions: ['Припой'], blankCount: 60 });
 		const { filename, pdf } = await getBatchPdf(actor, batch.id, 'https://v.ex.io');
-		expect(filename).toMatch(/^stickers-\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.pdf$/);
+		expect(filename).toMatch(/^stickers-\d{4}-\d{2}-\d{2}-[0-9a-z]{8}\.pdf$/);
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 		expect(pdf.toString('latin1').match(/\/Type \/Page\b/g)).toHaveLength(2);
 		const other = await createTestActor('other');
@@ -189,6 +189,42 @@ describe('stickers', () => {
 			const other = await item('Другая');
 			await expect(bindSticker(actor, first.code, other.id)).rejects.toThrow('уже использована');
 			await expect(bindSticker(actor, 'K7M4Q0', other.id)).rejects.toThrow('Некорректный');
+		});
+
+		it('splits one thing off a record of several and sticks the sticker on it', async () => {
+			const shelf = await db.itemType.create({
+				data: { ownerId: actor.userId, name: 'Полка', isContainer: true }
+			});
+			const place = await db.item.create({ data: { ownerId: actor.userId, typeId: shelf.id } });
+			const several = await db.item.create({
+				data: { ownerId: actor.userId, typeId, name: 'ПОС-61', quantity: 3, parentId: place.id }
+			});
+			const def = await db.paramDef.create({
+				data: { ownerId: actor.userId, name: 'Диаметр', valueType: 'NUMBER' }
+			});
+			await db.param.create({
+				data: { defId: def.id, itemId: several.id, valueType: 'NUMBER', numberValue: 1 }
+			});
+			const sticker = await freeSticker();
+
+			const { itemId } = await bindSticker(actor, sticker.code, several.id);
+			expect(itemId).not.toBe(several.id);
+			expect(await db.item.findUniqueOrThrow({ where: { id: several.id } })).toMatchObject({
+				quantity: 2
+			});
+			expect(await db.item.findUniqueOrThrow({ where: { id: itemId } })).toMatchObject({
+				quantity: 1,
+				name: 'ПОС-61',
+				typeId,
+				parentId: place.id
+			});
+			expect(await db.param.findFirst({ where: { itemId } })).toMatchObject({ numberValue: 1 });
+			expect(await resolveCode(actor, sticker.code)).toMatchObject({ status: 'bound', itemId });
+
+			// A single thing keeps its record.
+			const single = await item('Одна');
+			const another = await freeSticker();
+			expect(await bindSticker(actor, another.code, single.id)).toEqual({ itemId: single.id });
 		});
 
 		it('binds only to own active items', async () => {

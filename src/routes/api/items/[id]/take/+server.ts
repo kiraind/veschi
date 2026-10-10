@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { idSchema } from '$lib/domain/id';
 import { apiHandler, parseBody } from '$lib/server/api';
 import { take } from '$lib/server/services/workbench';
 import type { RequestEvent } from './$types';
 
 const Body = z.object({
-	workbenchId: z.uuid(),
+	workbenchId: idSchema,
 	quantity: z.number().int().positive().optional()
 });
 

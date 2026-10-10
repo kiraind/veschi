@@ -4,10 +4,9 @@ import { ConflictError, NotFoundError, ValidationError } from '$lib/server/error
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { renderStickerPdf } from '$lib/server/pdf/sticker-pdf';
 import { extractCode } from '$lib/domain/scan';
+import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
 import { MAX_SHEETS_PER_BATCH, STICKERS_PER_SHEET, planSheets } from '$lib/domain/sticker-sheet';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Serializes code generation so concurrent batches cannot issue codes close to each other. */
 const ISSUE_LOCK_KEY = 0x5711c0de;
@@ -15,14 +14,17 @@ const ISSUE_LOCK_KEY = 0x5711c0de;
 /**
  * Binds a free sticker to an active item that has no sticker yet. Used when
  * creating an item from a scanned sticker and when attaching a sticker to an
- * existing item.
+ * existing item. A sticker marks one thing: when the record holds several,
+ * one is split off into a record of its own (same place and own parameters)
+ * and the sticker goes on it. Returns the id of the stickered record.
  */
 export async function bindSticker(
 	actor: Actor,
 	codeInput: string,
 	itemId: string,
-	tx: Tx = db
-): Promise<void> {
+	tx?: Tx
+): Promise<{ itemId: string }> {
+	if (!tx) return db.$transaction((t) => bindSticker(actor, codeInput, itemId, t));
 	const code = normalizeCode(codeInput);
 	if (!code) throw new ValidationError('Некорректный ID наклейки');
 	const sticker = await tx.sticker.findFirst({ where: { code, ...visibleTo(actor) } });
@@ -30,13 +32,30 @@ export async function bindSticker(
 	if (sticker.status !== 'FREE') {
 		throw new ConflictError(`Наклейка ${formatCode(code)} уже использована`);
 	}
-	const item = UUID_RE.test(itemId)
-		? await tx.item.findFirst({ where: { id: itemId, status: 'ACTIVE', ...visibleTo(actor) } })
-		: null;
+	const item = await tx.item.findFirst({
+		where: { id: itemId, status: 'ACTIVE', ...visibleTo(actor) }
+	});
 	if (!item) throw new NotFoundError('Вещь не найдена');
 	const existing = await tx.sticker.findUnique({ where: { itemId } });
 	if (existing) throw new ConflictError('У вещи уже есть наклейка');
-	await tx.sticker.update({ where: { id: sticker.id }, data: { status: 'BOUND', itemId } });
+	const target =
+		item.quantity > 1
+			? await placePart(
+					tx,
+					item,
+					1,
+					{
+						parentId: item.parentId,
+						takenById: item.takenById,
+						takenAt: item.takenAt,
+						homeId: item.homeId,
+						splitFromId: item.splitFromId
+					},
+					{ merge: false }
+				)
+			: item.id;
+	await tx.sticker.update({ where: { id: sticker.id }, data: { status: 'BOUND', itemId: target } });
+	return { itemId: target };
 }
 
 /**
@@ -45,9 +64,9 @@ export async function bindSticker(
  * it), and the item can get a new sticker.
  */
 export async function unbindSticker(actor: Actor, itemId: string): Promise<void> {
-	const sticker = UUID_RE.test(itemId)
-		? await db.sticker.findFirst({ where: { itemId, status: 'BOUND', ...visibleTo(actor) } })
-		: null;
+	const sticker = await db.sticker.findFirst({
+		where: { itemId, status: 'BOUND', ...visibleTo(actor) }
+	});
 	if (!sticker) throw new NotFoundError('У вещи нет наклейки');
 	await db.sticker.update({
 		where: { id: sticker.id },
@@ -190,9 +209,7 @@ export async function getBatchPdf(
 	batchId: string,
 	qrBaseUrl: string = config().qrBaseUrl
 ): Promise<{ filename: string; pdf: Buffer }> {
-	const batch = UUID_RE.test(batchId)
-		? await db.stickerBatch.findFirst({ where: { id: batchId, ...visibleTo(actor) } })
-		: null;
+	const batch = await db.stickerBatch.findFirst({ where: { id: batchId, ...visibleTo(actor) } });
 	if (!batch) throw new NotFoundError('Пачка наклеек не найдена');
 	const stickers = await db.sticker.findMany({
 		where: { batchId: batch.id },
@@ -201,7 +218,7 @@ export async function getBatchPdf(
 	});
 	const pdf = await renderStickerPdf(stickers, qrBaseUrl);
 	const date = batch.createdAt.toISOString().slice(0, 10);
-	return { filename: `stickers-${date}-${batch.id.slice(0, 8)}.pdf`, pdf };
+	return { filename: `stickers-${date}-${batch.id.slice(-8)}.pdf`, pdf };
 }
 
 export type ResolveResult =

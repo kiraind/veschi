@@ -6,6 +6,7 @@
  * server and the browser.
  */
 import { z } from 'zod';
+import { idSchema } from './id';
 
 export const PARAM_VALUE_TYPES = [
 	'STRING',
@@ -47,7 +48,6 @@ const unit = z
 	.transform((v) => v || null);
 const optionLabel = z.string().trim().min(1, 'Пустой вариант').max(100);
 const finite = z.number().finite('Нужно число');
-const uuid = z.uuid('Некорректный идентификатор');
 
 // ---------------------------------------------------------------------------
 // Definitions
@@ -76,7 +76,7 @@ export const paramDefInputSchema = z
 		unit,
 		multiple: z.boolean().default(false),
 		options: z
-			.array(z.object({ id: uuid.optional(), label: optionLabel }))
+			.array(z.object({ id: idSchema.optional(), label: optionLabel }))
 			.max(MAX_OPTIONS, `Не больше ${MAX_OPTIONS} вариантов`)
 			.default([])
 	})
@@ -133,7 +133,7 @@ const valueVariants = {
 	STRING: { text: z.string().trim().min(1, 'Пустое значение').max(1000) },
 	NUMBER: { value: finite },
 	RANGE: { min: finite, max: finite },
-	ENUM: { optionIds: z.array(uuid).min(1, 'Выберите вариант') },
+	ENUM: { optionIds: z.array(idSchema).min(1, 'Выберите вариант') },
 	URL: { url: z.string().trim().max(2000).refine(isHttpUrl, 'Нужна ссылка вида https://…') },
 	FILE: {
 		fileKey: z.string().min(1).max(500),
@@ -143,8 +143,8 @@ const valueVariants = {
 	},
 	DATE: { date: z.string().refine(isIsoDate, 'Нужна дата ГГГГ-ММ-ДД') },
 	REF: {
-		refItemId: uuid.nullish().transform((v) => v ?? null),
-		refTypeId: uuid.nullish().transform((v) => v ?? null)
+		refItemId: idSchema.nullish().transform((v) => v ?? null),
+		refTypeId: idSchema.nullish().transform((v) => v ?? null)
 	},
 	BOOLEAN: { value: z.boolean() }
 } as const;
@@ -152,15 +152,15 @@ const valueVariants = {
 /** The value of one parameter, given with the definition it belongs to. */
 export const paramInputSchema = z
 	.discriminatedUnion('valueType', [
-		z.object({ defId: uuid, valueType: z.literal('STRING'), ...valueVariants.STRING }),
-		z.object({ defId: uuid, valueType: z.literal('NUMBER'), ...valueVariants.NUMBER }),
-		z.object({ defId: uuid, valueType: z.literal('RANGE'), ...valueVariants.RANGE }),
-		z.object({ defId: uuid, valueType: z.literal('ENUM'), ...valueVariants.ENUM }),
-		z.object({ defId: uuid, valueType: z.literal('URL'), ...valueVariants.URL }),
-		z.object({ defId: uuid, valueType: z.literal('FILE'), ...valueVariants.FILE }),
-		z.object({ defId: uuid, valueType: z.literal('DATE'), ...valueVariants.DATE }),
-		z.object({ defId: uuid, valueType: z.literal('REF'), ...valueVariants.REF }),
-		z.object({ defId: uuid, valueType: z.literal('BOOLEAN'), ...valueVariants.BOOLEAN })
+		z.object({ defId: idSchema, valueType: z.literal('STRING'), ...valueVariants.STRING }),
+		z.object({ defId: idSchema, valueType: z.literal('NUMBER'), ...valueVariants.NUMBER }),
+		z.object({ defId: idSchema, valueType: z.literal('RANGE'), ...valueVariants.RANGE }),
+		z.object({ defId: idSchema, valueType: z.literal('ENUM'), ...valueVariants.ENUM }),
+		z.object({ defId: idSchema, valueType: z.literal('URL'), ...valueVariants.URL }),
+		z.object({ defId: idSchema, valueType: z.literal('FILE'), ...valueVariants.FILE }),
+		z.object({ defId: idSchema, valueType: z.literal('DATE'), ...valueVariants.DATE }),
+		z.object({ defId: idSchema, valueType: z.literal('REF'), ...valueVariants.REF }),
+		z.object({ defId: idSchema, valueType: z.literal('BOOLEAN'), ...valueVariants.BOOLEAN })
 	])
 	.superRefine((v, ctx) => {
 		if (v.valueType === 'RANGE' && v.min > v.max) {

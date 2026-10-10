@@ -179,15 +179,27 @@ describe('types', () => {
 	});
 
 	describe('photo', () => {
-		it('stores a WebP of at most 1600 px and replaces the old photo', async () => {
+		it('stores a square WebP of at most 1600 px and replaces the old photo', async () => {
 			const type = await createType(actor, { name: 'Нож' });
 			const first = await setTypePhoto(actor, type.id, await png(3200, 1000));
 			const stored = await storage().get(first);
 			expect(stored?.contentType).toBe('image/webp');
 			const chunks: Buffer[] = [];
 			for await (const chunk of stored!.body) chunks.push(chunk as Buffer);
-			const meta = await sharp(Buffer.concat(chunks)).metadata();
-			expect([meta.format, meta.width, meta.height]).toEqual(['webp', 1600, 500]);
+			const webp = Buffer.concat(chunks);
+			const meta = await sharp(webp).metadata();
+			expect([meta.format, meta.width, meta.height, meta.hasAlpha]).toEqual([
+				'webp',
+				1600,
+				1600,
+				true
+			]);
+			// The margins above and below the wide picture are transparent; the picture is not.
+			const { data, info } = await sharp(webp).raw().toBuffer({ resolveWithObject: true });
+			const alphaAt = (x: number, y: number) => data[(y * info.width + x) * info.channels + 3];
+			expect(alphaAt(800, 10)).toBe(0);
+			expect(alphaAt(800, 1590)).toBe(0);
+			expect(alphaAt(800, 800)).toBe(255);
 
 			const second = await setTypePhoto(actor, type.id, await png(100, 100));
 			expect(second).not.toBe(first);

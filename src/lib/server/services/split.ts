@@ -153,6 +153,7 @@ async function isPlainType(tx: Tx, typeId: string | null): Promise<boolean> {
  * When an identical record already lies at the destination (see `findTwin`),
  * what moves is added to its quantity instead of lying there as a second
  * record; a whole record is then deleted (it has no sticker or contents).
+ * `merge: false` always keeps the part a record of its own.
  * Returns the id of the record that holds what moved.
  */
 export async function placePart(
@@ -160,7 +161,7 @@ export async function placePart(
 	item: Item,
 	count: number,
 	placement: Placement,
-	{ rememberSource = false }: { rememberSource?: boolean } = {}
+	{ rememberSource = false, merge = true }: { rememberSource?: boolean; merge?: boolean } = {}
 ): Promise<string> {
 	const whole = count === item.quantity;
 	const splitFromId = whole
@@ -170,7 +171,7 @@ export async function placePart(
 		: rememberSource
 			? (item.splitFromId ?? item.id)
 			: (placement.splitFromId ?? null);
-	const twin = await findTwin(tx, item, whole, { ...placement, splitFromId });
+	const twin = merge ? await findTwin(tx, item, whole, { ...placement, splitFromId }) : null;
 	if (twin) {
 		await tx.item.update({ where: { id: twin.id }, data: { quantity: twin.quantity + count } });
 		if (whole) {

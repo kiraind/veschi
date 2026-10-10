@@ -22,12 +22,15 @@ export const typeDescriptionSchema = z
 	.nullish()
 	.transform((v) => v || null);
 
-/** A new type, or the changes of one (omitted fields stay as they are). */
+/** A new type. */
 export const typeInputSchema = z.object({
 	name: typeNameSchema,
 	description: typeDescriptionSchema.optional(),
 	isContainer: z.boolean().optional()
 });
+
+/** Changes of a type: omitted fields stay as they are. */
+export const typeUpdateSchema = typeInputSchema.partial();
 
 /** A container is a single instance: one thing never lies in two identical boxes. */
 export const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
@@ -155,7 +158,7 @@ export async function findOrCreateType(
  * and stops being one only when nothing lies in its items.
  */
 export async function updateType(actor: Actor, id: string, input: unknown) {
-	const { name, description, isContainer } = typeInputSchema.parse(input);
+	const { name, description, isContainer } = typeUpdateSchema.parse(input);
 	return db.$transaction(async (tx) => {
 		const type = await findType(actor, id, tx);
 		if (isContainer === true && !type.isContainer) {
@@ -197,16 +200,27 @@ export async function deleteType(actor: Actor, id: string): Promise<void> {
 	await deleteUnreferencedFiles([...fileKeys, ...(type.photoKey ? [type.photoKey] : [])]);
 }
 
-/** Re-encodes an uploaded photo to WebP (≤1600 px, EXIF rotation applied). */
+/**
+ * Re-encodes an uploaded photo to a square WebP (≤1600 px, EXIF rotation
+ * applied): the picture is centred and padded with transparent margins, never
+ * cropped or enlarged.
+ */
 export async function toWebp(data: Buffer): Promise<Buffer> {
 	try {
-		return await sharp(data)
+		const { data: pixels, info } = await sharp(data)
 			.rotate()
+			.ensureAlpha()
+			.raw()
+			.toBuffer({ resolveWithObject: true });
+		const side = Math.min(Math.max(info.width, info.height), PHOTO_MAX_SIDE);
+		return await sharp(pixels, {
+			raw: { width: info.width, height: info.height, channels: info.channels }
+		})
 			.resize({
-				width: PHOTO_MAX_SIDE,
-				height: PHOTO_MAX_SIDE,
-				fit: 'inside',
-				withoutEnlargement: true
+				width: side,
+				height: side,
+				fit: 'contain',
+				background: { r: 0, g: 0, b: 0, alpha: 0 }
 			})
 			.webp({ quality: 82 })
 			.toBuffer();
