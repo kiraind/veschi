@@ -12,7 +12,7 @@ import { deleteStored, deleteUnreferencedFiles, thumbKeyOf } from './files';
 import { diffFields } from '$lib/domain/history';
 import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
-import { assertNothingInside, getPaths, type PathNode } from './paths';
+import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
 
 /** Side of a stored photo (square), px: full size and thumbnail. */
 const PHOTO_MAX_SIDE = 2048;
@@ -61,6 +61,8 @@ export interface TypeCard {
 	type: TypeInfo;
 	params: ParamView[];
 	items: { id: string; name: string; quantity: number; path: PathNode[] }[];
+	/** A container type whose items hold something (or have things taken out to a bench). */
+	hasContents: boolean;
 }
 
 async function findType(actor: Actor, id: string, tx: Tx = db) {
@@ -120,9 +122,13 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 			orderBy: { createdAt: 'asc' }
 		})
 	]);
-	const paths = await getPaths(items.map((i) => i.id));
+	const [paths, contents] = await Promise.all([
+		getPaths(items.map((i) => i.id)),
+		type.isContainer ? countContents(items.map((i) => i.id)) : { inside: 0, taken: 0 }
+	]);
 	return {
 		type: typeInfo(type),
+		hasContents: contents.inside + contents.taken > 0,
 		params: params.get(id) ?? [],
 		items: items.map((i) => ({
 			id: i.id,

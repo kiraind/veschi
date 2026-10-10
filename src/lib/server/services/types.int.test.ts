@@ -72,6 +72,15 @@ describe('types', () => {
 		expect(card.items).toMatchObject([
 			{ name: 'NE555', quantity: 10, path: [{ name: 'Коробка с микросхемами' }] }
 		]);
+		expect(card.hasContents).toBe(false);
+		const boxType = await db.item.findUniqueOrThrow({ where: { id: box.id } });
+		expect((await getTypeCard(actor, boxType.typeId!)).hasContents).toBe(true);
+	});
+
+	it('marks a container type without contents', async () => {
+		const box = await createItem(actor, { newTypeName: 'Коробка', newTypeIsContainer: true });
+		const { typeId } = await db.item.findUniqueOrThrow({ where: { id: box.id } });
+		expect((await getTypeCard(actor, typeId!)).hasContents).toBe(false);
 	});
 
 	describe('description', () => {

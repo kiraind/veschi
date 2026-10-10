@@ -19,3 +19,30 @@ export function parseSearchQuery(input: string): SearchQuery {
 export function likePattern(s: string): string {
 	return `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
+
+/** Longest example that still fits the search field on a phone. */
+const MAX_EXAMPLE_LENGTH = 20;
+
+/** Examples for a user who has nothing yet. */
+const DEFAULT_NAME = 'NE555';
+const DEFAULT_PARAM = { key: 'корпус', value: 'DIP-8' };
+
+/**
+ * The search field placeholder: nothing but examples, a name and a «ключ: значение», taken from
+ * the user's own types and parameters when there are short enough ones.
+ */
+export function searchPlaceholder(
+	names: string[],
+	params: { key: string; value: string }[],
+	random: () => number = Math.random
+): string {
+	const pick = <T>(list: T[]): T | undefined => list[Math.floor(random() * list.length)];
+	const name = pick(names.filter((n) => n.length <= MAX_EXAMPLE_LENGTH)) ?? DEFAULT_NAME;
+	const param =
+		pick(
+			params.filter(
+				(p) => !p.key.includes(':') && `${p.key}: ${p.value}`.length <= MAX_EXAMPLE_LENGTH
+			)
+		) ?? DEFAULT_PARAM;
+	return `${name} или «${param.key}: ${param.value}»`;
+}

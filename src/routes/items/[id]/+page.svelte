@@ -13,10 +13,18 @@
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
+	import ContainerDiscardSheet from '$lib/components/ContainerDiscardSheet.svelte';
+	import { confirmAction } from '$lib/confirm.svelte';
+	import { plural } from '$lib/domain/plural';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
-	import { ChevronSortOutline, ArrowsRepeatOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import {
+		ChevronSortOutline,
+		ArrowsRepeatOutline,
+		PlusOutline,
+		TrashBinOutline
+	} from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -32,14 +40,13 @@
 	let renaming = $state(false);
 	let describing = $state(false);
 	let changingQuantity = $state(false);
+	let discarding = $state(false);
 
 	/** Why the quantity of this item is always 1, if it is. */
 	const quantityLock = $derived(
-		card.type?.isContainer
-			? 'У контейнера количество всегда 1.'
-			: card.sticker?.status === 'BOUND'
-				? 'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь. Чтобы изменить количество, отвяжите наклейку.'
-				: null
+		card.sticker?.status === 'BOUND'
+			? 'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь. Чтобы изменить количество, отвяжите наклейку.'
+			: null
 	);
 	let busy = $state(false);
 	let error = $state('');
@@ -130,6 +137,30 @@
 
 	const restore = () => run(() => api.post(`/api/items/${item.id}/restore`));
 
+	/** «Выкинуть» of a container: what to do with the contents is asked only when there are some. */
+	async function discardContainer() {
+		if (card.children.length > 0) {
+			discarding = true;
+			return;
+		}
+		const ok = await confirmAction({
+			title: `Выкинуть «${item.displayName}»?`,
+			message: 'Контейнер уйдёт в архив, оттуда его можно вернуть.',
+			confirmLabel: 'Выкинуть'
+		});
+		if (!ok) return;
+		busy = true;
+		error = '';
+		try {
+			await api.post(`/api/items/${item.id}/discard`, { contents: 'parent' });
+			await afterArchive();
+		} catch (e) {
+			error = e instanceof ApiError ? e.message : String(e);
+		} finally {
+			busy = false;
+		}
+	}
+
 	/** After «Использовать / Выкинуть» of the whole item: go to its container. */
 	async function afterArchive() {
 		const parent = card.path.at(-1);
@@ -175,6 +206,7 @@
 	{@const type = card.type}
 	<PhotoField
 		photoKey={type.photoKey}
+		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
 		editable={active}
 		onfile={async (file) => {
@@ -200,16 +232,25 @@
 			<ArrowsRepeatOutline class={actionIconClass} />
 			Переложить
 		</Button>
-		<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
-		<Button
-			color="alternative"
-			class={actionClass}
-			aria-label="Количество: {item.quantity} шт. Изменить"
-			onclick={() => (changingQuantity = true)}
-		>
-			<ChevronSortOutline class={actionIconClass} />
-			{item.quantity} шт.
-		</Button>
+		{#if container}
+			<!-- A container is always one: throwing it away is the only thing to do here. -->
+			<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
+				<TrashBinOutline class={actionIconClass} />
+				Выкинуть
+			</Button>
+		{:else}
+			<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
+			{@const quantityText = `${item.quantity} ${plural(item.quantity, ['штука', 'штуки', 'штук'])}`}
+			<Button
+				color="alternative"
+				class={actionClass}
+				aria-label="Количество: {quantityText}. Изменить"
+				onclick={() => (changingQuantity = true)}
+			>
+				<ChevronSortOutline class={actionIconClass} />
+				{quantityText}
+			</Button>
+		{/if}
 	</ButtonGroup>
 	{#if taking}
 		<div class="mb-3">
@@ -373,5 +414,10 @@
 		}}
 		lock={quantityLock}
 		onarchived={afterArchive}
+	/>
+	<ContainerDiscardSheet
+		bind:open={discarding}
+		item={{ id: item.id, name: item.displayName }}
+		ondiscarded={afterArchive}
 	/>
 {/if}

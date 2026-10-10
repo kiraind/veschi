@@ -6,7 +6,7 @@ import { formatPath } from '$lib/domain/item';
 import { createItem, moveItem } from './items';
 import { enumDef, optionId, setKeyedParams } from '$lib/server/testing/params';
 import { updateParamDef } from './params';
-import { search } from './search';
+import { search, searchExamples } from './search';
 import { updateType } from './types';
 
 /**
@@ -176,5 +176,22 @@ describe('search', () => {
 	it('treats LIKE wildcards literally', async () => {
 		expect(await search(actor, '%')).toEqual([]);
 		expect(await search(actor, '   ')).toEqual([]);
+	});
+});
+
+describe('searchExamples', () => {
+	it('offers names of types in use and text parameters of the user only', async () => {
+		const actor = await createTestActor();
+		const other = await createTestActor('other');
+		const { id } = await createItem(actor, { newTypeName: 'NE555', quantity: 3 });
+		const { typeId } = await db.item.findUniqueOrThrow({ where: { id } });
+		await setKeyedParams(actor, { typeId: typeId! }, [
+			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }
+		]);
+		await createItem(other, { newTypeName: 'Чужой тип', quantity: 1 });
+		expect(await searchExamples(actor)).toEqual({
+			names: ['NE555'],
+			params: [{ key: 'корпус', value: 'DIP-8' }]
+		});
 	});
 });

@@ -8,6 +8,7 @@
 	} from 'flowbite-svelte-icons';
 	import { ApiError } from '$lib/api';
 	import CameraCapture from './CameraCapture.svelte';
+	import NoPhoto from './NoPhoto.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 
 	/**
@@ -23,7 +24,8 @@
 		onfile,
 		onremove,
 		caption,
-		alt = 'Фото'
+		alt = 'Фото',
+		container = false
 	}: {
 		photoKey?: string | null;
 		previewUrl?: string | null;
@@ -32,6 +34,8 @@
 		onremove?: () => Promise<void>;
 		caption?: string;
 		alt?: string;
+		/** The placeholder without a photo is a box instead of a picture. */
+		container?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -80,7 +84,7 @@
 				class="flex h-full w-full items-center justify-center rounded-lg bg-gray-100 text-gray-300 dark:bg-gray-800 dark:text-gray-600"
 				aria-hidden="true"
 			>
-				<ImageOutline class="h-16 w-16" />
+				<NoPhoto {container} class="h-16 w-16" />
 			</div>
 		{/if}
 

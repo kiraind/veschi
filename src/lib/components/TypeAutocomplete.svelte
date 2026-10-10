@@ -67,7 +67,7 @@
 		<div
 			class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
 		>
-			<Thumb photoKey={selected.photoKey} size={56} />
+			<Thumb photoKey={selected.photoKey} size={56} container={selected.isContainer} />
 			<div class="min-w-0 flex-1">
 				<strong class="wrap-anywhere">{selected.name}</strong>
 				{#if selected.isContainer}<Badge color="indigo" class="ms-1">контейнер</Badge>{/if}
@@ -118,7 +118,7 @@
 							class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
 							onclick={() => pick(type)}
 						>
-							<Thumb photoKey={type.photoKey} size={28} />
+							<Thumb photoKey={type.photoKey} size={28} container={type.isContainer} />
 							<span class="min-w-0 break-words">{type.name}</span>
 						</button>
 					</li>
