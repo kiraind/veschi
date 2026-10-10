@@ -1,12 +1,22 @@
 /**
- * Editable form state of one parameter (ParamEditor). Every value type keeps
- * its own fields, so switching the type back and forth loses nothing; numbers
- * stay strings until saving so «4,5» can be typed.
+ * Editable form state of one parameter value (ParamRowEditor). The definition
+ * fixes the name, the value type and the drop-down list; numbers stay strings
+ * until saving so «4,5» can be typed.
  */
 import type { ParamInput, ParamValueType, ParamView } from './params';
 
+/** What a draft needs to know about its parameter definition. */
+export interface DraftDef {
+	id: string;
+	name: string;
+	valueType: ParamValueType;
+	dictionaryId: string | null;
+}
+
 export interface ParamDraft {
 	uid: number;
+	defId: string;
+	/** The definition's name, for display. */
 	key: string;
 	valueType: ParamValueType;
 	text: string;
@@ -25,17 +35,18 @@ export interface ParamDraft {
 
 let nextUid = 1;
 
-export function emptyDraft(valueType: ParamValueType = 'STRING'): ParamDraft {
+export function emptyDraft(def: DraftDef): ParamDraft {
 	return {
 		uid: nextUid++,
-		key: '',
-		valueType,
+		defId: def.id,
+		key: def.name,
+		valueType: def.valueType,
 		text: '',
 		number: '',
 		min: '',
 		max: '',
 		unit: '',
-		dictionaryId: '',
+		dictionaryId: def.dictionaryId ?? '',
 		optionIds: [],
 		url: '',
 		file: null,
@@ -56,8 +67,12 @@ function numberText(n: number): string {
 }
 
 export function draftFromView(p: ParamView): ParamDraft {
-	const d = emptyDraft(p.valueType);
-	d.key = p.key;
+	const d = emptyDraft({
+		id: p.defId,
+		name: p.key,
+		valueType: p.valueType,
+		dictionaryId: p.dictionaryId ?? null
+	});
 	switch (p.valueType) {
 		case 'STRING':
 			d.text = p.text;
@@ -72,7 +87,6 @@ export function draftFromView(p: ParamView): ParamDraft {
 			d.unit = p.unit ?? '';
 			break;
 		case 'ENUM':
-			d.dictionaryId = p.dictionaryId;
 			d.optionIds = [...p.optionIds];
 			break;
 		case 'URL':
@@ -101,36 +115,36 @@ export function draftFromView(p: ParamView): ParamDraft {
 
 /** The raw input for `paramInputSchema` (validation happens there). */
 export function draftToInput(d: ParamDraft): Partial<ParamInput> & Record<string, unknown> {
-	const key = d.key;
+	const base = { defId: d.defId };
 	switch (d.valueType) {
 		case 'STRING':
-			return { key, valueType: 'STRING', text: d.text };
+			return { ...base, valueType: 'STRING', text: d.text };
 		case 'NUMBER':
-			return { key, valueType: 'NUMBER', value: parseNumberInput(d.number), unit: d.unit };
+			return { ...base, valueType: 'NUMBER', value: parseNumberInput(d.number), unit: d.unit };
 		case 'RANGE':
 			return {
-				key,
+				...base,
 				valueType: 'RANGE',
 				min: parseNumberInput(d.min),
 				max: parseNumberInput(d.max),
 				unit: d.unit
 			};
 		case 'ENUM':
-			return { key, valueType: 'ENUM', dictionaryId: d.dictionaryId, optionIds: d.optionIds };
+			return { ...base, valueType: 'ENUM', optionIds: d.optionIds };
 		case 'URL':
-			return { key, valueType: 'URL', url: d.url };
+			return { ...base, valueType: 'URL', url: d.url };
 		case 'FILE':
-			return { key, valueType: 'FILE', ...d.file };
+			return { ...base, valueType: 'FILE', ...d.file };
 		case 'DATE':
-			return { key, valueType: 'DATE', date: d.date };
+			return { ...base, valueType: 'DATE', date: d.date };
 		case 'REF':
 			return {
-				key,
+				...base,
 				valueType: 'REF',
 				refItemId: d.ref?.kind === 'item' ? d.ref.id : null,
 				refTypeId: d.ref?.kind === 'type' ? d.ref.id : null
 			};
 		case 'BOOLEAN':
-			return { key, valueType: 'BOOLEAN', value: d.bool };
+			return { ...base, valueType: 'BOOLEAN', value: d.bool };
 	}
 }

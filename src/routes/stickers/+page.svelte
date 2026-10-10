@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
 	import { Alert, Button, Card, Input, Label, Textarea } from 'flowbite-svelte';
 	import { FilePdfOutline } from 'flowbite-svelte-icons';
@@ -28,7 +29,6 @@
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
 
 	const pdfUrl = (id: string) => `/api/stickers/batches/${id}/pdf`;
-	const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
 
 	function sheetsLabel(n: number): string {
 		const mod10 = n % 10;
@@ -134,7 +134,7 @@
 			<li>
 				<Card class="max-w-none flex-row items-center justify-between gap-3 p-3">
 					<div class="flex min-w-0 flex-col gap-0.5">
-						<span>{dateFormat.format(new Date(batch.createdAt))}</span>
+						<span>{formatIsoDateTime(batch.createdAt)}</span>
 						<span class="text-sm text-gray-500 dark:text-gray-400">
 							{batch.total} шт., с подписью {batch.captioned} · свободно {batch.free} · привязано
 							{batch.bound}{#if batch.writtenOff > 0}

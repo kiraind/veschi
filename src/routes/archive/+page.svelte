@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
 	import { Badge, Button, Card } from 'flowbite-svelte';
 	import { api } from '$lib/api';
@@ -10,8 +11,6 @@
 
 	let busyId = $state<string | null>(null);
 	let error = $state<{ id: string; message: string } | null>(null);
-
-	const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
 
 	async function act(id: string, action: () => Promise<unknown>) {
 		busyId = id;
@@ -63,7 +62,7 @@
 						</div>
 						<div class="mt-1 text-sm wrap-anywhere text-gray-500 dark:text-gray-400">
 							{item.path.length ? `Лежала: ${formatPath(item.path)}` : 'Лежала на верхнем уровне'}
-							{#if item.archivedAt}· {dateFormat.format(item.archivedAt)}{/if}
+							{#if item.archivedAt}· {formatIsoDateTime(item.archivedAt)}{/if}
 						</div>
 					</div>
 					<div class="flex flex-wrap gap-2">

@@ -9,7 +9,8 @@ export type FileValue = Extract<ParamValue, { valueType: 'FILE' }>;
 
 /**
  * Object keys: `params/<uploader id>/<uuid>` for parameter files,
- * `types/<type id>/<uuid>.webp` for type photos, `items/<item id>/<uuid>.<ext>` for item photos.
+ * `types/<type id>/<uuid>.webp` for type photos (photos moved from items in
+ * the round-2 migration keep their old `items/<item id>/…` keys).
  */
 function paramFilePrefix(actor: Actor): string {
 	return `params/${actor.userId}/`;
@@ -57,7 +58,7 @@ export async function uploadParamFile(
 }
 
 /**
- * Opens a stored file for the actor: a photo of a visible type or item, a file of a
+ * Opens a stored file for the actor: a photo of a visible type, a file of a
  * visible type/item parameter, or the actor's own fresh upload.
  */
 export async function openFile(
@@ -67,14 +68,13 @@ export async function openFile(
 	let fileName: string | null = null;
 	let allowed = isOwnUpload(actor, key);
 	if (!allowed) {
-		const [type, item, param] = await Promise.all([
+		const [type, param] = await Promise.all([
 			db.itemType.findFirst({ where: { photoKey: key, ...visibleTo(actor) } }),
-			db.item.findFirst({ where: { photoKey: key, ...visibleTo(actor) } }),
 			db.param.findFirst({
 				where: { fileKey: key, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] }
 			})
 		]);
-		allowed = Boolean(type || item || param);
+		allowed = Boolean(type || param);
 		fileName = param?.fileName ?? null;
 	} else {
 		const param = await db.param.findFirst({ where: { fileKey: key } });

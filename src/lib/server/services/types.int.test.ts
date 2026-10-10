@@ -5,7 +5,7 @@ import type { Actor } from '$lib/server/scope';
 import { storage } from '$lib/server/storage';
 import { createTestActor } from '$lib/server/testing/db';
 import { createItem } from './items';
-import { setParams } from './params';
+import { setKeyedParams } from '$lib/server/testing/params';
 import {
 	createType,
 	deleteType,
@@ -62,7 +62,7 @@ describe('types', () => {
 			isContainer: true
 		});
 		await createItem(actor, { typeId: type.id, quantity: 10, parentId: box.id });
-		await setParams(actor, { typeId: type.id }, [
+		await setKeyedParams(actor, { typeId: type.id }, [
 			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }
 		]);
 		const card = await getTypeCard(actor, type.id);
@@ -121,7 +121,7 @@ describe('types', () => {
 		it('keeps a type referenced by a parameter', async () => {
 			const type = await createType(actor, { name: 'Блок питания' });
 			const item = await createItem(actor, { newTypeName: 'Паяльник' });
-			await setParams(actor, { itemId: item.id }, [
+			await setKeyedParams(actor, { itemId: item.id }, [
 				{ key: 'зарядка', valueType: 'REF', refTypeId: type.id }
 			]);
 			await expect(deleteType(actor, type.id)).rejects.toThrow('ссылаются');

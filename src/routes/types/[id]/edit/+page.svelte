@@ -1,17 +1,15 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { Button, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
-	import ParamEditor from '$lib/components/ParamEditor.svelte';
-	import type { ParamInput } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	// The form is filled from the page data once.
 	// svelte-ignore state_referenced_locally
-	const { type, params } = data.card;
+	const { type } = data.card;
 	let name = $state(type.name);
 	let busy = $state(false);
 	let error = $state('');
@@ -29,11 +27,6 @@
 			busy = false;
 		}
 	}
-
-	async function saveParams(list: ParamInput[]) {
-		await api.put(`/api/types/${type.id}/params`, { params: list });
-		await invalidateAll();
-	}
 </script>
 
 <svelte:head><title>Изменить тип: {type.name} — Вещи</title></svelte:head>
@@ -44,7 +37,7 @@
 		href="/types/{type.id}"><ArrowLeftOutline class="h-4 w-4 shrink-0" />{type.name}</a
 	>
 </p>
-<h1 class="mb-3 text-2xl font-bold">Изменить тип</h1>
+<h1 class="mb-3 text-2xl font-bold">Переименовать тип</h1>
 
 <form class="flex flex-col gap-3" onsubmit={rename}>
 	<Label>
@@ -53,10 +46,7 @@
 	</Label>
 	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 	<div class="flex flex-wrap gap-2">
-		<Button type="submit" disabled={busy}>Сохранить название</Button>
+		<Button type="submit" disabled={busy}>Сохранить</Button>
+		<Button color="alternative" href="/types/{type.id}">Отмена</Button>
 	</div>
 </form>
-
-<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры типа</h2>
-<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">Видны у всех вещей этого типа.</p>
-<ParamEditor initial={params} onsave={saveParams} />

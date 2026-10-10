@@ -21,9 +21,17 @@ describe('workbench service', () => {
 	let typeId: string;
 	let garage: string;
 
+	/** Single items are containers (so things can go in); several are plain things. */
 	async function item(name: string, parentId: string | null = null, quantity = 1) {
 		return db.item.create({
-			data: { ownerId: actor.userId, typeId, name, parentId, quantity, isContainer: true }
+			data: {
+				ownerId: actor.userId,
+				typeId,
+				name,
+				parentId,
+				quantity,
+				isContainer: quantity === 1
+			}
 		});
 	}
 
@@ -108,8 +116,11 @@ describe('workbench service', () => {
 			await db.sticker.create({
 				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
 			});
+			const def = await db.paramDef.create({
+				data: { ownerId: actor.userId, name: 'Корпус', valueType: 'STRING' }
+			});
 			await db.param.create({
-				data: { itemId: chips.id, key: 'Корпус', valueType: 'STRING', textValue: 'DIP-8' }
+				data: { defId: def.id, itemId: chips.id, valueType: 'STRING', textValue: 'DIP-8' }
 			});
 		});
 
@@ -172,6 +183,84 @@ describe('workbench service', () => {
 				'не больше 10'
 			);
 			await expect(consume(actor, chips.id, 0)).rejects.toThrow();
+		});
+
+		describe('putting away part of what is on the bench', () => {
+			let onBench: string;
+
+			beforeEach(async () => {
+				onBench = (await take(actor, chips.id, { workbenchId: garage, quantity: 4 })).itemId;
+			});
+
+			it('returns 1 of 4: merges into the box, 3 stay on the bench still taken', async () => {
+				expect(await returnHome(actor, onBench, { quantity: 1 })).toEqual({
+					itemId: chips.id,
+					merged: true
+				});
+				expect(await reload(chips.id)).toMatchObject({ quantity: 7, parentId: box.id });
+				expect(await reload(onBench)).toMatchObject({
+					quantity: 3,
+					parentId: garage,
+					homeId: box.id,
+					splitFromId: chips.id,
+					takenById: actor.userId
+				});
+				// The rest still merges back later.
+				await returnHome(actor, onBench);
+				expect(await reload(chips.id)).toMatchObject({ quantity: 10 });
+			});
+
+			it('returns 1 of 4 as a new record in the box when the source moved away', async () => {
+				await db.item.update({ where: { id: chips.id }, data: { parentId: null } });
+				const { itemId, merged } = await returnHome(actor, onBench, { quantity: 1 });
+				expect(merged).toBe(false);
+				expect(itemId).not.toBe(onBench);
+				expect(await reload(itemId)).toMatchObject({
+					quantity: 1,
+					parentId: box.id,
+					typeId,
+					name: 'NE555',
+					takenById: null,
+					homeId: null,
+					splitFromId: null
+				});
+				expect(await reload(onBench)).toMatchObject({ quantity: 3, parentId: garage });
+				expect(await reload(chips.id)).toMatchObject({ quantity: 6, parentId: null });
+			});
+
+			it('relocates 3 of 4 into a drawer: a new untaken record, 1 stays on the bench', async () => {
+				const drawer = await item('Ящик');
+				const { itemId } = await relocate(actor, onBench, drawer.id, { quantity: 3 });
+				expect(itemId).not.toBe(onBench);
+				expect(await reload(itemId)).toMatchObject({
+					quantity: 3,
+					parentId: drawer.id,
+					takenById: null,
+					takenAt: null,
+					homeId: null,
+					splitFromId: null
+				});
+				expect(await reload(onBench)).toMatchObject({
+					quantity: 1,
+					parentId: garage,
+					homeId: box.id,
+					takenById: actor.userId
+				});
+				expect((await listWorkbench(actor)).map((i) => [i.id, i.quantity])).toEqual([[onBench, 1]]);
+			});
+
+			it('relocates all 4 as the record itself', async () => {
+				expect(await relocate(actor, onBench, null, { quantity: 4 })).toEqual({ itemId: onBench });
+				expect(await reload(onBench)).toMatchObject({ parentId: null, takenById: null });
+			});
+
+			it('rejects parts out of range', async () => {
+				await expect(returnHome(actor, onBench, { quantity: 5 })).rejects.toThrow('не больше 4');
+				await expect(relocate(actor, onBench, null, { quantity: 0 })).rejects.toThrow(
+					'целое число'
+				);
+				expect(await reload(onBench)).toMatchObject({ quantity: 4, parentId: garage });
+			});
 		});
 	});
 
@@ -259,5 +348,42 @@ describe('workbench service', () => {
 	it('rejects returning an item that is not on a bench', async () => {
 		const knife = await item('Нож');
 		await expect(returnHome(actor, knife.id)).rejects.toThrow('не на рабочем столе');
+	});
+});
+
+describe('workbench icons', () => {
+	let actor: Actor;
+
+	beforeEach(async () => {
+		actor = await createTestActor();
+	});
+
+	it('creates a bench without an icon (default) and with one', async () => {
+		const plain = await createWorkbench(actor, { name: 'Кабинет' });
+		expect(plain.icon).toBeNull();
+		const garage = await createWorkbench(actor, { name: 'Гараж', icon: 'garage' });
+		expect(garage.icon).toBe('garage');
+		const { workbenches } = await listWorkbenches(actor);
+		expect(workbenches.map((b) => b.icon)).toEqual([null, 'garage']);
+	});
+
+	it('changes the icon on update, keeps it when omitted, resets it with null', async () => {
+		const bench = await createWorkbench(actor, { name: 'Гараж', icon: 'garage' });
+		expect((await updateWorkbench(actor, bench.id, { name: 'Гараж', icon: 'tools' })).icon).toBe(
+			'tools'
+		);
+		expect((await updateWorkbench(actor, bench.id, { name: 'Мастерская' })).icon).toBe('tools');
+		expect((await updateWorkbench(actor, bench.id, { name: 'Гараж', icon: null })).icon).toBeNull();
+	});
+
+	it('rejects an unknown icon key', async () => {
+		await expect(createWorkbench(actor, { name: 'Гараж', icon: 'rocket' })).rejects.toThrow(
+			'Неизвестная иконка'
+		);
+		const bench = await createWorkbench(actor, { name: 'Гараж' });
+		await expect(updateWorkbench(actor, bench.id, { name: 'Гараж', icon: '' })).rejects.toThrow(
+			'Неизвестная иконка'
+		);
+		expect((await db.item.findUniqueOrThrow({ where: { id: bench.id } })).icon).toBeNull();
 	});
 });

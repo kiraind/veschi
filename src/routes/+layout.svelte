@@ -17,7 +17,7 @@
 	import {
 		ArchiveOutline,
 		ArrowRightToBracketOutline,
-		BookOpenOutline,
+		AdjustmentsHorizontalOutline,
 		DesktopPcOutline,
 		DotsHorizontalOutline,
 		FolderOpenOutline,
@@ -43,7 +43,7 @@
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
 		{ href: '/types', label: 'Типы', icon: SwatchbookOutline },
-		{ href: '/dictionaries', label: 'Справочники', icon: BookOpenOutline },
+		{ href: '/params', label: 'Параметры', icon: AdjustmentsHorizontalOutline },
 		{ href: '/archive', label: 'Архив', icon: ArchiveOutline }
 	];
 

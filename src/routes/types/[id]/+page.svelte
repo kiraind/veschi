@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { Badge, Button } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
-	import ParamList from '$lib/components/ParamList.svelte';
+	import ParamSection from '$lib/components/ParamSection.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
-	import TypePhotoUpload from '$lib/components/TypePhotoUpload.svelte';
+	import PhotoField from '$lib/components/PhotoField.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -36,14 +36,27 @@
 </p>
 <h1 class="mb-3 text-2xl font-bold break-words">{type.name}</h1>
 
-<TypePhotoUpload typeId={type.id} photoKey={type.photoKey} />
+<PhotoField
+	photoKey={type.photoKey}
+	alt="Фото типа «{type.name}»"
+	onfile={async (file) => {
+		const body = new FormData();
+		body.set('file', file);
+		await api.put(`/api/types/${type.id}/photo`, body);
+		await invalidateAll();
+	}}
+	onremove={async () => {
+		await api.delete(`/api/types/${type.id}/photo`);
+		await invalidateAll();
+	}}
+/>
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">Общие для всех вещей этого типа.</p>
-<ParamList params={data.card.params} />
+<ParamSection params={data.card.params} target={{ kind: 'type', id: type.id }} />
 
 <div class="mt-4 flex flex-wrap gap-2">
-	<Button color="alternative" href="/types/{type.id}/edit">Изменить</Button>
+	<Button color="alternative" href="/types/{type.id}/edit">Переименовать</Button>
 	<Button color="alternative" href="/items/new?type={type.id}">
 		<PlusOutline class="me-1 h-4 w-4" />Вещь этого типа
 	</Button>

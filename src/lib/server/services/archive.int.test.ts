@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
+import { defIdFor } from '$lib/server/testing/params';
 import { discard, listArchive, purge, restore } from './archive';
 import { createWorkbench, listWorkbench, take } from './workbench';
 
@@ -130,7 +131,12 @@ describe('archive service', () => {
 		const s = await stickerFor(box.id);
 		const other = await item('Другая');
 		await db.param.create({
-			data: { itemId: other.id, key: 'Ссылка', valueType: 'REF', refItemId: box.id }
+			data: {
+				itemId: other.id,
+				defId: await defIdFor(actor, 'Ссылка', 'REF'),
+				valueType: 'REF',
+				refItemId: box.id
+			}
 		});
 
 		await expect(purge(actor, box.id)).rejects.toThrow('только вещь из архива');
@@ -146,7 +152,12 @@ describe('archive service', () => {
 		const box = await item('Коробка');
 		const other = await item('Другая');
 		const param = await db.param.create({
-			data: { itemId: other.id, key: 'Ссылка', valueType: 'REF', refItemId: box.id }
+			data: {
+				itemId: other.id,
+				defId: await defIdFor(actor, 'Ссылка', 'REF'),
+				valueType: 'REF',
+				refItemId: box.id
+			}
 		});
 		await discard(actor, box.id);
 		expect((await db.param.findUniqueOrThrow({ where: { id: param.id } })).refItemId).toBe(box.id);

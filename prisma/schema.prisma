@@ -40,6 +40,7 @@ model User {
   ownedStickers     Sticker[]        @relation("StickerOwner")
   ownedBatches      StickerBatch[]   @relation("StickerBatchOwner")
   ownedDictionaries EnumDictionary[] @relation("EnumDictionaryOwner")
+  ownedParamDefs    ParamDef[]       @relation("ParamDefOwner")
 }
 
 model Session {
@@ -67,6 +68,7 @@ model Household {
   stickers     Sticker[]
   batches      StickerBatch[]
   dictionaries EnumDictionary[]
+  paramDefs    ParamDef[]
 }
 
 enum HouseholdRole {
@@ -107,7 +109,7 @@ model ItemType {
   ownerId     String?  @db.Uuid
   householdId String?  @db.Uuid
   name        String
-  // Object key of the single photo in S3/MinIO (WebP).
+  // Object key of the single photo in S3/MinIO; shared by every item of the type.
   photoKey    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -135,11 +137,10 @@ model Item {
   typeId      String?    @db.Uuid
   // Own name of this instance; when empty the type name is shown.
   name        String?
+  // Always 1 for containers and workbenches.
   quantity    Int        @default(1)
   // Other items can be put inside (workbenches are always containers).
   isContainer Boolean    @default(false)
-  // Object key of the item's own photo in S3/MinIO, stored as uploaded.
-  photoKey    String?
   // Where the item lies; null = top level.
   parentId    String?    @db.Uuid
   // Container the item was taken from (set while the item is on a workbench).
@@ -157,6 +158,8 @@ model Item {
   geoLat      Float?
   geoLng      Float?
   geoRadiusM  Float?
+  // Icon of a workbench: a key from WORKBENCH_ICONS (src/lib/domain/workbench-icons.ts).
+  icon        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -248,6 +251,7 @@ model EnumDictionary {
   household Household?   @relation(fields: [householdId], references: [id], onDelete: Cascade)
   options   EnumOption[]
   params    Param[]
+  paramDefs ParamDef[]
 
   @@index([ownerId])
 }
@@ -278,14 +282,38 @@ enum ParamValueType {
   BOOLEAN
 }
 
-// A key:value parameter of a type (shared by all its items) or of one item.
-// Exactly one of typeId / itemId is set. Which value columns are used depends
-// on valueType (see src/lib/domain/params.ts).
+// A parameter («Параметры» page): its name and value type, shared by every
+// type and item that has a value for it. Names are unique per owner
+// (case-insensitive, checked by the service layer).
+model ParamDef {
+  id           String         @id @default(uuid()) @db.Uuid
+  ownerId      String?        @db.Uuid
+  householdId  String?        @db.Uuid
+  name         String
+  valueType    ParamValueType
+  // ENUM: the drop-down list the values are chosen from.
+  dictionaryId String?        @db.Uuid
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  owner      User?           @relation("ParamDefOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household  Household?      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  dictionary EnumDictionary? @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
+  values     Param[]
+
+  @@index([ownerId])
+  @@index([householdId])
+}
+
+// The value of a parameter for a type (shared by all its items) or for one
+// item. Exactly one of typeId / itemId is set. valueType and dictionaryId
+// repeat the definition's; which value columns are used depends on valueType
+// (see src/lib/domain/params.ts).
 model Param {
   id        String         @id @default(uuid()) @db.Uuid
+  defId     String         @db.Uuid
   typeId    String?        @db.Uuid
   itemId    String?        @db.Uuid
-  key       String
   valueType ParamValueType
   position  Int            @default(0)
 
@@ -306,6 +334,7 @@ model Param {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  def        ParamDef         @relation(fields: [defId], references: [id], onDelete: Restrict)
   type       ItemType?        @relation("TypeParams", fields: [typeId], references: [id], onDelete: Cascade)
   item       Item?            @relation("ItemParams", fields: [itemId], references: [id], onDelete: Cascade)
   refItem    Item?            @relation("ParamRefItem", fields: [refItemId], references: [id], onDelete: SetNull)
@@ -313,8 +342,9 @@ model Param {
   dictionary EnumDictionary?  @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
   enumValues ParamEnumValue[]
 
-  @@index([typeId])
-  @@index([itemId])
+  @@unique([typeId, defId])
+  @@unique([itemId, defId])
+  @@index([defId])
 }
 
 model ParamEnumValue {

@@ -1,14 +1,13 @@
-import { randomUUID } from 'node:crypto';
 import type { StickerStatus } from '@prisma/client';
 import { z } from 'zod';
 import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
-import { storage } from '$lib/server/storage';
 import { itemDisplayName } from '$lib/domain/item';
 import { mergeParams, paramListSchema, type MergedParam, type ParamView } from '$lib/domain/params';
 import { getParamsOf, replaceParams } from './params';
 import { assertCanPlace, assertIsContainer, getPath, type PathNode } from './paths';
+import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
 import { findOrCreateType } from './types';
 
@@ -55,14 +54,21 @@ export const updateItemSchema = z
 		path: ['typeId']
 	});
 
-export const moveItemSchema = z.object({ parentId: z.uuid().nullable() });
+export const moveItemSchema = z.object({
+	parentId: z.uuid().nullable(),
+	/** Part of the quantity; omitted → the whole record. */
+	quantity: z.number().int().positive().optional()
+});
+
+/** A container is a single instance: one thing never lies in two identical boxes. */
+const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
 
 /** One entry of a container's contents (or of the top level). */
 export interface ContentEntry {
 	id: string;
 	name: string;
 	typeName: string | null;
-	/** The item's own photo, else its type's. */
+	/** The type's photo. */
 	photoKey: string | null;
 	quantity: number;
 	isContainer: boolean;
@@ -83,8 +89,6 @@ export interface ItemCard {
 		archivedAt: Date | null;
 		isWorkbench: boolean;
 		isContainer: boolean;
-		/** The item's own photo (the type photo is in `type`). */
-		photoKey: string | null;
 		parentId: string | null;
 		homeId: string | null;
 		takenById: string | null;
@@ -132,6 +136,7 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
  */
 export async function createItem(actor: Actor, input: unknown): Promise<{ id: string }> {
 	const data = createItemSchema.parse(input);
+	if (data.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 	return db.$transaction(async (tx) => {
 		const type = data.typeId
 			? await findVisibleType(actor, data.typeId, tx)
@@ -153,7 +158,10 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 	});
 }
 
-/** Changes the own name, quantity (≥ 1) or type of an active, ordinary item. */
+/**
+ * Changes the own name, quantity (≥ 1), type or container mark of an active,
+ * ordinary item. A container's quantity is always 1.
+ */
 export async function updateItem(actor: Actor, id: string, input: unknown): Promise<void> {
 	const data = updateItemSchema.parse(input);
 	await db.$transaction(async (tx) => {
@@ -165,6 +173,16 @@ export async function updateItem(actor: Actor, id: string, input: unknown): Prom
 			: data.newTypeName
 				? (await findOrCreateType(actor, data.newTypeName, tx)).id
 				: undefined;
+		if (data.isContainer ?? item.isContainer) {
+			if (data.quantity !== undefined && data.quantity !== 1) {
+				throw new ValidationError(CONTAINER_QUANTITY);
+			}
+			if (data.quantity === undefined && item.quantity !== 1) {
+				throw new ValidationError(
+					`${CONTAINER_QUANTITY}, а их сейчас ${item.quantity} шт. — укажите количество 1`
+				);
+			}
+		}
 		if (data.isContainer === false && item.isContainer) {
 			const [inside, taken] = await Promise.all([
 				tx.item.count({ where: { parentId: id, status: 'ACTIVE' } }),
@@ -185,25 +203,27 @@ export async function updateItem(actor: Actor, id: string, input: unknown): Prom
 }
 
 /**
- * Puts an item into another container (or the top level, parentId = null).
- * Cycles and workbenches as targets are rejected. An item that was on a
- * workbench leaves it: its home container and split source are forgotten.
+ * Puts an item, or part of its quantity, into another container (or the top
+ * level, parentId = null). Cycles and workbenches as targets are rejected.
+ * What moves leaves a workbench: its home container and split source are
+ * forgotten. A part splits the record like «На стол»: the source keeps the
+ * rest (and, on a bench, its taken state), its sticker and its own params.
+ * Returns the id of the moved record.
  */
 export async function moveItem(
 	actor: Actor,
 	itemId: string,
-	parentId: string | null
-): Promise<void> {
-	await db.$transaction(async (tx) => {
+	parentId: string | null,
+	{ quantity }: { quantity?: number } = {}
+): Promise<{ itemId: string }> {
+	return db.$transaction(async (tx) => {
 		const item = await findItem(actor, itemId, tx);
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол нельзя переложить');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
+		const count = partCount(item, quantity);
 		if (parentId) await findPlaceableParent(actor, parentId, tx);
 		await assertCanPlace(itemId, parentId, tx);
-		await tx.item.update({
-			where: { id: itemId },
-			data: { parentId, takenById: null, takenAt: null, homeId: null, splitFromId: null }
-		});
+		return { itemId: await placePart(tx, item, count, { parentId, ...notTaken }) };
 	});
 }
 
@@ -238,7 +258,7 @@ export async function listContents(
 			id: i.id,
 			name: itemDisplayName(i),
 			typeName: i.type?.name ?? null,
-			photoKey: i.photoKey ?? i.type?.photoKey ?? null,
+			photoKey: i.type?.photoKey ?? null,
 			quantity: i.quantity,
 			isContainer: i.isContainer,
 			childCount: childCount.get(i.id) ?? 0,
@@ -274,7 +294,6 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 			archivedAt: item.archivedAt,
 			isWorkbench: item.isWorkbench,
 			isContainer: item.isContainer || item.isWorkbench,
-			photoKey: item.photoKey,
 			parentId: item.parentId,
 			homeId: item.homeId,
 			takenById: item.takenById
@@ -290,52 +309,4 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		itemParams: own,
 		children
 	};
-}
-
-/** Most an item photo may weigh; it is stored as uploaded. */
-export const MAX_ITEM_PHOTO_SIZE = 20 * 1024 * 1024;
-
-/** Detects a browser-displayable image by its first bytes. */
-export function detectImageType(data: Buffer): string | null {
-	if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
-		return 'image/jpeg';
-	}
-	if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-		return 'image/png';
-	}
-	if (
-		data.subarray(0, 4).toString('latin1') === 'RIFF' &&
-		data.subarray(8, 12).toString('latin1') === 'WEBP'
-	) {
-		return 'image/webp';
-	}
-	if (data.subarray(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
-	return null;
-}
-
-/**
- * Sets the item's own photo, stored as uploaded (JPEG, PNG, WebP or GIF);
- * the previous photo is deleted. Returns the new key.
- */
-export async function setItemPhoto(actor: Actor, id: string, data: Buffer): Promise<string> {
-	const item = await findItem(actor, id);
-	if (item.isWorkbench) throw new ValidationError('У рабочего стола нет фото');
-	if (data.length === 0) throw new ValidationError('Файл пустой');
-	if (data.length > MAX_ITEM_PHOTO_SIZE) {
-		throw new ValidationError(`Фото больше ${MAX_ITEM_PHOTO_SIZE / 1024 / 1024} МБ`);
-	}
-	const mime = detectImageType(data);
-	if (!mime) throw new ValidationError('Нужна картинка в формате JPEG, PNG, WebP или GIF');
-	const photoKey = `items/${id}/${randomUUID()}.${mime.slice('image/'.length)}`;
-	await storage().put(photoKey, data, mime);
-	await db.item.update({ where: { id }, data: { photoKey } });
-	if (item.photoKey) await storage().delete(item.photoKey);
-	return photoKey;
-}
-
-export async function removeItemPhoto(actor: Actor, id: string): Promise<void> {
-	const item = await findItem(actor, id);
-	if (!item.photoKey) return;
-	await db.item.update({ where: { id }, data: { photoKey: null } });
-	await storage().delete(item.photoKey);
 }

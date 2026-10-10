@@ -5,7 +5,7 @@ import { createTestActor } from '$lib/server/testing/db';
 import { formatPath } from '$lib/domain/item';
 import { createDictionary } from './dictionaries';
 import { createItem } from './items';
-import { setParams } from './params';
+import { setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
 
 /**
@@ -19,7 +19,7 @@ describe('search', () => {
 	let solderingBox: string;
 
 	async function item(input: Record<string, unknown>) {
-		return (await createItem(actor, { isContainer: true, ...input })).id;
+		return (await createItem(actor, { isContainer: !('quantity' in input), ...input })).id;
 	}
 
 	beforeEach(async () => {
@@ -49,11 +49,13 @@ describe('search', () => {
 	});
 
 	it('finds «DIP-8» in a type parameter or an item parameter', async () => {
-		await setParams(actor, { typeId: ne555Type }, [
+		await setKeyedParams(actor, { typeId: ne555Type }, [
 			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }
 		]);
 		const lm = await item({ newTypeName: 'LM358', parentId: solderingBox });
-		await setParams(actor, { itemId: lm }, [{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }]);
+		await setKeyedParams(actor, { itemId: lm }, [
+			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }
+		]);
 		await item({ newTypeName: 'LM317', parentId: solderingBox });
 
 		const names = (await search(actor, 'DIP-8')).map((g) => g.typeName);
@@ -66,11 +68,13 @@ describe('search', () => {
 	});
 
 	it('does not match a type value overridden by the item', async () => {
-		await setParams(actor, { typeId: ne555Type }, [
+		await setKeyedParams(actor, { typeId: ne555Type }, [
 			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }
 		]);
 		const smd = await item({ typeId: ne555Type, parentId: solderingBox });
-		await setParams(actor, { itemId: smd }, [{ key: 'Корпус', valueType: 'STRING', text: 'SO-8' }]);
+		await setKeyedParams(actor, { itemId: smd }, [
+			{ key: 'Корпус', valueType: 'STRING', text: 'SO-8' }
+		]);
 		const group = (await search(actor, 'DIP-8'))[0]!;
 		expect(group.locations.map((l) => l.itemId)).not.toContain(smd);
 		expect((await search(actor, 'SO-8'))[0]!.locations.map((l) => l.itemId)).toEqual([smd]);
@@ -89,7 +93,7 @@ describe('search', () => {
 			name: 'Состояние',
 			options: [{ label: 'новое' }, { label: 'б/у' }]
 		});
-		await setParams(actor, { itemId: solderingBox }, [
+		await setKeyedParams(actor, { itemId: solderingBox }, [
 			{ key: 'питание', valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
 			{
 				key: 'состояние',

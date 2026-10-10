@@ -2,20 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
-import { storage } from '$lib/server/storage';
-import { discard, purge, restore } from './archive';
-import { openFile } from './files';
-import {
-	createItem,
-	getItemCard,
-	listContents,
-	moveItem,
-	removeItemPhoto,
-	setItemPhoto,
-	updateItem
-} from './items';
-import { setParams } from './params';
+import { discard, restore } from './archive';
+import { createItem, getItemCard, listContents, moveItem, updateItem } from './items';
+import { keyed, setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
+import { createWorkbench, take } from './workbench';
 
 describe('items', () => {
 	let actor: Actor;
@@ -69,7 +60,7 @@ describe('items', () => {
 		it('saves own parameters', async () => {
 			const { id } = await createItem(actor, {
 				typeId: boxType,
-				params: [{ key: 'серийный номер', valueType: 'STRING', text: 'SN-1' }]
+				params: await keyed(actor, [{ key: 'серийный номер', valueType: 'STRING', text: 'SN-1' }])
 			});
 			expect((await getItemCard(actor, id)).itemParams).toMatchObject([
 				{ key: 'серийный номер', text: 'SN-1' }
@@ -104,7 +95,7 @@ describe('items', () => {
 
 	describe('updateItem', () => {
 		it('changes name, quantity and type', async () => {
-			const id = await box('Старое');
+			const { id } = await createItem(actor, { typeId: boxType, name: 'Старое' });
 			await updateItem(actor, id, { name: '', quantity: 3, newTypeName: 'Ящик' });
 			const card = await getItemCard(actor, id);
 			expect(card.item).toMatchObject({ name: null, displayName: 'Ящик', quantity: 3 });
@@ -219,7 +210,7 @@ describe('items', () => {
 			const knifeType = await db.itemType.create({ data: { ownerId: actor.userId, name: 'Нож' } });
 			const a = await createItem(actor, { typeId: knifeType.id, name: 'Нож в шкафу' });
 			const b = await createItem(actor, { typeId: knifeType.id, name: 'Нож в гараже' });
-			await setParams(actor, { typeId: knifeType.id }, [
+			await setKeyedParams(actor, { typeId: knifeType.id }, [
 				{ key: 'длина лезвия', valueType: 'NUMBER', value: 85, unit: 'мм' }
 			]);
 			for (const id of [a.id, b.id]) {
@@ -231,19 +222,21 @@ describe('items', () => {
 
 		it('shows the item value when the type has the same key', async () => {
 			const { id } = await createItem(actor, { typeId: boxType });
-			await setParams(actor, { typeId: boxType }, [
+			await setKeyedParams(actor, { typeId: boxType }, [
 				{ key: 'Цвет', valueType: 'STRING', text: 'красный' }
 			]);
-			await setParams(actor, { itemId: id }, [{ key: 'цвет', valueType: 'STRING', text: 'синий' }]);
+			await setKeyedParams(actor, { itemId: id }, [
+				{ key: 'цвет', valueType: 'STRING', text: 'синий' }
+			]);
 			expect((await getItemCard(actor, id)).params).toMatchObject([
-				{ key: 'цвет', text: 'синий', source: 'item' }
+				{ key: 'Цвет', text: 'синий', source: 'item' }
 			]);
 		});
 
 		it('marks REF targets in the archive', async () => {
 			const charger = await createItem(actor, { newTypeName: 'Блок питания 12 В' });
 			const { id } = await createItem(actor, { newTypeName: 'Паяльник' });
-			await setParams(actor, { itemId: id }, [
+			await setKeyedParams(actor, { itemId: id }, [
 				{ key: 'зарядка', valueType: 'REF', refItemId: charger.id }
 			]);
 			await db.item.update({ where: { id: charger.id }, data: { status: 'ARCHIVED' } });
@@ -305,6 +298,12 @@ describe('items', () => {
 			expect((await db.item.findUniqueOrThrow({ where: { id: inside } })).parentId).toBeNull();
 		});
 
+		it('shows the type photo in the contents', async () => {
+			await db.itemType.update({ where: { id: boxType }, data: { photoKey: 'types/x.webp' } });
+			await box('Коробка');
+			expect((await listContents(actor, null))[0]?.photoKey).toBe('types/x.webp');
+		});
+
 		it('lists containers before other things', async () => {
 			await createItem(actor, { typeId: boxType, name: 'А-вещь' });
 			await box('Я-коробка');
@@ -316,43 +315,109 @@ describe('items', () => {
 		});
 	});
 
-	describe('photo', () => {
-		const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
-
-		it('stores the photo as uploaded and shows it instead of the type photo', async () => {
-			await db.itemType.update({ where: { id: boxType }, data: { photoKey: 'types/x.webp' } });
-			const id = await box('Коробка');
-			const key = await setItemPhoto(actor, id, png);
-			expect(key).toMatch(new RegExp(`^items/${id}/.+\\.png$`));
-			const stored = await storage().get(key);
-			expect(stored?.contentType).toBe('image/png');
-			expect((await openFile(actor, key)).size).toBe(png.length);
-			await expect(openFile(await createTestActor('other'), key)).rejects.toThrow();
-
-			const card = await getItemCard(actor, id);
-			expect(card.item.photoKey).toBe(key);
-			expect((await listContents(actor, null))[0]?.photoKey).toBe(key);
-
-			const second = await setItemPhoto(actor, id, png);
-			expect(await storage().get(key)).toBeNull();
-			await removeItemPhoto(actor, id);
-			expect(await storage().get(second)).toBeNull();
-			expect((await listContents(actor, null))[0]?.photoKey).toBe('types/x.webp');
+	describe('container quantity', () => {
+		it('is always 1 when creating a container', async () => {
+			await expect(
+				createItem(actor, { typeId: boxType, isContainer: true, quantity: 2 })
+			).rejects.toThrow('У контейнера количество всегда 1');
+			expect((await createItem(actor, { typeId: boxType, quantity: 2 })).id).toBeTruthy();
 		});
 
-		it('rejects files that are not images', async () => {
-			const id = await box('Коробка');
-			await expect(setItemPhoto(actor, id, Buffer.from('<svg></svg>'))).rejects.toThrow(
-				'JPEG, PNG, WebP или GIF'
+		it('cannot be changed for a container', async () => {
+			const shelf = await box('Полка');
+			await expect(updateItem(actor, shelf, { quantity: 3 })).rejects.toThrow(
+				'У контейнера количество всегда 1'
 			);
+			await updateItem(actor, shelf, { quantity: 1, name: 'Полка 2' });
+			expect((await db.item.findUniqueOrThrow({ where: { id: shelf } })).quantity).toBe(1);
 		});
 
-		it('deletes the photo when the item is purged', async () => {
-			const id = await box('Коробка');
-			const key = await setItemPhoto(actor, id, png);
-			await discard(actor, id, {});
-			await purge(actor, id);
-			expect(await storage().get(key)).toBeNull();
+		it('marking several things as a container needs quantity 1 sent with it', async () => {
+			const { id } = await createItem(actor, { typeId: boxType, quantity: 5 });
+			await expect(updateItem(actor, id, { isContainer: true })).rejects.toThrow(
+				'а их сейчас 5 шт.'
+			);
+			await expect(updateItem(actor, id, { isContainer: true, quantity: 2 })).rejects.toThrow(
+				'У контейнера количество всегда 1'
+			);
+			await updateItem(actor, id, { isContainer: true, quantity: 1 });
+			expect(await db.item.findUniqueOrThrow({ where: { id } })).toMatchObject({
+				isContainer: true,
+				quantity: 1
+			});
+		});
+	});
+
+	describe('moving part of the quantity', () => {
+		let shelf: string;
+		let drawer: string;
+		let chips: string;
+
+		beforeEach(async () => {
+			shelf = await box('Полка');
+			drawer = await box('Ящик');
+			chips = (await createItem(actor, { newTypeName: 'NE555', quantity: 10, parentId: shelf })).id;
+			await db.sticker.create({
+				data: { code: 'K7M4QX', ownerId: actor.userId, status: 'BOUND', itemId: chips }
+			});
+		});
+
+		it('moves 3 of 10: the source keeps 7 and the sticker, the part is a new record', async () => {
+			const { itemId } = await moveItem(actor, chips, drawer, { quantity: 3 });
+			expect(itemId).not.toBe(chips);
+			const source = await db.item.findUniqueOrThrow({
+				where: { id: chips },
+				include: { sticker: true }
+			});
+			expect(source).toMatchObject({ quantity: 7, parentId: shelf });
+			expect(source.sticker?.code).toBe('K7M4QX');
+			const part = await db.item.findUniqueOrThrow({
+				where: { id: itemId },
+				include: { sticker: true }
+			});
+			expect(part).toMatchObject({
+				quantity: 3,
+				parentId: drawer,
+				typeId: source.typeId,
+				ownerId: actor.userId,
+				splitFromId: null,
+				takenById: null
+			});
+			expect(part.sticker).toBeNull();
+		});
+
+		it('moves the record itself when the whole quantity is asked', async () => {
+			expect(await moveItem(actor, chips, drawer, { quantity: 10 })).toEqual({ itemId: chips });
+			expect(await moveItem(actor, chips, null)).toEqual({ itemId: chips });
+			expect((await db.item.findUniqueOrThrow({ where: { id: chips } })).parentId).toBeNull();
+		});
+
+		it('rejects parts out of range', async () => {
+			await expect(moveItem(actor, chips, drawer, { quantity: 11 })).rejects.toThrow(
+				'не больше 10'
+			);
+			await expect(moveItem(actor, chips, drawer, { quantity: 0 })).rejects.toThrow();
+			expect((await db.item.findUniqueOrThrow({ where: { id: chips } })).quantity).toBe(10);
+		});
+
+		it('moving part off a bench leaves the rest there, still taken', async () => {
+			const bench = await createWorkbench(actor, { name: 'Гараж' });
+			const { itemId: onBench } = await take(actor, chips, { workbenchId: bench.id, quantity: 4 });
+			const { itemId } = await moveItem(actor, onBench, drawer, { quantity: 1 });
+			expect(await db.item.findUniqueOrThrow({ where: { id: onBench } })).toMatchObject({
+				quantity: 3,
+				parentId: bench.id,
+				homeId: shelf,
+				splitFromId: chips,
+				takenById: actor.userId
+			});
+			expect(await db.item.findUniqueOrThrow({ where: { id: itemId } })).toMatchObject({
+				quantity: 1,
+				parentId: drawer,
+				homeId: null,
+				splitFromId: null,
+				takenById: null
+			});
 		});
 	});
 });

@@ -3,6 +3,13 @@
 	import { api } from '$lib/api';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline, MapPinOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
+	import {
+		WORKBENCH_ICONS,
+		workbenchIconKey,
+		workbenchIconLabel,
+		type WorkbenchIconKey
+	} from '$lib/domain/workbench-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -14,6 +21,7 @@
 		geoLat: number | null;
 		geoLng: number | null;
 		geoRadiusM: number | null;
+		icon: WorkbenchIconKey;
 	}
 
 	const DEFAULT_RADIUS_M = 100;
@@ -31,9 +39,17 @@
 					name: bench.name,
 					geoLat: bench.geoLat,
 					geoLng: bench.geoLng,
-					geoRadiusM: bench.geoRadiusM
+					geoRadiusM: bench.geoRadiusM,
+					icon: workbenchIconKey(bench.icon)
 				}
-			: { id: null, name: '', geoLat: null, geoLng: null, geoRadiusM: null };
+			: {
+					id: null,
+					name: '',
+					geoLat: null,
+					geoLng: null,
+					geoRadiusM: null,
+					icon: workbenchIconKey(null)
+				};
 	}
 
 	function useCurrentPlace() {
@@ -127,6 +143,7 @@
 	{#each data.workbenches as bench (bench.id)}
 		<li>
 			<Card class="max-w-none flex-row flex-wrap items-center gap-3 p-4">
+				<WorkbenchIcon icon={bench.icon} class="h-6 w-6 text-gray-500 dark:text-gray-400" />
 				<div class="min-w-40 flex-1">
 					<strong class="font-semibold break-words">{bench.name}</strong>
 					<div class="text-sm break-words text-gray-500 dark:text-gray-400">
@@ -161,6 +178,34 @@
 				Название
 				<Input class="mt-1" bind:value={draft.name} required maxlength={200} placeholder="Гараж" />
 			</Label>
+			<fieldset>
+				<legend class="mb-2 text-sm font-medium text-gray-900 dark:text-white">Иконка</legend>
+				<div class="grid grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-2">
+					{#each WORKBENCH_ICONS as option (option.key)}
+						{@const selected = draft.icon === option.key}
+						<button
+							type="button"
+							class={[
+								'flex h-12 items-center justify-center rounded-lg border focus:ring-4 focus:ring-primary-300 focus:outline-none dark:focus:ring-primary-800',
+								selected
+									? 'border-primary-700 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/40 dark:text-primary-400'
+									: 'border-gray-200 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+							]}
+							aria-label={option.label}
+							aria-pressed={selected}
+							title={option.label}
+							onclick={() => {
+								if (draft) draft.icon = option.key;
+							}}
+						>
+							<WorkbenchIcon icon={option.key} class="h-6 w-6" />
+						</button>
+					{/each}
+				</div>
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					{workbenchIconLabel(draft.icon)}
+				</p>
+			</fieldset>
 			<div class="flex flex-col gap-2">
 				<span class="text-sm text-gray-500 dark:text-gray-400">Зона (необязательно)</span>
 				{#if draft.geoLat !== null && draft.geoLng !== null}

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import {
@@ -10,7 +11,7 @@ import {
 	type DictionaryView
 } from './dictionaries';
 import { createItem } from './items';
-import { setParams } from './params';
+import { setKeyedParams } from '$lib/server/testing/params';
 
 type Opt = DictionaryView['options'][number];
 
@@ -31,7 +32,7 @@ describe('dictionaries', () => {
 	}
 
 	async function use(dictionaryId: string, optionIds: string[], id = itemId) {
-		await setParams(actor, { itemId: id }, [
+		await setKeyedParams(actor, { itemId: id }, [
 			{ key: 'состояние', valueType: 'ENUM', dictionaryId, optionIds }
 		]);
 	}
@@ -103,7 +104,9 @@ describe('dictionaries', () => {
 		const d = await condition();
 		await use(d.id, [d.options[0]!.id]);
 		await expect(deleteDictionary(actor, d.id)).rejects.toThrow('используется');
-		await setParams(actor, { itemId }, []);
+		await setKeyedParams(actor, { itemId }, []);
+		await expect(deleteDictionary(actor, d.id)).rejects.toThrow('используется');
+		await db.paramDef.deleteMany();
 		await deleteDictionary(actor, d.id);
 		expect(await listDictionaries(actor)).toEqual([]);
 	});

@@ -55,16 +55,18 @@ const PARAM_VALUE_TEXT = Prisma.sql`concat_ws(' ',
 
 /**
  * True when item `i` has a parameter matching `condition`: its own, or one of
- * its type's that no own parameter with the same key overrides.
+ * its type's that no own value of the same parameter overrides. `d` is the
+ * parameter definition (its name is the key).
  */
 function hasParam(condition: Prisma.Sql): Prisma.Sql {
 	return Prisma.sql`EXISTS (
 		SELECT 1 FROM "Param" p
+		JOIN "ParamDef" d ON d.id = p."defId"
 		WHERE (
 			p."itemId" = i.id
 			OR (p."typeId" = i."typeId" AND NOT EXISTS (
 				SELECT 1 FROM "Param" ip
-				WHERE ip."itemId" = i.id AND lower(TRIM(ip.key)) = lower(TRIM(p.key))
+				WHERE ip."itemId" = i.id AND ip."defId" = p."defId"
 			))
 		)
 		AND ${condition}
@@ -83,12 +85,12 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 	const conditions = [
 		Prisma.sql`i.name ILIKE ${pattern}`,
 		Prisma.sql`t.name ILIKE ${pattern}`,
-		hasParam(Prisma.sql`(p.key ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
+		hasParam(Prisma.sql`(d.name ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
 	];
 	if (query.param) {
 		conditions.push(
 			hasParam(
-				Prisma.sql`(p.key ILIKE ${likePattern(query.param.key)} AND ${PARAM_VALUE_TEXT} ILIKE ${likePattern(query.param.value)})`
+				Prisma.sql`(d.name ILIKE ${likePattern(query.param.key)} AND ${PARAM_VALUE_TEXT} ILIKE ${likePattern(query.param.value)})`
 			)
 		);
 	}

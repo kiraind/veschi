@@ -4,6 +4,9 @@
 	import { formatPath } from '$lib/domain/item';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
+	import QuantityField from '$lib/components/QuantityField.svelte';
+	import { quantityError } from '$lib/domain/workbench';
+	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
 	import { CogOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
@@ -35,10 +38,26 @@
 		}
 	}
 
-	const returnHome = (id: string) => act(id, () => api.post(`/api/items/${id}/return`));
+	/** How much of each item «Вернуть» / «Положить» puts away; missing = all of it. */
+	let amounts = $state<Record<string, number>>({});
 
-	const relocate = (id: string, containerId: string) =>
-		act(id, () => api.post(`/api/items/${id}/relocate`, { containerId }));
+	function part(item: { id: string; quantity: number }) {
+		const amount = amounts[item.id] ?? item.quantity;
+		return amount < item.quantity ? { quantity: amount } : {};
+	}
+
+	const partProblem = (item: { id: string; quantity: number }) =>
+		quantityError(item.quantity, amounts[item.id] ?? item.quantity);
+
+	async function putAway(item: { id: string; quantity: number }, path: string, body: object) {
+		await act(item.id, () => api.post(`/api/items/${item.id}/${path}`, { ...body, ...part(item) }));
+		if (error?.id !== item.id) delete amounts[item.id];
+	}
+
+	const returnHome = (item: { id: string; quantity: number }) => putAway(item, 'return', {});
+
+	const relocate = (item: { id: string; quantity: number }, containerId: string) =>
+		putAway(item, 'relocate', { containerId });
 </script>
 
 <svelte:head><title>Рабочий стол — Вещи</title></svelte:head>
@@ -59,7 +78,10 @@
 
 {#each benches as bench (bench.id)}
 	<section>
-		<h2 class="mt-6 mb-2 text-lg font-semibold break-words">{bench.name}</h2>
+		<h2 class="mt-6 mb-2 flex items-center gap-2 text-lg font-semibold break-words">
+			<WorkbenchIcon icon={bench.icon} class="h-6 w-6 text-gray-500 dark:text-gray-400" />
+			<span class="min-w-0">{bench.name}</span>
+		</h2>
 		{#if bench.items.length === 0}
 			<p class="text-sm text-gray-500 dark:text-gray-400">Пусто.</p>
 		{:else}
@@ -82,10 +104,19 @@
 								</div>
 							</div>
 
+							{#if item.quantity > 1}
+								<QuantityField
+									available={item.quantity}
+									bind:value={
+										() => amounts[item.id] ?? item.quantity, (v) => (amounts[item.id] = v)
+									}
+									label="Сколько убрать со стола"
+								/>
+							{/if}
 							<div class="flex flex-wrap gap-2">
 								<Button
-									onclick={() => returnHome(item.id)}
-									disabled={!item.canReturn || busyId === item.id}
+									onclick={() => returnHome(item)}
+									disabled={!item.canReturn || busyId === item.id || !!partProblem(item)}
 								>
 									Вернуть на место
 								</Button>
@@ -107,7 +138,9 @@
 								<ContainerPicker
 									title="Куда положить «{item.name}»?"
 									excludeId={item.id}
-									onpick={(container: { id: string }) => relocate(item.id, container.id)}
+									onpick={(container: { id: string }) => {
+										if (!partProblem(item)) relocate(item, container.id);
+									}}
 								/>
 							{/if}
 
