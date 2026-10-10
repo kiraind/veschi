@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-	CAPTION_MAX_LENGTH,
+	CAPTION_FONT_PT,
+	CAPTION_MIN_FONT_PT,
+	CAPTION_WIDTH_MM,
+	captionWidthPt,
+	fitCaption,
 	MARGIN_X_MM,
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
 	PAGE_WIDTH_MM,
 	STICKERS_PER_SHEET,
 	cellPosition,
-	isCaptionTooLong,
 	parseCaptions,
-	planSheets,
-	truncateCaption
+	planSheets
 } from './sticker-sheet';
 
 describe('sticker sheet', () => {
@@ -46,13 +48,43 @@ describe('sticker sheet', () => {
 		expect(parseCaptions(' Припой \n\n  \nОтвёртки\r\n')).toEqual(['Припой', 'Отвёртки']);
 	});
 
-	it('warns about and truncates long captions', () => {
-		const exact = 'Ж'.repeat(CAPTION_MAX_LENGTH);
-		expect(isCaptionTooLong(exact)).toBe(false);
-		expect(truncateCaption(exact)).toBe(exact);
-		const long = 'Коробка с микросхемами';
-		expect(isCaptionTooLong(long)).toBe(true);
-		expect(truncateCaption(long)).toBe('Коробка с микро…');
-		expect([...truncateCaption(long)]).toHaveLength(CAPTION_MAX_LENGTH);
+	it('keeps captions that fit, shrinking the font before cutting', () => {
+		expect(fitCaption('Припой')).toEqual({
+			text: 'Припой',
+			fontSize: CAPTION_FONT_PT,
+			truncated: false
+		});
+		// 17 characters used to be cut to «по одной наклей…»; now it fits as is.
+		expect(fitCaption('по одной наклейке')).toMatchObject({
+			text: 'по одной наклейке',
+			truncated: false
+		});
+		const smaller = fitCaption('Шуруповёрт Makita DF333');
+		expect(smaller.text).toBe('Шуруповёрт Makita DF333');
+		expect(smaller.fontSize).toBeLessThan(CAPTION_FONT_PT);
+		expect(smaller.fontSize).toBeGreaterThanOrEqual(CAPTION_MIN_FONT_PT);
+	});
+
+	it('cuts by width only at the smallest size, filling the line', () => {
+		const width = (CAPTION_WIDTH_MM * 72) / 25.4;
+		for (const caption of [
+			'Ш'.repeat(40),
+			'i'.repeat(200),
+			'Коробка с микросхемами и резисторами'
+		]) {
+			const fitted = fitCaption(caption);
+			expect(fitted.truncated).toBe(true);
+			expect(fitted.fontSize).toBe(CAPTION_MIN_FONT_PT);
+			expect(fitted.text.endsWith('…')).toBe(true);
+			const used = captionWidthPt(fitted.text) * CAPTION_MIN_FONT_PT;
+			expect(used).toBeLessThanOrEqual(width);
+			// One more character would not fit.
+			const next = [...caption][[...fitted.text].length - 1] ?? '';
+			expect(used + captionWidthPt(next) * CAPTION_MIN_FONT_PT).toBeGreaterThan(width);
+		}
+	});
+
+	it('measures unknown characters as the widest ones', () => {
+		expect(captionWidthPt('🙂')).toBeGreaterThanOrEqual(captionWidthPt('Ш'));
 	});
 });

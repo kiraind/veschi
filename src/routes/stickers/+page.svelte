@@ -5,12 +5,10 @@
 	import { FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import {
-		CAPTION_MAX_LENGTH,
 		MAX_SHEETS_PER_BATCH,
-		isCaptionTooLong,
+		fitCaption,
 		parseCaptions,
-		planSheets,
-		truncateCaption
+		planSheets
 	} from '$lib/domain/sticker-sheet';
 	import type { PageData } from './$types';
 
@@ -25,7 +23,11 @@
 	const captions = $derived(parseCaptions(captionsText));
 	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
 	const plan = $derived(planSheets(captions.length, blank));
-	const tooLong = $derived(captions.filter(isCaptionTooLong));
+	const tooLong = $derived(
+		captions
+			.map((caption) => ({ caption, fitted: fitCaption(caption) }))
+			.filter(({ fitted }) => fitted.truncated)
+	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
 
 	const pdfUrl = (id: string) => `/api/stickers/batches/${id}/pdf`;
@@ -76,10 +78,10 @@
 		</Label>
 		{#if tooLong.length > 0}
 			<Alert color="yellow" class="text-sm">
-				Подпись длиннее {CAPTION_MAX_LENGTH} символов не влезет и будет обрезана:
+				Не влезет в строку и будет обрезано:
 				<ul class="mt-1 list-disc ps-5">
-					{#each tooLong as caption, i (i)}
-						<li class="break-words">{caption} → <b>{truncateCaption(caption)}</b></li>
+					{#each tooLong as { caption, fitted }, i (i)}
+						<li class="break-words">{caption} → <b>{fitted.text}</b></li>
 					{/each}
 				</ul>
 			</Alert>

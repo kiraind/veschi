@@ -1,3 +1,5 @@
+import { CHARS, FALLBACK_WIDTH, UNITS_PER_EM, WIDTHS } from './caption-metrics';
+
 /**
  * Sticker sheet layout (spec «Наклейки»): A4, 6 × 9 = 54 cells of 33 × 31 mm
  * with 6 mm side margins. All sizes are in millimetres.
@@ -12,8 +14,6 @@ export const STICKERS_PER_SHEET = COLUMNS * ROWS;
 export const MARGIN_X_MM = (PAGE_WIDTH_MM - COLUMNS * CELL_WIDTH_MM) / 2; // 6 mm
 export const MARGIN_Y_MM = (PAGE_HEIGHT_MM - ROWS * CELL_HEIGHT_MM) / 2; // 9 mm
 
-/** Captions longer than this do not fit on one line; the form warns, the PDF truncates. */
-export const CAPTION_MAX_LENGTH = 16;
 /** Upper limit for one batch, to keep a PDF printable in one go. */
 export const MAX_SHEETS_PER_BATCH = 20;
 
@@ -64,13 +64,50 @@ export function cellPosition(index: number): CellPosition {
 	};
 }
 
-export function isCaptionTooLong(caption: string): boolean {
-	return [...caption].length > CAPTION_MAX_LENGTH;
+/** Captions are one line of DejaVu Sans across the cell, minus side paddings. */
+export const CAPTION_SIDE_PADDING_MM = 1.5;
+export const CAPTION_WIDTH_MM = CELL_WIDTH_MM - 2 * CAPTION_SIDE_PADDING_MM;
+export const CAPTION_FONT_PT = 7;
+/** A caption that is too wide is set smaller, down to this size, before it gets cut. */
+export const CAPTION_MIN_FONT_PT = 5.5;
+const PT_PER_MM = 72 / 25.4;
+const ELLIPSIS = '…';
+
+const charWidths = new Map([...CHARS].map((char, i) => [char, WIDTHS[i]]));
+
+/** Width of the text in the caption font at 1 pt, in points. */
+export function captionWidthPt(text: string): number {
+	let units = 0;
+	for (const char of text) units += charWidths.get(char) ?? FALLBACK_WIDTH;
+	return units / UNITS_PER_EM;
 }
 
-/** Cuts a caption to CAPTION_MAX_LENGTH characters, ending with «…» when shortened. */
-export function truncateCaption(caption: string): string {
-	const chars = [...caption];
-	if (chars.length <= CAPTION_MAX_LENGTH) return caption;
-	return chars.slice(0, CAPTION_MAX_LENGTH - 1).join('') + '…';
+export interface FittedCaption {
+	text: string;
+	fontSize: number;
+	truncated: boolean;
+}
+
+/**
+ * Fits a caption into one line of the sticker: the regular size if it fits,
+ * otherwise as small as needed down to CAPTION_MIN_FONT_PT, and only then
+ * cut by width with «…» at the minimum size.
+ */
+export function fitCaption(caption: string): FittedCaption {
+	const width = CAPTION_WIDTH_MM * PT_PER_MM;
+	const natural = captionWidthPt(caption);
+	if (natural * CAPTION_FONT_PT <= width) {
+		return { text: caption, fontSize: CAPTION_FONT_PT, truncated: false };
+	}
+	if (natural * CAPTION_MIN_FONT_PT <= width) {
+		return { text: caption, fontSize: width / natural, truncated: false };
+	}
+	const room = width / CAPTION_MIN_FONT_PT - captionWidthPt(ELLIPSIS);
+	let kept = '';
+	for (const char of caption) {
+		if (captionWidthPt(kept + char) > room) break;
+		kept += char;
+	}
+	const text = kept.trimEnd() + ELLIPSIS;
+	return { text, fontSize: CAPTION_MIN_FONT_PT, truncated: true };
 }
