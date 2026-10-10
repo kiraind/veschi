@@ -14,6 +14,7 @@
 	import {
 		ArchiveOutline,
 		ArrowRightToBracketOutline,
+		CogOutline,
 		AdjustmentsHorizontalOutline,
 		DesktopPcOutline,
 		DotsHorizontalOutline,
@@ -75,7 +76,7 @@
 	}
 
 	const moreActive = $derived(
-		[...secondary.map((l) => l.href), '/profile'].some((href) => isActive(href))
+		[...secondary.map((l) => l.href), '/settings'].some((href) => isActive(href))
 	);
 
 	// Close «Ещё» after navigating.
@@ -95,9 +96,10 @@
 		</NavBrand>
 		<div class="flex items-center md:order-2">
 			<a
-				href="/profile"
+				href="/settings"
+				title="Настройки"
 				class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-				aria-current={isActive('/profile') ? 'page' : undefined}
+				aria-current={isActive('/settings') ? 'page' : undefined}
 			>
 				<UserCircleOutline class="h-5 w-5" />
 				<span class="max-w-32 truncate">{data.user.name}</span>
@@ -167,8 +169,8 @@
 						{#snippet icon()}<Icon class="h-5 w-5" />{/snippet}
 					</SidebarItem>
 				{/each}
-				<SidebarItem href="/profile" label="Профиль — {data.user.name}">
-					{#snippet icon()}<UserCircleOutline class="h-5 w-5" />{/snippet}
+				<SidebarItem href="/settings" label="Настройки">
+					{#snippet icon()}<CogOutline class="h-5 w-5" />{/snippet}
 				</SidebarItem>
 			</SidebarGroup>
 			<SidebarGroup border>

@@ -47,6 +47,7 @@ prisma/              схема и миграции
 - Фото есть только у типа (`ItemType.photoKey`); в интерфейсе — компонент `PhotoField` (иконка поверх фото → своя камера `CameraCapture`, выбор файла, удаление).
 - Часть количества переносится через `placePart` (`services/split.ts`); он же сливает перенесённое с такой же записью на месте назначения. У контейнера количество всегда 1.
 - Описание типа показывается через `Description` (три строки, остальное по клику, карандаш в конце). Склонение по числу — `plural` из `$lib/domain/plural`.
+- **Тема** (светлая / тёмная / системная) — cookie `theme` (`$lib/domain/theme`), сервер ставит `<html data-theme>` и класс `dark` в `hooks.server.ts`, скрипт в `app.html` обслуживает «Системную», смена — `setTheme` из `$lib/theme`. Стили для тёмной темы пишутся как обычно, через `dark:`.
 - Даты показываются только как ГГГГ-ММ-ДД (`$lib/domain/dates`), ввод даты — `DateInput`.
 - Положить вещь можно только в контейнер — вещь типа с `ItemType.isContainer` или рабочий стол: `isContainerItem` / `assertIsContainer` из `services/paths.ts` (в запросе — `containerTypeInclude`).
 - Подтверждение действия — `await confirmAction({ title, message?, confirmLabel? })` из `$lib/confirm.svelte`, не `confirm()` браузера.

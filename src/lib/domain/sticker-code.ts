@@ -24,8 +24,8 @@ const TOP_LEVEL_ROUTES = [
 	'items',
 	'login',
 	'logout',
-	'profile',
 	'scan',
+	'settings',
 	'stickers',
 	'types',
 	'workbench'
