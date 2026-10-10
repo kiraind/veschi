@@ -11,7 +11,12 @@
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import Thumb from '$lib/components/Thumb.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
-	import { CogOutline } from 'flowbite-svelte-icons';
+	import {
+		ArrowsRepeatOutline,
+		CogOutline,
+		TrashBinOutline,
+		UndoOutline
+	} from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -24,6 +29,19 @@
 	);
 
 	let relocatingId = $state<string | null>(null);
+	/** The item whose «Использовать / выкинуть» form is open. */
+	let discardingId = $state<string | null>(null);
+
+	/** The action buttons of an item; labels are dropped when they don't fit in one row. */
+	const RETURN_LABEL = 'Вернуть на место';
+	const RELOCATE_LABEL = 'Положить в другое место';
+	const DISCARD_LABEL = 'Использовать / выкинуть';
+	const ACTION_LABELS = [RETURN_LABEL, RELOCATE_LABEL, DISCARD_LABEL];
+	let actionsWidth = $state(0);
+	let labelledWidth = $state(0);
+	const compact = $derived(labelledWidth > actionsWidth);
+	const actionClass = $derived(compact ? 'h-11 px-2' : 'h-11 whitespace-nowrap');
+	const actionIconClass = $derived(compact ? 'h-5 w-5' : 'me-2 h-5 w-5 flex-none');
 	let busyId = $state<string | null>(null);
 	let error = $state<{ id: string; message: string } | null>(null);
 
@@ -136,20 +154,60 @@
 									label="Сколько убрать со стола"
 								/>
 							{/if}
-							<div class="flex flex-wrap gap-2">
-								<Button
-									onclick={() => askReturn(item)}
-									disabled={!item.canReturn || busyId === item.id || !!partProblem(item)}
+							<div class="relative" bind:clientWidth={actionsWidth}>
+								<!-- The same buttons with labels, unseen: their width decides whether labels fit. -->
+								<div
+									class="invisible absolute inset-x-0 top-0 h-0 overflow-hidden"
+									aria-hidden="true"
 								>
-									Вернуть на место
-								</Button>
-								<Button
-									color="alternative"
-									onclick={() => (relocatingId = relocatingId === item.id ? null : item.id)}
-									disabled={busyId === item.id}
-								>
-									Положить в другое место
-								</Button>
+									<div class="flex w-max gap-2 whitespace-nowrap" bind:clientWidth={labelledWidth}>
+										{#each ACTION_LABELS as label (label)}
+											<span class="inline-flex items-center px-5 text-sm font-medium"
+												><span class="me-2 h-5 w-5"></span>{label}</span
+											>
+										{/each}
+									</div>
+								</div>
+								<div class="grid grid-cols-3 gap-2 {compact ? '' : 'sm:flex'}">
+									<Button
+										class={actionClass}
+										title={RETURN_LABEL}
+										aria-label={RETURN_LABEL}
+										onclick={() => askReturn(item)}
+										disabled={!item.canReturn || busyId === item.id || !!partProblem(item)}
+									>
+										<UndoOutline class={actionIconClass} />
+										{#if !compact}{RETURN_LABEL}{/if}
+									</Button>
+									<Button
+										color="alternative"
+										class={actionClass}
+										title={RELOCATE_LABEL}
+										aria-label={RELOCATE_LABEL}
+										onclick={() => {
+											relocatingId = relocatingId === item.id ? null : item.id;
+											discardingId = null;
+										}}
+										disabled={busyId === item.id}
+									>
+										<ArrowsRepeatOutline class={actionIconClass} />
+										{#if !compact}{RELOCATE_LABEL}{/if}
+									</Button>
+									<Button
+										color="alternative"
+										class={actionClass}
+										title={DISCARD_LABEL}
+										aria-label={DISCARD_LABEL}
+										onclick={() => {
+											discardingId = discardingId === item.id ? null : item.id;
+											relocatingId = null;
+										}}
+										disabled={busyId === item.id}
+									>
+										<TrashBinOutline class={actionIconClass} />
+										{#if !compact}{DISCARD_LABEL}{/if}
+									</Button>
+								</div>
 							</div>
 							{#if !item.canReturn}
 								<p class="text-sm text-gray-500 dark:text-gray-400">
@@ -168,6 +226,10 @@
 							{/if}
 
 							<DiscardDialog
+								bind:open={
+									() => discardingId === item.id, (v) => (discardingId = v ? item.id : null)
+								}
+								button={false}
 								item={{
 									id: item.id,
 									name: item.name,

@@ -7,14 +7,18 @@
 
 	let {
 		item,
-		ondone
+		ondone,
+		open = $bindable(false),
+		button = true
 	}: {
 		item: { id: string; name: string; quantity: number; hasChildren: boolean };
 		/** Called after a change; without it the page data is reloaded. */
 		ondone?: () => void;
+		open?: boolean;
+		/** Its own «Использовать / выкинуть» button; without it the caller opens it. */
+		button?: boolean;
 	} = $props();
 
-	let open = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 	let useCount = $state(1);
@@ -23,12 +27,13 @@
 
 	const useProblem = $derived(quantityError(item.quantity, useCount));
 
-	function start() {
-		open = true;
-		error = '';
-		useCount = 1;
-		contents = 'parent';
-	}
+	$effect(() => {
+		if (open) {
+			error = '';
+			useCount = 1;
+			contents = 'parent';
+		}
+	});
 
 	async function run(action: () => Promise<unknown>) {
 		busy = true;
@@ -57,7 +62,9 @@
 </script>
 
 {#if !open}
-	<Button color="alternative" onclick={start}>Использовать / выкинуть</Button>
+	{#if button}
+		<Button color="alternative" onclick={() => (open = true)}>Использовать / выкинуть</Button>
+	{/if}
 {:else}
 	<Card class="max-w-none gap-3 p-4">
 		<strong class="wrap-anywhere">{item.name}</strong>
