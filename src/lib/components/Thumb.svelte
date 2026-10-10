@@ -8,7 +8,7 @@
 {#if photoKey}
 	<img
 		class="flex-none rounded-lg bg-gray-200 object-cover dark:bg-gray-700"
-		src="/files/{photoKey}"
+		src="/files/{photoKey}?size=thumb"
 		alt=""
 		width={size}
 		height={size}

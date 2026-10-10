@@ -58,7 +58,7 @@
 				...(typeId ? { typeId } : { newTypeName: typeName, newTypeIsContainer }),
 				name,
 				// A container is a single instance: its quantity is always 1.
-				quantity: isContainer ? 1 : quantity,
+				quantity: isContainer || freeSticker ? 1 : quantity,
 				parentId: parent?.id ?? null,
 				stickerCode: freeSticker?.code
 			});
@@ -125,16 +125,23 @@
 	{#if !isContainer}
 		<div>
 			<Label for="item-quantity">Количество</Label>
-			<Input
-				id="item-quantity"
-				class="mt-1"
-				type="number"
-				min="1"
-				step="1"
-				inputmode="numeric"
-				bind:value={quantity}
-				required
-			/>
+			{#if freeSticker}
+				<Input id="item-quantity" class="mt-1" type="number" value={1} disabled />
+				<Helper class="mt-1">
+					У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь.
+				</Helper>
+			{:else}
+				<Input
+					id="item-quantity"
+					class="mt-1"
+					type="number"
+					min="1"
+					step="1"
+					inputmode="numeric"
+					bind:value={quantity}
+					required
+				/>
+			{/if}
 		</div>
 	{/if}
 

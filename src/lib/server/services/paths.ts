@@ -23,7 +23,7 @@ export async function getPaths(itemIds: string[], tx: Tx = db): Promise<Map<stri
 		WITH RECURSIVE chain AS (
 			SELECT i.id AS start_id, i."parentId" AS id, 1 AS depth
 			FROM "Item" i
-			WHERE i.id IN (${Prisma.join(itemIds.map((id) => Prisma.sql`${id}::uuid`))})
+			WHERE i.id IN (${Prisma.join(itemIds.map((id) => Prisma.sql`${id}`))})
 				AND i."parentId" IS NOT NULL
 			UNION ALL
 			SELECT c.start_id, p."parentId", c.depth + 1

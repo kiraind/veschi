@@ -12,7 +12,7 @@ import {
 
 const NNBSP = '\u202f';
 
-const DEF = '00000000-0000-4000-8000-0000000000d1';
+const DEF = 'ctest00000000000000000d1';
 
 describe('paramInputSchema', () => {
 	it('accepts every value type', () => {
@@ -23,7 +23,7 @@ describe('paramInputSchema', () => {
 			{
 				defId: DEF,
 				valueType: 'ENUM',
-				optionIds: ['00000000-0000-4000-8000-000000000002']
+				optionIds: ['ctest0000000000000000002']
 			},
 			{ defId: DEF, valueType: 'URL', url: 'https://example.com/ne555.pdf' },
 			{
@@ -35,7 +35,7 @@ describe('paramInputSchema', () => {
 				fileSize: 1000
 			},
 			{ defId: DEF, valueType: 'DATE', date: '2027-05-01' },
-			{ defId: DEF, valueType: 'REF', refItemId: '00000000-0000-4000-8000-000000000003' },
+			{ defId: DEF, valueType: 'REF', refItemId: 'ctest0000000000000000003' },
 			{ defId: DEF, valueType: 'BOOLEAN', value: false }
 		];
 		for (const input of inputs) expect(paramInputSchema.parse(input)).toMatchObject(input);

@@ -13,11 +13,13 @@ const INLINE_TYPES = new Set([
 	'text/plain'
 ]);
 
-/** Streams a stored photo or parameter file after an ownership check. */
+/** Streams a stored photo or parameter file after an ownership check; `?size=thumb` → a photo's thumbnail. */
 export const GET: RequestHandler = async (event) => {
 	try {
 		const actor = requireActor(event);
-		const file = await openFile(actor, event.params.key);
+		const file = await openFile(actor, event.params.key, {
+			thumb: event.url.searchParams.get('size') === 'thumb'
+		});
 		const disposition = INLINE_TYPES.has(file.contentType) ? 'inline' : 'attachment';
 		const name = file.fileName ? `; filename*=UTF-8''${encodeURIComponent(file.fileName)}` : '';
 		return new Response(Readable.toWeb(file.body) as ReadableStream, {

@@ -66,16 +66,17 @@
 </script>
 
 <div class="space-y-1">
-	<div class="relative w-full">
+	<!-- Photos are square (uploads are padded to a square on the server). -->
+	<div class="relative aspect-square w-full max-w-64">
 		{#if src}
 			<img
-				class="max-h-72 w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
+				class="h-full w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
 				{src}
 				{alt}
 			/>
 		{:else}
 			<div
-				class="flex h-40 w-full items-center justify-center rounded-lg bg-gray-100 text-gray-300 dark:bg-gray-800 dark:text-gray-600"
+				class="flex h-full w-full items-center justify-center rounded-lg bg-gray-100 text-gray-300 dark:bg-gray-800 dark:text-gray-600"
 				aria-hidden="true"
 			>
 				<ImageOutline class="h-16 w-16" />

@@ -44,6 +44,7 @@
 		editable?: boolean;
 		/** Parameters not offered when adding (besides those already in the list). */
 		exclude?: string[];
+		/** Shown when there are no parameters; empty → nothing (just «Параметр»). */
 		emptyText?: string;
 	} = $props();
 
@@ -204,7 +205,7 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-	{#if params.length === 0 && !adding}
+	{#if params.length === 0 && !adding && emptyText}
 		<p class="text-sm text-gray-500 dark:text-gray-400">{emptyText}</p>
 	{/if}
 	{#each params as param, i (param.id)}

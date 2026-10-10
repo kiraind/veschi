@@ -10,7 +10,9 @@ export type FileValue = Extract<ParamValue, { valueType: 'FILE' }>;
 /**
  * Object keys: `params/<uploader id>/<uuid>` for parameter files,
  * `types/<type id>/<uuid>.webp` for type photos (photos moved from items in
- * the round-2 migration keep their old `items/<item id>/…` keys).
+ * the round-2 migration keep their old `items/<item id>/…` keys). A photo
+ * uploaded since round 4 also has a thumbnail at `thumbKeyOf(key)`; older
+ * photos have none, and the full photo is served instead.
  */
 function paramFilePrefix(actor: Actor): string {
 	return `params/${actor.userId}/`;
@@ -19,6 +21,17 @@ function paramFilePrefix(actor: Actor): string {
 /** True for a parameter file the actor uploaded (it may not be saved in a parameter yet). */
 export function isOwnUpload(actor: Actor, key: string): boolean {
 	return key.startsWith(paramFilePrefix(actor)) && !key.includes('..');
+}
+
+/** Where the thumbnail of a photo is stored. */
+export function thumbKeyOf(photoKey: string): string {
+	return `${photoKey.replace(/\.webp$/, '')}.thumb.webp`;
+}
+
+/** Deletes a stored file and, for a photo, its thumbnail. */
+export async function deleteStored(key: string): Promise<void> {
+	await storage().delete(key);
+	await storage().delete(thumbKeyOf(key));
 }
 
 /** Reads the multipart field `file` of an upload request. */
@@ -63,7 +76,8 @@ export async function uploadParamFile(
  */
 export async function openFile(
 	actor: Actor,
-	key: string
+	key: string,
+	{ thumb = false }: { thumb?: boolean } = {}
 ): Promise<StoredObject & { fileName: string | null }> {
 	let fileName: string | null = null;
 	let allowed = isOwnUpload(actor, key);
@@ -80,7 +94,10 @@ export async function openFile(
 		const param = await db.param.findFirst({ where: { fileKey: key } });
 		fileName = param?.fileName ?? null;
 	}
-	const object = allowed ? await storage().get(key) : null;
+	// Access is checked on the photo itself; a photo without a thumbnail is served whole.
+	const object = !allowed
+		? null
+		: ((thumb ? await storage().get(thumbKeyOf(key)) : null) ?? (await storage().get(key)));
 	if (!object) throw new NotFoundError('Файл не найден');
 	return { ...object, fileName };
 }
@@ -94,6 +111,6 @@ export async function deleteUnreferencedFiles(keys: string[]): Promise<void> {
 	]);
 	const used = new Set([...params.map((p) => p.fileKey), ...types.map((t) => t.photoKey)]);
 	for (const key of keys) {
-		if (!used.has(key)) await storage().delete(key);
+		if (!used.has(key)) await deleteStored(key);
 	}
 }

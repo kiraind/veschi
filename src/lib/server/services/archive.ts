@@ -19,7 +19,7 @@ export interface DiscardOptions {
 async function descendantIds(itemId: string, tx: Tx): Promise<string[]> {
 	const rows = await tx.$queryRaw<{ id: string }[]>`
 		WITH RECURSIVE sub AS (
-			SELECT id, 1 AS depth FROM "Item" WHERE "parentId" = ${itemId}::uuid
+			SELECT id, 1 AS depth FROM "Item" WHERE "parentId" = ${itemId}
 			UNION ALL
 			SELECT i.id, s.depth + 1 FROM "Item" i JOIN sub s ON i."parentId" = s.id WHERE s.depth < 100
 		)

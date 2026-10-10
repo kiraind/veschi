@@ -1,5 +1,5 @@
 import { apiHandler, parseBody } from '$lib/server/api';
-import { deleteType, getTypeCard, typeInputSchema, updateType } from '$lib/server/services/types';
+import { deleteType, getTypeCard, typeUpdateSchema, updateType } from '$lib/server/services/types';
 import type { RequestEvent } from './$types';
 
 export const GET = apiHandler<RequestEvent>(async ({ actor, params }) =>
@@ -7,7 +7,7 @@ export const GET = apiHandler<RequestEvent>(async ({ actor, params }) =>
 );
 
 export const PATCH = apiHandler<RequestEvent>(async ({ actor, params, request }) => {
-	await updateType(actor, params.id, await parseBody(request, typeInputSchema));
+	await updateType(actor, params.id, await parseBody(request, typeUpdateSchema));
 });
 
 /** Only a type nothing refers to can be deleted. */

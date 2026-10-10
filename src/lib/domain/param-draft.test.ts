@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { draftFromView, draftToInput, emptyDraft, parseNumberInput } from './param-draft';
 import { paramInputSchema, type ParamView } from './params';
 
-const DEF = '00000000-0000-4000-8000-0000000000d1';
+const DEF = 'ctest00000000000000000d1';
 
 describe('parseNumberInput', () => {
 	it('accepts commas, dots and spaces', () => {
@@ -24,11 +24,11 @@ describe('drafts', () => {
 				defId: DEF,
 				key: 'зарядка',
 				valueType: 'REF',
-				refItemId: '00000000-0000-4000-8000-000000000003',
+				refItemId: 'ctest0000000000000000003',
 				refTypeId: null,
 				ref: {
 					kind: 'item',
-					id: '00000000-0000-4000-8000-000000000003',
+					id: 'ctest0000000000000000003',
 					name: 'БП',
 					archived: false
 				}

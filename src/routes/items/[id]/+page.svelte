@@ -2,7 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
-	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
+	import EditButton from '$lib/components/EditButton.svelte';
 	import ItemContents from '$lib/components/ItemContents.svelte';
 	import ParamSection from '$lib/components/ParamSection.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
@@ -11,8 +11,15 @@
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
-	import { Alert, Badge, Button, Card } from 'flowbite-svelte';
-	import { ArrowsRepeatOutline, PenOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
+	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
+	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
+	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
+	import {
+		AdjustmentsHorizontalOutline,
+		ArrowsRepeatOutline,
+		PlusOutline
+	} from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -23,7 +30,19 @@
 	const container = $derived(item.isContainer);
 
 	let moving = $state(false);
+	let taking = $state(false);
 	let adding = $state(false);
+	let renaming = $state(false);
+	let changingQuantity = $state(false);
+
+	/** Why the quantity of this item is always 1, if it is. */
+	const quantityLock = $derived(
+		card.type?.isContainer
+			? 'У контейнера количество всегда 1.'
+			: card.sticker?.status === 'BOUND'
+				? 'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь. Чтобы изменить количество, отвяжите наклейку.'
+				: null
+	);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -50,7 +69,18 @@
 
 	function toggleMoving() {
 		moving = !moving;
+		taking = false;
 		moveQuantity = item.quantity;
+	}
+
+	function toggleTaking() {
+		taking = !taking;
+		moving = false;
+	}
+
+	async function rename(name: string) {
+		await api.patch(`/api/items/${item.id}`, { name });
+		await invalidateAll();
 	}
 
 	function toggleAdding() {
@@ -92,14 +122,8 @@
 
 	const restore = () => run(() => api.post(`/api/items/${item.id}/restore`));
 
-	/** After «Использовать / выкинуть»: stay when the item is still here, else go to its container. */
-	async function afterDiscard() {
-		try {
-			const fresh = await api.get<{ item: { status: string } }>(`/api/items/${item.id}`);
-			if (fresh.item.status === 'ACTIVE') return invalidateAll();
-		} catch {
-			// gone: fall through
-		}
+	/** After «Использовать / Выкинуть» of the whole item: go to its container. */
+	async function afterArchive() {
 		const parent = card.path.at(-1);
 		await goto(parent && !parent.isWorkbench ? `/items/${parent.id}` : '/containers');
 	}
@@ -118,7 +142,12 @@
 <p class="text-sm text-gray-500 dark:text-gray-400"><PathTrail path={card.path} /></p>
 
 <div class="mt-1 mb-3">
-	<h1 class="text-2xl font-bold wrap-anywhere">{item.displayName}</h1>
+	<div class="flex items-start gap-1">
+		<h1 class="text-2xl font-bold wrap-anywhere">{item.displayName}</h1>
+		{#if active && !item.isWorkbench}
+			<EditButton label="Изменить название" onclick={() => (renaming = true)} />
+		{/if}
+	</div>
 	<div class="mt-1 flex flex-wrap items-center gap-2">
 		{#if card.type}
 			<a href="/types/{card.type.id}">{card.type.name}</a>
@@ -129,11 +158,6 @@
 		{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
 		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
-	{#if card.type?.description}
-		<p class="mt-1 text-sm whitespace-pre-line text-gray-500 dark:text-gray-400">
-			{card.type.description}
-		</p>
-	{/if}
 </div>
 
 {#if card.type}
@@ -156,17 +180,41 @@
 {/if}
 
 {#if active && !item.isWorkbench}
-	<div class="my-3 flex flex-wrap gap-2">
-		<TakeToWorkbench item={{ id: item.id, quantity: item.quantity, name: item.displayName }} />
-		<Button color="alternative" onclick={toggleMoving}>
-			<ArrowsRepeatOutline class="me-1.5 h-5 w-5" />
+	<ButtonGroup class="my-3 w-full sm:w-auto">
+		<Button
+			color="alternative"
+			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
+			onclick={toggleTaking}
+		>
+			<WorkbenchIcon icon={null} class="me-1.5 h-5 w-5 flex-none" />
+			На стол
+		</Button>
+		<Button
+			color="alternative"
+			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
+			onclick={toggleMoving}
+		>
+			<ArrowsRepeatOutline class="me-1.5 h-5 w-5 flex-none" />
 			Переложить
 		</Button>
-		<Button color="alternative" href="/items/{item.id}/edit">
-			<PenOutline class="me-1.5 h-5 w-5" />
+		<Button
+			color="alternative"
+			class="flex-1 px-3 whitespace-nowrap sm:flex-none"
+			onclick={() => (changingQuantity = true)}
+		>
+			<AdjustmentsHorizontalOutline class="me-1.5 h-5 w-5 flex-none" />
 			Изменить
 		</Button>
-	</div>
+	</ButtonGroup>
+	{#if taking}
+		<div class="mb-3">
+			<TakeToWorkbench
+				item={{ id: item.id, quantity: item.quantity, name: item.displayName }}
+				bind:open={taking}
+				button={false}
+			/>
+		</div>
+	{/if}
 	{#if moving}
 		<div class="mb-3 space-y-2">
 			{#if item.quantity > 1}
@@ -200,15 +248,26 @@
 
 {#if !item.isWorkbench}
 	<Card class="mt-3 max-w-none p-4">
-		<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
+		<StickerPanel
+			itemId={item.id}
+			quantity={item.quantity}
+			sticker={card.sticker}
+			editable={active}
+		/>
 	</Card>
+
+	{#if card.type?.description}
+		<p class="mt-6 whitespace-pre-line text-gray-700 dark:text-gray-300">
+			{card.type.description}
+		</p>
+	{/if}
 
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
 	<ParamSection
 		params={card.itemParams}
 		target={{ kind: 'item', id: item.id }}
 		editable={active}
-		emptyText="Только у этой вещи параметров нет."
+		emptyText=""
 	/>
 
 	{#if card.type}
@@ -274,15 +333,24 @@
 {/if}
 
 {#if active && !item.isWorkbench}
-	<div class="mt-8">
-		<DiscardDialog
-			item={{
-				id: item.id,
-				name: item.displayName,
-				quantity: item.quantity,
-				hasChildren: card.children.length > 0
-			}}
-			ondone={afterDiscard}
-		/>
-	</div>
+	<TextEditSheet
+		bind:open={renaming}
+		title="Название"
+		label="Своё название этой вещи"
+		value={item.name ?? ''}
+		placeholder={card.type?.name ?? ''}
+		helper={card.type ? `Пусто — показывается название типа «${card.type.name}».` : ''}
+		onsave={rename}
+	/>
+	<QuantitySheet
+		bind:open={changingQuantity}
+		item={{
+			id: item.id,
+			name: item.displayName,
+			quantity: item.quantity,
+			hasChildren: card.children.length > 0
+		}}
+		lock={quantityLock}
+		onarchived={afterArchive}
+	/>
 {/if}

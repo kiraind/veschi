@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { idSchema } from '$lib/domain/id';
 import { apiHandler, parseBody } from '$lib/server/api';
 import { relocate } from '$lib/server/services/workbench';
 import type { RequestEvent } from './$types';
 
 const Body = z.object({
-	containerId: z.uuid().nullable(),
+	containerId: idSchema.nullable(),
 	quantity: z.number().int().positive().optional()
 });
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
 	import { api, ApiError } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
@@ -9,10 +9,13 @@
 	/** The item's sticker with «Привязать» / «Отвязать» actions. */
 	let {
 		itemId,
+		quantity = 1,
 		sticker,
 		editable
 	}: {
 		itemId: string;
+		/** A sticker marks one thing: binding it to several splits one off (see bindSticker). */
+		quantity?: number;
 		sticker: {
 			code: string;
 			status: 'FREE' | 'BOUND' | 'WRITTEN_OFF';
@@ -40,7 +43,11 @@
 		}
 	}
 
-	const bind = (code: string) => run(() => api.post('/api/stickers/bind', { code, itemId }));
+	const bind = (code: string) =>
+		run(async () => {
+			const bound = await api.post<{ itemId: string }>('/api/stickers/bind', { code, itemId });
+			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
+		});
 
 	async function unbind() {
 		const ok = await confirmAction({
@@ -84,6 +91,12 @@
 			{/if}
 		</div>
 		{#if binding}
+			{#if quantity > 1}
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					Наклейка обозначает одну вещь: из {quantity} шт. одна станет отдельной записью с наклейкой,
+					остальные останутся здесь.
+				</p>
+			{/if}
 			<QrScanner onscan={bind} active={binding} />
 		{/if}
 	{/if}
