@@ -3,9 +3,6 @@
 	import { page } from '$app/state';
 	import type { Component, Snippet } from 'svelte';
 	import {
-		BottomNav,
-		BottomNavItem,
-		Drawer,
 		Navbar,
 		NavBrand,
 		NavLi,
@@ -17,10 +14,9 @@
 	import {
 		ArrowRightToBracketOutline,
 		ClockOutline,
+		CogOutline,
 		AdjustmentsHorizontalOutline,
-		DesktopPcOutline,
 		DotsHorizontalOutline,
-		FolderOpenOutline,
 		QrCodeOutline,
 		SearchOutline,
 		TagOutline,
@@ -28,6 +24,9 @@
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
+	import BoxIcon from '$lib/components/icons/BoxIcon.svelte';
+	import DeskIcon from '$lib/components/icons/DeskIcon.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -38,8 +37,8 @@
 	const primary: Link[] = [
 		{ href: '/', label: 'Поиск', icon: SearchOutline },
 		{ href: '/scan', label: 'Скан', icon: QrCodeOutline },
-		{ href: '/workbench', label: 'Стол', icon: DesktopPcOutline },
-		{ href: '/containers', label: 'Контейнеры', icon: FolderOpenOutline }
+		{ href: '/workbench', label: 'Стол', icon: DeskIcon },
+		{ href: '/containers', label: 'Контейнеры', icon: BoxIcon }
 	];
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
@@ -49,6 +48,24 @@
 	];
 
 	let moreOpen = $state(false);
+
+	/**
+	 * Tab bar colors. Inactive: gray, hover darkens the text and shows a gray pill
+	 * behind the icon. Active: primary text on a light primary pill, hover deepens both.
+	 * (`hover:` only applies on devices with a pointer, so taps don't leave it stuck.)
+	 */
+	const tabClass = (active: boolean) =>
+		`flex flex-col items-center justify-center gap-0.5 transition-colors focus-visible:outline-none ${
+			active
+				? 'text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200'
+				: 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+		}`;
+	const pillClass = (active: boolean) =>
+		`flex h-8 w-14 items-center justify-center rounded-full transition-colors group-focus-visible:ring-2 group-focus-visible:ring-primary-400 ${
+			active
+				? 'bg-primary-100 group-hover:bg-primary-200 dark:bg-primary-900/60 dark:group-hover:bg-primary-800/70'
+				: 'group-hover:bg-gray-100 dark:group-hover:bg-gray-700'
+		}`;
 
 	function isActive(href: string): boolean {
 		const path = page.url.pathname;
@@ -61,7 +78,7 @@
 	}
 
 	const moreActive = $derived(
-		[...secondary.map((l) => l.href), '/profile'].some((href) => isActive(href))
+		[...secondary.map((l) => l.href), '/settings'].some((href) => isActive(href))
 	);
 
 	// Close «Ещё» after navigating.
@@ -72,8 +89,9 @@
 </script>
 
 {#if data.user}
+	<!-- Only on wide screens: on phones the tab bar and «Ещё» cover everything. -->
 	<Navbar
-		class="sticky top-0 z-30 border-b border-gray-200 pt-[env(safe-area-inset-top)] dark:border-gray-700"
+		class="sticky top-0 z-30 border-b border-gray-200 pt-[env(safe-area-inset-top)] max-md:hidden dark:border-gray-700"
 		fluid
 	>
 		<NavBrand href="/">
@@ -81,9 +99,10 @@
 		</NavBrand>
 		<div class="flex items-center md:order-2">
 			<a
-				href="/profile"
+				href="/settings"
+				title="Настройки"
 				class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-				aria-current={isActive('/profile') ? 'page' : undefined}
+				aria-current={isActive('/settings') ? 'page' : undefined}
 			>
 				<UserCircleOutline class="h-5 w-5" />
 				<span class="max-w-32 truncate">{data.user.name}</span>
@@ -103,7 +122,7 @@
 {/if}
 
 <main
-	class="mx-auto max-w-3xl px-4 pt-3 {data.user
+	class="mx-auto max-w-3xl px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] md:pt-3 {data.user
 		? 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-16'
 		: 'pb-16'}"
 >
@@ -111,44 +130,40 @@
 </main>
 
 {#if data.user}
-	<BottomNav
-		position="fixed"
-		class="pb-[env(safe-area-inset-bottom)] md:hidden"
-		classes={{ inner: 'grid-cols-5' }}
+	<!-- Own tab bar (not Flowbite's BottomNav): its dark-theme colors (white icons, gray
+	     labels, dark blue active tab) could not be fixed by overrides alone. -->
+	<nav
+		class="fixed start-0 bottom-0 z-30 w-full border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden dark:border-gray-700 dark:bg-gray-800"
+		aria-label="Основные разделы"
 	>
-		{#each primary as link (link.href)}
-			{@const Icon = link.icon}
-			<BottomNavItem
-				href={link.href}
-				btnName={link.label}
-				classes={{ span: 'text-xs' }}
-				active={isActive(link.href)}
-				aria-current={isActive(link.href) ? 'page' : undefined}
-			>
-				<Icon class="mb-1 h-6 w-6" />
-			</BottomNavItem>
-		{/each}
-		<BottomNavItem
-			btnName="Ещё"
-			classes={{ span: 'text-xs' }}
-			active={moreActive}
-			onclick={() => (moreOpen = true)}
-		>
-			<DotsHorizontalOutline class="mb-1 h-6 w-6" />
-		</BottomNavItem>
-	</BottomNav>
+		<div class="mx-auto grid h-16 max-w-lg grid-cols-5">
+			{#each primary as link (link.href)}
+				{@const Icon = link.icon}
+				{@const active = isActive(link.href)}
+				<a
+					href={link.href}
+					class="group {tabClass(active)}"
+					aria-current={active ? 'page' : undefined}
+				>
+					<span class={pillClass(active)}><Icon class="h-6 w-6" /></span>
+					<span class="text-xs">{link.label}</span>
+				</a>
+			{/each}
+			<button type="button" class="group {tabClass(moreActive)}" onclick={() => (moreOpen = true)}>
+				<span class={pillClass(moreActive)}><DotsHorizontalOutline class="h-6 w-6" /></span>
+				<span class="text-xs">Ещё</span>
+			</button>
+		</div>
+	</nav>
 
-	<Drawer
-		bind:open={moreOpen}
-		placement="bottom"
-		class="rounded-t-2xl pb-[env(safe-area-inset-bottom)]"
-	>
+	<!-- Our sheet with its own close button: the Drawer's built-in one sat under the menu. -->
+	<Sheet bind:open={moreOpen} title="Ещё">
 		<Sidebar
 			alwaysOpen
 			activeUrl={page.url.pathname}
 			position="static"
 			class="w-full bg-transparent dark:bg-transparent"
-			classes={{ div: 'bg-transparent px-0 dark:bg-transparent' }}
+			classes={{ div: 'bg-transparent px-0 py-0 dark:bg-transparent' }}
 		>
 			<SidebarGroup>
 				{#each secondary as link (link.href)}
@@ -157,8 +172,8 @@
 						{#snippet icon()}<Icon class="h-5 w-5" />{/snippet}
 					</SidebarItem>
 				{/each}
-				<SidebarItem href="/profile" label="Профиль — {data.user.name}">
-					{#snippet icon()}<UserCircleOutline class="h-5 w-5" />{/snippet}
+				<SidebarItem href="/settings" label="Настройки">
+					{#snippet icon()}<CogOutline class="h-5 w-5" />{/snippet}
 				</SidebarItem>
 			</SidebarGroup>
 			<SidebarGroup border>
@@ -173,7 +188,7 @@
 				</form>
 			</SidebarGroup>
 		</Sidebar>
-	</Drawer>
+	</Sheet>
 {/if}
 
 <ConfirmHost />

@@ -3,7 +3,9 @@
 @source '../node_modules/flowbite-svelte/dist';
 @source '../node_modules/flowbite-svelte-icons/dist';
 
-/* Dark theme follows the system setting (Tailwind's default `dark:` variant). */
+/* Dark styles apply under <html class="dark">: the theme is chosen in «Настройки»
+   (light, dark or the system setting; see app.html and $lib/theme). */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
 	--color-primary-50: #eff6ff;
@@ -24,7 +26,11 @@
 
 @layer base {
 	:root {
-		color-scheme: light dark;
+		color-scheme: light;
+	}
+
+	:root.dark {
+		color-scheme: dark;
 	}
 
 	body {

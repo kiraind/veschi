@@ -102,14 +102,21 @@
 	<ul class="flex flex-wrap gap-2">
 		{#each data.card.types as type (type.id)}
 			<li>
-				<Badge color="gray" large href="/types/{type.id}" class="py-1.5 break-words"
-					>тип · {type.name}</Badge
+				<Badge
+					color="gray"
+					large
+					href="/types/{type.id}"
+					class="dark:bg-gray-700 dark:text-gray-200 py-1.5 break-words">тип · {type.name}</Badge
 				>
 			</li>
 		{/each}
 		{#each data.card.items as item (item.id)}
 			<li>
-				<Badge color="gray" large href="/items/{item.id}" class="py-1.5 break-words"
+				<Badge
+					color="gray"
+					large
+					href="/items/{item.id}"
+					class="dark:bg-gray-700 dark:text-gray-200 py-1.5 break-words"
 					>{item.name}{item.archived ? ' (в архиве)' : ''}</Badge
 				>
 			</li>

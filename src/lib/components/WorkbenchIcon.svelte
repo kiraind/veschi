@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
 	import {
 		ArchiveOutline,
 		BedOutline,
@@ -17,9 +18,11 @@
 		ToolsOutline,
 		TruckOutline
 	} from 'flowbite-svelte-icons';
+	import DeskIcon from './icons/DeskIcon.svelte';
 	import { workbenchIconKey, type WorkbenchIconKey } from '$lib/domain/workbench-icons';
 
-	const COMPONENTS: Record<WorkbenchIconKey, typeof HomeOutline> = {
+	const COMPONENTS: Record<WorkbenchIconKey, Component<{ class?: string }>> = {
+		desk: DeskIcon,
 		desktop: DesktopPcOutline,
 		home: HomeOutline,
 		garage: TruckOutline,

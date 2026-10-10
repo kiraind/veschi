@@ -32,7 +32,9 @@
 		class="text-primary-700 hover:underline dark:text-primary-400"
 		href="/{param.ref.kind === 'item' ? 'items' : 'types'}/{param.ref.id}">→ {param.ref.name}</a
 	>
-	{#if param.ref.archived}<Badge color="gray" class="ms-1">в архиве</Badge>{/if}
+	{#if param.ref.archived}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
+			>в архиве</Badge
+		>{/if}
 {:else}
 	{formatParamValue(param)}
 {/if}

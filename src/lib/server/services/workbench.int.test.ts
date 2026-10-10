@@ -111,6 +111,22 @@ describe('workbench service', () => {
 		expect(listed?.homePath.map((n) => n.name)).toEqual(['Ящик']);
 	});
 
+	it('shows the sticker codes of the containers on the way home', async () => {
+		const shelf = await item('Стеллаж');
+		const drawer = await item('Ящик', shelf.id);
+		const knife = await item('Нож', drawer.id);
+		await db.sticker.create({
+			data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: shelf.id }
+		});
+		await take(actor, knife.id, { workbenchId: garage });
+
+		const [listed] = await listWorkbench(actor, garage);
+		expect(listed?.homePath.map((n) => [n.name, n.stickerCode])).toEqual([
+			['Стеллаж', 'K7M4QX'],
+			['Ящик', null]
+		]);
+	});
+
 	describe('taking part of the quantity', () => {
 		let box: { id: string };
 		let chips: { id: string };

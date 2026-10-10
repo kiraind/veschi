@@ -1,20 +1,19 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Badge, Button, Input } from 'flowbite-svelte';
+	import { Badge, Button, Card, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
-	import ParamDefPicker from '$lib/components/ParamDefPicker.svelte';
-	import { paramKindLabel, type ParamDefView } from '$lib/domain/params';
+	import ParamDefCreate from '$lib/components/ParamDefCreate.svelte';
+	import { normalizeParamKey, paramKindLabel, type ParamDefView } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	let addingParam = $state(false);
-	let filter = $state('');
-	const shown = $derived(
-		data.defs.filter((d) =>
-			d.name.toLocaleLowerCase('ru').includes(filter.trim().toLocaleLowerCase('ru'))
-		)
-	);
+	/** The field on top filters the list; a name nothing matches exactly can be created. */
+	let query = $state('');
+	let creating = $state(false);
+	const q = $derived(normalizeParamKey(query));
+	const shown = $derived(data.defs.filter((d) => normalizeParamKey(d.name).includes(q)));
+	const exact = $derived(data.defs.some((d) => normalizeParamKey(d.name) === q));
 
 	function usage(d: ParamDefView): string {
 		const parts = [];
@@ -33,54 +32,61 @@
 	задаются на странице типа или вещи.
 </p>
 
-{#if data.defs.length > 8}
-	<Input
-		class="mb-3"
-		type="search"
-		bind:value={filter}
-		placeholder="Найти параметр"
-		aria-label="Найти параметр"
-	/>
-{/if}
+<Input
+	type="search"
+	bind:value={query}
+	placeholder="Найти параметр или ввести новый"
+	aria-label="Найти параметр или ввести новый"
+	autocomplete="off"
+	disabled={creating}
+/>
 
-<ul
-	class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
->
-	{#each shown as d (d.id)}
-		<li>
-			<a
-				href="/params/{d.id}"
-				class="flex min-h-12 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-			>
-				<span class="min-w-0 font-medium break-words">{d.name}</span>
-				<span class="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-					<Badge color="gray">{paramKindLabel(d)}</Badge>
-					{usage(d)}
-				</span>
-				{#if d.valueType === 'ENUM'}
-					<span class="w-full text-sm break-words text-gray-500 dark:text-gray-400">
-						{d.options.map((o) => o.label).join(' / ') || 'нет вариантов'}
-					</span>
-				{/if}
-			</a>
-		</li>
-	{:else}
-		<li class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-			{data.defs.length ? 'Ничего не найдено.' : 'Параметров пока нет.'}
-		</li>
-	{/each}
-</ul>
-
-<div class="mt-3">
-	{#if addingParam}
-		<ParamDefPicker
-			exclude={data.defs.map((d) => d.id)}
-			onpick={(def) => goto(`/params/${def.id}`)}
-			oncancel={() => (addingParam = false)}
-		/>
-	{:else}
-		<Button color="alternative" onclick={() => (addingParam = true)}>
-			<PlusOutline class="me-1 h-4 w-4" />Новый параметр
+<div class="my-3">
+	{#if creating}
+		<Card class="max-w-none gap-3 p-3">
+			<ParamDefCreate
+				name={query}
+				oncreated={(def) => goto(`/params/${def.id}`)}
+				oncancel={() => (creating = false)}
+			/>
+		</Card>
+	{:else if !exact}
+		<Button color="alternative" onclick={() => (creating = true)}>
+			<PlusOutline class="me-1 h-4 w-4" />{q
+				? `Новый параметр «${query.trim()}»`
+				: 'Новый параметр'}
 		</Button>
 	{/if}
 </div>
+
+{#if !creating}
+	<ul
+		class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+	>
+		{#each shown as d (d.id)}
+			<li>
+				<a
+					href="/params/{d.id}"
+					class="flex min-h-12 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+				>
+					<span class="min-w-0 font-medium break-words">{d.name}</span>
+					<span class="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+						<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
+							>{paramKindLabel(d)}</Badge
+						>
+						{usage(d)}
+					</span>
+					{#if d.valueType === 'ENUM'}
+						<span class="w-full text-sm break-words text-gray-500 dark:text-gray-400">
+							{d.options.map((o) => o.label).join(' / ') || 'нет вариантов'}
+						</span>
+					{/if}
+				</a>
+			</li>
+		{:else}
+			<li class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+				{data.defs.length ? 'Такого параметра нет.' : 'Параметров пока нет.'}
+			</li>
+		{/each}
+	</ul>
+{/if}

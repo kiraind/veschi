@@ -3,6 +3,7 @@
  * component mapping lives in `WorkbenchIcon.svelte`. null = DEFAULT_WORKBENCH_ICON.
  */
 export const WORKBENCH_ICONS = [
+	{ key: 'desk', label: 'Стол' },
 	{ key: 'desktop', label: 'Компьютерный стол' },
 	{ key: 'home', label: 'Дом' },
 	{ key: 'garage', label: 'Гараж' },
@@ -28,7 +29,7 @@ export const WORKBENCH_ICON_KEYS = WORKBENCH_ICONS.map((i) => i.key) as [
 	...WorkbenchIconKey[]
 ];
 
-export const DEFAULT_WORKBENCH_ICON: WorkbenchIconKey = 'desktop';
+export const DEFAULT_WORKBENCH_ICON: WorkbenchIconKey = 'desk';
 
 export function isWorkbenchIconKey(key: unknown): key is WorkbenchIconKey {
 	return typeof key === 'string' && (WORKBENCH_ICON_KEYS as string[]).includes(key);
