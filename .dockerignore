@@ -1,0 +1,17 @@
+# Only sources go into the build context; dependencies and build output are
+# produced inside the image (native modules must be built for musl).
+node_modules
+build
+.svelte-kit
+coverage
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+!.env.example
+*.log
+Dockerfile
+.dockerignore
+docker-compose.yml
