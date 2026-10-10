@@ -16,11 +16,7 @@
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
-	import {
-		AdjustmentsHorizontalOutline,
-		ArrowsRepeatOutline,
-		PlusOutline
-	} from 'flowbite-svelte-icons';
+	import { ChevronSortOutline, ArrowsRepeatOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -167,8 +163,9 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
 		{#if card.type?.isContainer}<Badge color="indigo">контейнер</Badge>{/if}
-		{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
-				>{item.quantity} шт.</Badge
+		{#if item.quantity > 1 && !(active && !item.isWorkbench)}<Badge
+				color="gray"
+				class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
 			>{/if}
 		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
@@ -203,9 +200,15 @@
 			<ArrowsRepeatOutline class={actionIconClass} />
 			Переложить
 		</Button>
-		<Button color="alternative" class={actionClass} onclick={() => (changingQuantity = true)}>
-			<AdjustmentsHorizontalOutline class={actionIconClass} />
-			Изменить
+		<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
+		<Button
+			color="alternative"
+			class={actionClass}
+			aria-label="Количество: {item.quantity} шт. Изменить"
+			onclick={() => (changingQuantity = true)}
+		>
+			<ChevronSortOutline class={actionIconClass} />
+			{item.quantity} шт.
 		</Button>
 	</ButtonGroup>
 	{#if taking}

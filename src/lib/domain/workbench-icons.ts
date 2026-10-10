@@ -28,7 +28,7 @@ export const WORKBENCH_ICON_KEYS = WORKBENCH_ICONS.map((i) => i.key) as [
 	...WorkbenchIconKey[]
 ];
 
-export const DEFAULT_WORKBENCH_ICON: WorkbenchIconKey = 'desktop';
+export const DEFAULT_WORKBENCH_ICON: WorkbenchIconKey = 'tools';
 
 export function isWorkbenchIconKey(key: unknown): key is WorkbenchIconKey {
 	return typeof key === 'string' && (WORKBENCH_ICON_KEYS as string[]).includes(key);

@@ -12,16 +12,16 @@
 		SidebarItem
 	} from 'flowbite-svelte';
 	import {
+		ArchiveOutline,
 		ArrowRightToBracketOutline,
 		ClockOutline,
 		CogOutline,
 		AdjustmentsHorizontalOutline,
-		DesktopPcOutline,
 		DotsHorizontalOutline,
-		FolderOpenOutline,
 		QrCodeOutline,
 		SearchOutline,
 		TagOutline,
+		ToolsOutline,
 		UserCircleOutline,
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
@@ -37,8 +37,8 @@
 	const primary: Link[] = [
 		{ href: '/', label: 'Поиск', icon: SearchOutline },
 		{ href: '/scan', label: 'Скан', icon: QrCodeOutline },
-		{ href: '/workbench', label: 'Стол', icon: DesktopPcOutline },
-		{ href: '/containers', label: 'Контейнеры', icon: FolderOpenOutline }
+		{ href: '/workbench', label: 'Стол', icon: ToolsOutline },
+		{ href: '/containers', label: 'Контейнеры', icon: ArchiveOutline }
 	];
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },

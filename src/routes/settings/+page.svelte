@@ -55,7 +55,6 @@
 	</Card>
 
 	<section>
-		<h2 class="mb-2 text-lg font-semibold">Тема</h2>
 		<ButtonGroup class="w-full sm:w-auto" role="radiogroup" aria-label="Тема">
 			{#each themes as t (t.value)}
 				{@const Icon = t.icon}
@@ -71,9 +70,6 @@
 				</Button>
 			{/each}
 		</ButtonGroup>
-		<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-			Тема запоминается на этом устройстве. «Системная» следует настройке телефона или компьютера.
-		</p>
 	</section>
 
 	<Listgroup active class="w-full">
