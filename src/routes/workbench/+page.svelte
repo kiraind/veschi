@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { formatPath, pathNodeName } from '$lib/domain/item';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
 	import QuantityField from '$lib/components/QuantityField.svelte';
@@ -205,7 +206,12 @@
 						{#if i > 0}<span class="flex-none text-gray-400 dark:text-gray-500" aria-hidden="true"
 								>↳</span
 							>{/if}
-						<span class="min-w-0">{pathNodeName(node)}</span>
+						<span class="min-w-0">
+							{pathNodeName(node)}{#if node.stickerCode}<span
+									class="ms-2 font-mono text-base font-normal whitespace-nowrap text-gray-500 dark:text-gray-400"
+									>{formatCode(node.stickerCode)}</span
+								>{/if}
+						</span>
 					</li>
 				{/each}
 			</ol>
