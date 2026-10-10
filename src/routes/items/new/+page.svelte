@@ -113,7 +113,7 @@
 	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />
 
 	<div>
-		<Label for="item-name">Своё название (необязательно)</Label>
+		<Label for="item-name">Название этой конкретной вещи (необязательно)</Label>
 		<Input
 			id="item-name"
 			class="mt-1"

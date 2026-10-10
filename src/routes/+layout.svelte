@@ -5,7 +5,6 @@
 	import {
 		BottomNav,
 		BottomNavItem,
-		Drawer,
 		Navbar,
 		NavBrand,
 		NavLi,
@@ -28,6 +27,7 @@
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -136,17 +136,14 @@
 		</BottomNavItem>
 	</BottomNav>
 
-	<Drawer
-		bind:open={moreOpen}
-		placement="bottom"
-		class="rounded-t-2xl pb-[env(safe-area-inset-bottom)]"
-	>
+	<!-- Our sheet with its own close button: the Drawer's built-in one sat under the menu. -->
+	<Sheet bind:open={moreOpen} title="Ещё">
 		<Sidebar
 			alwaysOpen
 			activeUrl={page.url.pathname}
 			position="static"
 			class="w-full bg-transparent dark:bg-transparent"
-			classes={{ div: 'bg-transparent px-0 dark:bg-transparent' }}
+			classes={{ div: 'bg-transparent px-0 py-0 dark:bg-transparent' }}
 		>
 			<SidebarGroup>
 				{#each secondary as link (link.href)}
@@ -171,7 +168,7 @@
 				</form>
 			</SidebarGroup>
 		</Sidebar>
-	</Drawer>
+	</Sheet>
 {/if}
 
 <ConfirmHost />

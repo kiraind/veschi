@@ -23,7 +23,8 @@
 		onfile,
 		onremove,
 		caption,
-		alt = 'Фото'
+		alt = 'Фото',
+		wide = false
 	}: {
 		photoKey?: string | null;
 		previewUrl?: string | null;
@@ -32,6 +33,8 @@
 		onremove?: () => Promise<void>;
 		caption?: string;
 		alt?: string;
+		/** Full width on phones (the item and type cards); otherwise up to 256 px. */
+		wide?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -67,7 +70,7 @@
 
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
-	<div class="relative aspect-square w-full max-w-64">
+	<div class="relative aspect-square w-full {wide ? 'sm:max-w-64' : 'max-w-64'}">
 		{#if src}
 			<img
 				class="h-full w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
