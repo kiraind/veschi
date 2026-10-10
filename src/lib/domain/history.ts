@@ -61,6 +61,10 @@ export interface HistoryDataMap {
 	'item.purged': { together: number };
 	'sticker.bound': { code: string; resultId?: string };
 	'sticker.unbound': { code: string };
+	'sticker.ordered': Record<string, never>;
+	'sticker.orderCancelled': Record<string, never>;
+	/** An ordered sticker printed in a batch and bound to the item (`resultId` when split off). */
+	'sticker.printed': { code: string; resultId?: string };
 	'params.changed': { changes: ParamChange[] };
 	'type.created': Record<string, never>;
 	'type.updated': { changes: Change[] };
@@ -72,7 +76,10 @@ export interface HistoryDataMap {
 	'workbench.created': Record<string, never>;
 	'workbench.updated': { changes: Change[] };
 	'workbench.deleted': Record<string, never>;
-	'stickers.issued': { count: number };
+	/** `ordered`: how many of them were printed for ordered items. */
+	'stickers.issued': { count: number; ordered?: number };
+	/** The batch was marked unprinted and deleted; `ordered` items got their orders back. */
+	'stickers.unprinted': { count: number; ordered?: number };
 }
 
 export type HistoryKind = keyof HistoryDataMap;
@@ -102,6 +109,9 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'item.purged': 'archive',
 	'sticker.bound': 'stickers',
 	'sticker.unbound': 'stickers',
+	'sticker.ordered': 'stickers',
+	'sticker.orderCancelled': 'stickers',
+	'sticker.printed': 'stickers',
 	'params.changed': 'changes',
 	'type.created': 'changes',
 	'type.updated': 'changes',
@@ -113,7 +123,8 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'workbench.created': 'changes',
 	'workbench.updated': 'changes',
 	'workbench.deleted': 'changes',
-	'stickers.issued': 'stickers'
+	'stickers.issued': 'stickers',
+	'stickers.unprinted': 'stickers'
 };
 
 export const HISTORY_KINDS = Object.keys(GROUP_OF) as HistoryKind[];
@@ -375,6 +386,17 @@ export function describeEvent(e: HistoryEventView): EventText {
 				details: []
 			};
 		}
+		case 'sticker.ordered':
+			return { title: [t('Наклейка ждёт печати для вещи '), subject], details: [] };
+		case 'sticker.orderCancelled':
+			return { title: [t('Наклейка больше не ждёт печати для вещи '), subject], details: [] };
+		case 'sticker.printed': {
+			const d = e.data as HistoryData<'sticker.printed'>;
+			return {
+				title: [t(`Наклейка ${formatCode(d.code)} напечатана для вещи `), subject],
+				details: []
+			};
+		}
 		case 'params.changed': {
 			const d = e.data as HistoryData<'params.changed'>;
 			const owner = e.subjectKind === 'type' ? 'типа ' : 'вещи ';
@@ -426,7 +448,14 @@ export function describeEvent(e: HistoryEventView): EventText {
 						: t('Выпущены наклейки'),
 					t(`: ${d.count} шт.`)
 				],
-				details: []
+				details: d.ordered ? [[t(`Для вещей: ${d.ordered}`)]] : []
+			};
+		}
+		case 'stickers.unprinted': {
+			const d = e.data as HistoryData<'stickers.unprinted'>;
+			return {
+				title: [t(`Наклейки не распечатаны, ID освобождены: ${d.count} шт.`)],
+				details: d.ordered ? [[t(`Снова ждут печати: ${d.ordered}`)]] : []
 			};
 		}
 	}

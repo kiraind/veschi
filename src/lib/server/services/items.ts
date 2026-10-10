@@ -105,6 +105,8 @@ export interface ItemCard {
 		photoKey: string | null;
 	} | null;
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
+	/** A sticker is ordered and waits for the next batch («Заказать наклейку»). */
+	stickerOrdered: boolean;
 	path: PathNode[];
 	/** The item's own parameters («Индивидуальные параметры»). */
 	itemParams: ParamView[];
@@ -329,6 +331,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		sticker: item.sticker
 			? { code: item.sticker.code, status: item.sticker.status, caption: item.sticker.caption }
 			: null,
+		stickerOrdered: item.stickerOrderedAt !== null,
 		path,
 		itemParams: own,
 		typeParams: inheritedParams(typeParams?.get(item.typeId ?? '') ?? [], own),
