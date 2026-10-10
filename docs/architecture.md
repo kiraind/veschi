@@ -51,10 +51,10 @@ prisma/              схема и миграции
 - Подтверждение действия — `await confirmAction({ title, message?, confirmLabel? })` из `$lib/confirm.svelte`, не `confirm()` браузера.
 - Длинные имена файлов и ссылки показываются через `shortenFileName` / `shortenUrl` из `$lib/domain/shorten`.
 - **Интерфейс**: компоненты Flowbite Svelte (`Button`, `Card`, `Input`, `Badge`, `Alert`…) и утилиты Tailwind; `<style>` в компонентах — только если без него никак. Сначала вёрстка под телефон (≈390 px), кнопки не ниже 40 px. Общие приёмы: h1 — `text-2xl font-bold`, вторичный текст — `text-sm text-gray-500 dark:text-gray-400`, ошибка — `text-sm text-red-600 dark:text-red-500` с `role="alert"`.
-- **Идентификаторы** — cuid (`@default(cuid())`, колонки `TEXT`); во входных данных — `idSchema` из `$lib/domain/id`. Старые UUID из `LegacyId` перенаправляются в `load` страниц вещи, типа и параметра (`redirectLegacyId`).
+- **Идентификаторы** — cuid (`@default(cuid())`, колонки `TEXT`); во входных данных — `idSchema` из `$lib/domain/id`.
 - **Правка на месте**: отдельных страниц «Изменить» нет. Название или описание правится через карандаш (`EditButton`) и шторку (`TextEditSheet` поверх `Sheet` — Drawer снизу); количество, «Использовать» и «Выкинуть» — `QuantitySheet`. Тип вещи после создания не меняется.
 - Наклейка — всегда на одну вещь: у записи с наклейкой количество 1 (`STICKER_QUANTITY` в `services/items.ts`); `bindSticker` отделяет одну вещь от записи с количеством больше 1.
-- Фото при загрузке приводятся к квадрату с прозрачными полями (`toWebp` в `services/types.ts`) и показываются в квадратной рамке.
+- Фото при загрузке приводятся к квадрату с прозрачными полями и сохраняются в двух размерах (`toWebp` в `services/types.ts`; миниатюра — `thumbKeyOf`, отдаётся по `/files/<key>?size=thumb`, у старых фото её нет — отдаётся само фото). Удалять файлы — через `deleteStored`, он убирает и миниатюру.
 - ID наклеек хранятся без дефиса заглавными (`K7M4QX`), показываются через `formatCode` (`K7M-4QX`), ввод нормализуется `normalizeCode`.
 
 ## Тесты

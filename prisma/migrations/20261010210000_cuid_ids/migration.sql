@@ -1,7 +1,6 @@
 -- Review round 4: ids are cuids (TEXT) instead of UUIDs. Every existing row
--- gets a new cuid; foreign keys follow through ON UPDATE CASCADE. Old item,
--- type and parameter ids are kept in "LegacyId" so old links redirect.
--- Sticker QR codes hold the sticker code, not an id, so printed stickers are
+-- gets a new cuid; foreign keys follow through ON UPDATE CASCADE. Old ids are
+-- not kept, so old links stop working. Sticker QR codes hold the sticker code, not an id, so printed stickers are
 -- not affected. Also: an item with a sticker is a single thing, so records
 -- with a sticker and quantity > 1 are split into the stickered one (1) and a
 -- plain record with the rest.
@@ -207,15 +206,6 @@ ALTER COLUMN "id" SET DATA TYPE TEXT,
 ALTER COLUMN "lastWorkbenchId" SET DATA TYPE TEXT,
 ADD CONSTRAINT "User_pkey" PRIMARY KEY ("id");
 
--- CreateTable
-CREATE TABLE "LegacyId" (
-    "oldId" TEXT NOT NULL,
-    "model" TEXT NOT NULL,
-    "newId" TEXT NOT NULL,
-
-    CONSTRAINT "LegacyId_pkey" PRIMARY KEY ("oldId")
-);
-
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_lastWorkbenchId_fkey" FOREIGN KEY ("lastWorkbenchId") REFERENCES "Item"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -358,10 +348,6 @@ BEGIN
   END LOOP;
 END
 $$;
-
-INSERT INTO "LegacyId" ("oldId", "model", "newId")
-SELECT "oldId", "model", "newId" FROM "veschi_tmp_id_map"
-WHERE "model" IN ('Item', 'ItemType', 'ParamDef');
 
 DROP TABLE "veschi_tmp_id_map";
 

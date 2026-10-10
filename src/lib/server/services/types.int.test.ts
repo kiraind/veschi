@@ -7,6 +7,7 @@ import { createTestActor } from '$lib/server/testing/db';
 import { createItem, getItemCard, moveItem } from './items';
 import { setKeyedParams } from '$lib/server/testing/params';
 import { createWorkbench, relocate, take } from './workbench';
+import { openFile, thumbKeyOf } from './files';
 import {
 	createType,
 	deleteType,
@@ -179,37 +180,58 @@ describe('types', () => {
 	});
 
 	describe('photo', () => {
-		it('stores a square WebP of at most 1600 px and replaces the old photo', async () => {
+		it('stores a square WebP and a thumbnail, and replaces the old photo', async () => {
 			const type = await createType(actor, { name: 'Нож' });
 			const first = await setTypePhoto(actor, type.id, await png(3200, 1000));
-			const stored = await storage().get(first);
-			expect(stored?.contentType).toBe('image/webp');
-			const chunks: Buffer[] = [];
-			for await (const chunk of stored!.body) chunks.push(chunk as Buffer);
-			const webp = Buffer.concat(chunks);
+			const read = async (key: string) => {
+				const stored = await storage().get(key);
+				expect(stored?.contentType).toBe('image/webp');
+				const chunks: Buffer[] = [];
+				for await (const chunk of stored!.body) chunks.push(chunk as Buffer);
+				return Buffer.concat(chunks);
+			};
+			const webp = await read(first);
 			const meta = await sharp(webp).metadata();
 			expect([meta.format, meta.width, meta.height, meta.hasAlpha]).toEqual([
 				'webp',
-				1600,
-				1600,
+				2048,
+				2048,
 				true
 			]);
 			// The margins above and below the wide picture are transparent; the picture is not.
 			const { data, info } = await sharp(webp).raw().toBuffer({ resolveWithObject: true });
 			const alphaAt = (x: number, y: number) => data[(y * info.width + x) * info.channels + 3];
-			expect(alphaAt(800, 10)).toBe(0);
-			expect(alphaAt(800, 1590)).toBe(0);
-			expect(alphaAt(800, 800)).toBe(255);
+			expect(alphaAt(1024, 10)).toBe(0);
+			expect(alphaAt(1024, 2038)).toBe(0);
+			expect(alphaAt(1024, 1024)).toBe(255);
+			const thumb = await sharp(await read(thumbKeyOf(first))).metadata();
+			expect([thumb.width, thumb.height]).toEqual([320, 320]);
 
-			const second = await setTypePhoto(actor, type.id, await png(100, 100));
+			// A small picture is not enlarged.
+			const second = await setTypePhoto(actor, type.id, await png(100, 60));
 			expect(second).not.toBe(first);
 			expect(await storage().get(first)).toBeNull();
+			expect(await storage().get(thumbKeyOf(first))).toBeNull();
+			expect((await sharp(await read(second)).metadata()).width).toBe(100);
+			expect((await sharp(await read(thumbKeyOf(second))).metadata()).width).toBe(100);
 			expect((await db.itemType.findUniqueOrThrow({ where: { id: type.id } })).photoKey).toBe(
 				second
 			);
 
 			await removeTypePhoto(actor, type.id);
 			expect(await storage().get(second)).toBeNull();
+			expect(await storage().get(thumbKeyOf(second))).toBeNull();
+		});
+
+		it('serves the thumbnail, or the photo itself when an old photo has none', async () => {
+			const type = await createType(actor, { name: 'Нож' });
+			const fresh = await setTypePhoto(actor, type.id, await png(500, 500));
+			expect((await openFile(actor, fresh, { thumb: true })).size).toBe(
+				(await storage().get(thumbKeyOf(fresh)))!.size
+			);
+			await storage().put('types/old.webp', Buffer.from('old'), 'image/webp');
+			await db.itemType.update({ where: { id: type.id }, data: { photoKey: 'types/old.webp' } });
+			expect((await openFile(actor, 'types/old.webp', { thumb: true })).size).toBe(3);
 		});
 
 		it('rejects data that is not an image', async () => {

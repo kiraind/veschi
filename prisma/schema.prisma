@@ -361,15 +361,3 @@ model ParamEnumValue {
   @@id([paramId, optionId])
 }
 
-// ---------------------------------------------------------------------------
-// Legacy ids
-// ---------------------------------------------------------------------------
-
-// UUID ids from before the switch to cuid (2026-10, see docs/decisions.md):
-// old links to /items/<uuid>, /types/<uuid>, /params/<uuid> redirect through it.
-model LegacyId {
-  oldId String @id
-  // "Item", "ItemType" or "ParamDef".
-  model String
-  newId String
-}

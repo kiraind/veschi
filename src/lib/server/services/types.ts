@@ -7,12 +7,13 @@ import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { storage } from '$lib/server/storage';
 import { itemDisplayName } from '$lib/domain/item';
 import type { ParamView } from '$lib/domain/params';
-import { deleteUnreferencedFiles } from './files';
+import { deleteStored, deleteUnreferencedFiles, thumbKeyOf } from './files';
 import { getParamsOf } from './params';
 import { assertNothingInside, getPaths, type PathNode } from './paths';
 
-/** Longest side of a stored photo, px. */
-const PHOTO_MAX_SIDE = 1600;
+/** Side of a stored photo (square), px: full size and thumbnail. */
+const PHOTO_MAX_SIDE = 2048;
+const PHOTO_THUMB_SIDE = 320;
 
 export const typeNameSchema = z.string().trim().min(1, 'Укажите название').max(200);
 export const typeDescriptionSchema = z
@@ -200,30 +201,41 @@ export async function deleteType(actor: Actor, id: string): Promise<void> {
 	await deleteUnreferencedFiles([...fileKeys, ...(type.photoKey ? [type.photoKey] : [])]);
 }
 
+/** A photo in the two stored sizes: full (for the photo itself) and a thumbnail (lists). */
+export interface PhotoVariants {
+	full: Buffer;
+	thumb: Buffer;
+}
+
 /**
- * Re-encodes an uploaded photo to a square WebP (≤1600 px, EXIF rotation
- * applied): the picture is centred and padded with transparent margins, never
- * cropped or enlarged.
+ * Re-encodes an uploaded photo to two square WebPs (EXIF rotation applied):
+ * the full one up to PHOTO_MAX_SIDE and a PHOTO_THUMB_SIDE thumbnail. The
+ * picture is centred and padded with transparent margins, never cropped or
+ * enlarged.
  */
-export async function toWebp(data: Buffer): Promise<Buffer> {
+export async function toWebp(data: Buffer): Promise<PhotoVariants> {
 	try {
 		const { data: pixels, info } = await sharp(data)
 			.rotate()
 			.ensureAlpha()
 			.raw()
 			.toBuffer({ resolveWithObject: true });
-		const side = Math.min(Math.max(info.width, info.height), PHOTO_MAX_SIDE);
-		return await sharp(pixels, {
-			raw: { width: info.width, height: info.height, channels: info.channels }
-		})
-			.resize({
-				width: side,
-				height: side,
-				fit: 'contain',
-				background: { r: 0, g: 0, b: 0, alpha: 0 }
-			})
-			.webp({ quality: 82 })
-			.toBuffer();
+		const longest = Math.max(info.width, info.height);
+		const square = (side: number, quality: number) =>
+			sharp(pixels, { raw: { width: info.width, height: info.height, channels: info.channels } })
+				.resize({
+					width: side,
+					height: side,
+					fit: 'contain',
+					background: { r: 0, g: 0, b: 0, alpha: 0 }
+				})
+				.webp({ quality })
+				.toBuffer();
+		const [full, thumb] = await Promise.all([
+			square(Math.min(longest, PHOTO_MAX_SIDE), 88),
+			square(Math.min(longest, PHOTO_THUMB_SIDE), 75)
+		]);
+		return { full, thumb };
 	} catch {
 		throw new ValidationError('Не удалось прочитать изображение (подходят JPEG, PNG, WebP, GIF)');
 	}
@@ -232,11 +244,12 @@ export async function toWebp(data: Buffer): Promise<Buffer> {
 /** Sets the type's photo; the previous photo is deleted. Returns the new key. */
 export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Promise<string> {
 	const type = await findType(actor, id);
-	const webp = await toWebp(data);
+	const { full, thumb } = await toWebp(data);
 	const photoKey = `types/${id}/${randomUUID()}.webp`;
-	await storage().put(photoKey, webp, 'image/webp');
+	await storage().put(photoKey, full, 'image/webp');
+	await storage().put(thumbKeyOf(photoKey), thumb, 'image/webp');
 	await db.itemType.update({ where: { id }, data: { photoKey } });
-	if (type.photoKey) await storage().delete(type.photoKey);
+	if (type.photoKey) await deleteStored(type.photoKey);
 	return photoKey;
 }
 
@@ -244,5 +257,5 @@ export async function removeTypePhoto(actor: Actor, id: string): Promise<void> {
 	const type = await findType(actor, id);
 	if (!type.photoKey) return;
 	await db.itemType.update({ where: { id }, data: { photoKey: null } });
-	await storage().delete(type.photoKey);
+	await deleteStored(type.photoKey);
 }
