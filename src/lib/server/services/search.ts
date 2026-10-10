@@ -42,7 +42,7 @@ const PARAM_VALUE_TEXT = Prisma.sql`concat_ws(' ',
 	replace(trim_scale(p."numberValue"::numeric)::text, '.', ','),
 	trim_scale(p."numberMax"::numeric)::text,
 	replace(trim_scale(p."numberMax"::numeric)::text, '.', ','),
-	p.unit,
+	CASE WHEN p."valueType" IN ('NUMBER', 'RANGE') THEN d.unit END,
 	p."fileName",
 	to_char(p."dateValue", 'YYYY-MM-DD'),
 	CASE WHEN p."boolValue" THEN 'да' WHEN NOT p."boolValue" THEN 'нет' END,
@@ -56,7 +56,7 @@ const PARAM_VALUE_TEXT = Prisma.sql`concat_ws(' ',
 /**
  * True when item `i` has a parameter matching `condition`: its own, or one of
  * its type's that no own value of the same parameter overrides. `d` is the
- * parameter definition (its name is the key).
+ * parameter definition (its name is the key, its unit is part of the value).
  */
 function hasParam(condition: Prisma.Sql): Prisma.Sql {
 	return Prisma.sql`EXISTS (
@@ -75,7 +75,7 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 
 /**
  * Case-insensitive substring search over item own names, type names and
- * parameter keys and values; «ключ: значение» also matches parameters with
+ * descriptions and parameter keys and values; «ключ: значение» also matches parameters with
  * that key and value. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
@@ -85,6 +85,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 	const conditions = [
 		Prisma.sql`i.name ILIKE ${pattern}`,
 		Prisma.sql`t.name ILIKE ${pattern}`,
+		Prisma.sql`t.description ILIKE ${pattern}`,
 		hasParam(Prisma.sql`(d.name ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
 	];
 	if (query.param) {
@@ -106,7 +107,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			photo_key: string | null;
 		}[]
 	>`
-		SELECT i.id::text, i.name, i.quantity, i."isContainer" AS is_container, t.id::text AS type_id, t.name AS type_name,
+		SELECT i.id::text, i.name, i.quantity, t."isContainer" AS is_container, t.id::text AS type_id, t.name AS type_name,
 			t."photoKey" AS photo_key
 		FROM "Item" i
 		JOIN "ItemType" t ON t.id = i."typeId"

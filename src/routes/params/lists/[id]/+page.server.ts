@@ -1,7 +1,5 @@
-import { actorOrError } from '$lib/server/api';
-import { getDictionary } from '$lib/server/services/dictionaries';
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => ({
-	dictionary: await getDictionary(actorOrError(event), event.params.id)
-});
+/** Drop-down lists are now part of their parameters («Параметры»). */
+export const load: PageServerLoad = () => redirect(308, '/params');

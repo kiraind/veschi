@@ -11,6 +11,7 @@
 		type WorkbenchIconKey
 	} from '$lib/domain/workbench-icons';
 	import type { PageData } from './$types';
+	import { confirmAction } from '$lib/confirm.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -108,8 +109,8 @@
 		);
 	}
 
-	function remove(bench: { id: string; name: string }) {
-		if (!confirm(`Удалить стол «${bench.name}»?`)) return;
+	async function remove(bench: { id: string; name: string }) {
+		if (!(await confirmAction({ title: `Удалить стол «${bench.name}»?` }))) return;
 		return run(() => api.delete(`/api/workbenches/${bench.id}`));
 	}
 

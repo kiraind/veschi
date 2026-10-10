@@ -70,16 +70,41 @@ export async function assertCanPlace(
 	}
 }
 
+/** Things can be put into workbenches and items of a container type. */
+export function isContainerItem(item: {
+	isWorkbench: boolean;
+	type?: { isContainer: boolean } | null;
+}): boolean {
+	return item.isWorkbench || Boolean(item.type?.isContainer);
+}
+
+/** Prisma include giving what `isContainerItem` and `assertIsContainer` need. */
+export const containerTypeInclude = {
+	type: { select: { name: true, isContainer: true } }
+} as const;
+
 /** Throws unless things can be put into `item`. */
 export function assertIsContainer(item: {
-	isContainer: boolean;
 	isWorkbench: boolean;
 	name: string | null;
-	type?: { name: string } | null;
+	type?: { name: string; isContainer: boolean } | null;
 }): void {
-	if (!item.isContainer && !item.isWorkbench) {
+	if (!isContainerItem(item)) {
 		throw new ValidationError(
-			`«${itemDisplayName(item)}» — не контейнер. Отметьте у неё «Это контейнер», чтобы класть внутрь`
+			`«${itemDisplayName(item)}» — не контейнер. Отметьте у её типа «Контейнер», чтобы класть внутрь`
 		);
+	}
+}
+
+/** Throws when something lies in the container or was taken from it to a workbench. */
+export async function assertNothingInside(containerIds: string | string[], tx: Tx): Promise<void> {
+	const ids = Array.isArray(containerIds) ? containerIds : [containerIds];
+	const [inside, taken] = await Promise.all([
+		tx.item.count({ where: { parentId: { in: ids }, status: 'ACTIVE' } }),
+		tx.item.count({ where: { homeId: { in: ids }, status: 'ACTIVE', takenById: { not: null } } })
+	]);
+	if (inside > 0) throw new ValidationError('Внутри лежат вещи — сначала переложите их');
+	if (taken > 0) {
+		throw new ValidationError('Вещи из него лежат на рабочем столе — сначала верните их');
 	}
 }

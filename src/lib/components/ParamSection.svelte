@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Checkbox } from 'flowbite-svelte';
+	import { Button } from 'flowbite-svelte';
 	import {
 		ArrowDownOutline,
 		ArrowUpOutline,
@@ -19,51 +19,52 @@
 		PARAM_VALUE_TYPE_LABELS,
 		paramInputSchema,
 		type ParamDefView,
-		type ParamSource,
 		type ParamView
 	} from '$lib/domain/params';
-	import type { DictionaryView } from '$lib/server/services/dictionaries';
+	import { confirmAction } from '$lib/confirm.svelte';
 	import ParamDefPicker from './ParamDefPicker.svelte';
 	import ParamValueInput from './ParamValueInput.svelte';
 	import ParamValueView from './ParamValueView.svelte';
 
 	/**
 	 * The parameter list of a type or an item, edited in place: a pen on each
-	 * row edits its value, «Параметр» adds one. On an item card the list is the
-	 * merged one; values inherited from the type are marked, editing them
-	 * changes the type unless «Только для этой вещи» is ticked.
+	 * row edits its value, «Параметр» adds one. An item card shows two of
+	 * these: the item's own values and its type's (changing those changes the
+	 * type, so every item of it).
 	 */
 	let {
 		params,
 		target,
-		type = null,
-		editable = true
+		editable = true,
+		exclude = [],
+		emptyText = 'Параметров нет.'
 	}: {
-		params: (ParamView & { source?: ParamSource })[];
+		params: ParamView[];
 		target: { kind: 'type' | 'item'; id: string };
-		/** Item cards: the item's type, for values shared through it. */
-		type?: { id: string; name: string } | null;
 		editable?: boolean;
+		/** Parameters not offered when adding (besides those already in the list). */
+		exclude?: string[];
+		emptyText?: string;
 	} = $props();
 
 	let editingId = $state<string | null>(null);
 	let adding = $state(false);
 	let draft = $state<ParamDraft | null>(null);
-	/** Editing a type value from an item card: save it as this item's own value. */
-	let onlyHere = $state(false);
-	/** Adding on an item card: the value goes to the type. */
-	let forType = $state(false);
-	let dictionaries = $state<DictionaryView[] | null>(null);
+	/** Definition of the edited value, for drop-down options (loaded on demand). */
+	let def = $state<ParamDefView | null>(null);
 	let busy = $state(false);
 	let error = $state('');
 
 	$effect(() => {
-		if (draft?.valueType === 'ENUM' && dictionaries === null) {
-			api.get<DictionaryView[]>('/api/dictionaries').then((list) => (dictionaries = list));
-		}
+		const defId = draft?.valueType === 'ENUM' ? draft.defId : null;
+		if (!defId || def?.id === defId) return;
+		api
+			.get<{ def: ParamDefView }>(`/api/param-defs/${defId}`)
+			.then((card) => {
+				if (draft?.defId === defId) def = card.def;
+			})
+			.catch((e) => (error = e instanceof ApiError ? e.message : String(e)));
 	});
-
-	const onItem = $derived(target.kind === 'item');
 
 	function close() {
 		editingId = null;
@@ -76,17 +77,16 @@
 		close();
 		editingId = param.id;
 		draft = draftFromView(param);
-		onlyHere = false;
 	}
 
 	function startAdding() {
 		close();
 		adding = true;
-		forType = false;
 	}
 
-	function pickDef(def: ParamDefView) {
-		draft = emptyDraft(def);
+	function pickDef(picked: ParamDefView) {
+		def = picked;
+		draft = emptyDraft(picked);
 	}
 
 	async function run(action: () => Promise<unknown>) {
@@ -113,32 +113,23 @@
 		return parsed.data;
 	}
 
-	function save(param: ParamView & { source?: ParamSource }) {
+	function save(param: ParamView) {
 		const input = parsedDraft();
-		if (!input) return;
-		if (onItem && param.source === 'type' && onlyHere) {
-			run(() => api.post(`/api/items/${target.id}/params`, input));
-		} else {
-			run(() => api.put(`/api/params/${param.id}`, input));
-		}
+		if (input) run(() => api.put(`/api/params/${param.id}`, input));
 	}
 
 	function saveNew() {
 		const input = parsedDraft();
 		if (!input) return;
-		const url =
-			onItem && forType && type
-				? `/api/types/${type.id}/params`
-				: `/api/${target.kind === 'type' ? 'types' : 'items'}/${target.id}/params`;
-		run(() => api.post(url, input));
+		run(() =>
+			api.post(`/api/${target.kind === 'type' ? 'types' : 'items'}/${target.id}/params`, input)
+		);
 	}
 
-	function remove(param: ParamView & { source?: ParamSource }) {
-		const question =
-			onItem && param.source === 'type'
-				? `Удалить «${param.key}» у типа «${type?.name}» — у всех его вещей?`
-				: `Удалить «${param.key}»?`;
-		if (confirm(question)) run(() => api.delete(`/api/params/${param.id}`));
+	async function remove(param: ParamView) {
+		if (await confirmAction({ title: `Удалить параметр «${param.key}»?` })) {
+			run(() => api.delete(`/api/params/${param.id}`));
+		}
 	}
 
 	/** Moves the edited value; the editor stays open. */
@@ -155,11 +146,8 @@
 		}
 	}
 
-	/** Neighbours in the same list (type values and own values are ordered separately). */
 	function canMove(index: number, delta: -1 | 1): boolean {
-		const source = params[index]?.source;
-		const other = params[index + delta];
-		return Boolean(other) && other?.source === source;
+		return Boolean(params[index + delta]);
 	}
 </script>
 
@@ -172,7 +160,7 @@
 					{PARAM_VALUE_TYPE_LABELS[draft.valueType]}
 				</span>
 			</div>
-			<ParamValueInput bind:draft {dictionaries} />
+			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} />
 			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 			<div class="flex flex-wrap items-center gap-2">
 				<Button type="button" onclick={onsave} disabled={busy}>Сохранить</Button>
@@ -217,16 +205,10 @@
 
 <div class="flex flex-col gap-2">
 	{#if params.length === 0 && !adding}
-		<p class="text-sm text-gray-500 dark:text-gray-400">Параметров нет.</p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">{emptyText}</p>
 	{/if}
 	{#each params as param, i (param.id)}
 		{#if editingId === param.id}
-			{#if onItem && param.source === 'type'}
-				<p class="text-sm text-gray-500 dark:text-gray-400">
-					Значение общее для всех вещей типа «{type?.name}».
-				</p>
-				<Checkbox bind:checked={onlyHere}>Только для этой вещи</Checkbox>
-			{/if}
 			{@render editor(
 				() => save(param),
 				() => remove(param),
@@ -236,9 +218,6 @@
 			<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
 				<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
 					{param.key}
-					{#if onItem && param.source === 'type'}<span class="text-sm" title="Значение типа"
-							>· тип</span
-						>{/if}
 				</div>
 				<div class="min-w-0 [overflow-wrap:anywhere]"><ParamValueView {param} /></div>
 				{#if editable}
@@ -258,15 +237,12 @@
 
 	{#if adding}
 		{#if draft}
-			{#if onItem && type}
-				<Checkbox bind:checked={forType}>Для всех вещей типа «{type.name}»</Checkbox>
-			{/if}
 			{@render editor(saveNew, null, null)}
 		{:else}
 			<ParamDefPicker
 				onpick={pickDef}
 				oncancel={close}
-				exclude={params.filter((p) => !onItem || p.source !== 'type').map((p) => p.defId)}
+				exclude={[...params.map((p) => p.defId), ...exclude]}
 			/>
 		{/if}
 	{:else if editable}

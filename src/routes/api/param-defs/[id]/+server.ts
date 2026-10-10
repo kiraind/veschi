@@ -7,7 +7,7 @@ export const GET = apiHandler<RequestEvent>(async ({ actor, params }) =>
 	getParamDef(actor, params.id)
 );
 
-/** Name; the value type and the list only while the parameter has no values. */
+/** Name, unit and drop-down options; the value type only while the parameter has no values. */
 export const PUT = apiHandler<RequestEvent>(async ({ actor, params, request }) =>
 	updateParamDef(actor, params.id, await parseBody(request, paramDefInputSchema))
 );

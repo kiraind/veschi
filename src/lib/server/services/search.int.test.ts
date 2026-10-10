@@ -3,10 +3,11 @@ import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import { formatPath } from '$lib/domain/item';
-import { createDictionary } from './dictionaries';
-import { createItem } from './items';
-import { setKeyedParams } from '$lib/server/testing/params';
+import { createItem, moveItem } from './items';
+import { enumDef, optionId, setKeyedParams } from '$lib/server/testing/params';
+import { updateParamDef } from './params';
 import { search } from './search';
+import { updateType } from './types';
 
 /**
  * The spec example: NE555 — 10 in «Шкаф → Полка 2 → Коробка с микросхемами»
@@ -19,7 +20,7 @@ describe('search', () => {
 	let solderingBox: string;
 
 	async function item(input: Record<string, unknown>) {
-		return (await createItem(actor, { isContainer: !('quantity' in input), ...input })).id;
+		return (await createItem(actor, { newTypeIsContainer: !('quantity' in input), ...input })).id;
 	}
 
 	beforeEach(async () => {
@@ -89,24 +90,60 @@ describe('search', () => {
 	});
 
 	it('matches numbers, enum labels and ref names', async () => {
-		const dictionary = await createDictionary(actor, {
-			name: 'Состояние',
-			options: [{ label: 'новое' }, { label: 'б/у' }]
-		});
+		const condition = await enumDef(actor, 'Состояние', ['новое', 'б/у']);
 		await setKeyedParams(actor, { itemId: solderingBox }, [
 			{ key: 'питание', valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
-			{
-				key: 'состояние',
-				valueType: 'ENUM',
-				dictionaryId: dictionary.id,
-				optionIds: [dictionary.options[1]!.id]
-			},
+			{ key: 'состояние', valueType: 'ENUM', optionIds: [optionId(condition, 'б/у')] },
 			{ key: 'рядом', valueType: 'REF', refItemId: chipBox }
 		]);
 		for (const q of ['4,5', '4.5', 'б/у', 'состояние: б/у', 'микросхемами']) {
 			const found = (await search(actor, q)).flatMap((g) => g.locations.map((l) => l.itemId));
 			expect(found, q).toContain(solderingBox);
 		}
+	});
+
+	it('matches the unit of the parameter, as it is now', async () => {
+		await setKeyedParams(actor, { typeId: ne555Type }, [
+			{ key: 'шаг выводов', valueType: 'NUMBER', value: 2.54, unit: 'мм' }
+		]);
+		await setKeyedParams(actor, { itemId: solderingBox }, [
+			{ key: 'обозначение', valueType: 'STRING', text: 'X' }
+		]);
+		const found = async (q: string) => (await search(actor, q)).map((g) => g.typeName);
+		expect(await found('2,54 мм')).toEqual(['NE555']);
+		expect(await found('шаг выводов: мм')).toEqual(['NE555']);
+
+		const def = await db.paramDef.findFirstOrThrow({ where: { name: 'шаг выводов' } });
+		await updateParamDef(actor, def.id, { name: 'шаг выводов', valueType: 'NUMBER', unit: 'дюйм' });
+		expect(await found('2,54 мм')).toEqual([]);
+		expect(await found('2,54 дюйм')).toEqual(['NE555']);
+	});
+
+	it('finds items by the description of their type', async () => {
+		await updateType(actor, ne555Type, { name: 'NE555', description: 'Прецизионный таймер' });
+		const results = await search(actor, 'прецизионный');
+		expect(results).toHaveLength(1);
+		expect(results[0]).toMatchObject({ typeId: ne555Type, total: 12 });
+		await updateType(actor, ne555Type, { name: 'NE555', description: null });
+		expect(await search(actor, 'прецизионный')).toEqual([]);
+	});
+
+	it('marks locations of a container type as containers', async () => {
+		const box = (await search(actor, 'Коробка с микросхемами'))[0]!.locations[0]!;
+		expect(box.isContainer).toBe(true);
+		const chips = (await search(actor, 'NE555'))[0]!.locations[0]!;
+		expect(chips.isContainer).toBe(false);
+	});
+
+	it('shows one location after a part is moved onto an identical record', async () => {
+		const chips = (await search(actor, 'NE555'))[0]!.locations[0]!.itemId;
+		await moveItem(actor, chips, solderingBox, { quantity: 4 });
+		const group = (await search(actor, 'NE555'))[0]!;
+		expect(group.total).toBe(12);
+		expect(group.locations.map((l) => [formatPath(l.path), l.quantity])).toEqual([
+			['Шкаф → Полка 2 → Коробка с микросхемами', 6],
+			['Ящик с паяльником', 6]
+		]);
 	});
 
 	it('does not find archived items, workbenches or other users’ items', async () => {

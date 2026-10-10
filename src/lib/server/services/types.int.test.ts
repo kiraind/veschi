@@ -4,8 +4,9 @@ import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { storage } from '$lib/server/storage';
 import { createTestActor } from '$lib/server/testing/db';
-import { createItem } from './items';
+import { createItem, getItemCard, moveItem } from './items';
 import { setKeyedParams } from '$lib/server/testing/params';
+import { createWorkbench, relocate, take } from './workbench';
 import {
 	createType,
 	deleteType,
@@ -59,7 +60,7 @@ describe('types', () => {
 		const box = await createItem(actor, {
 			newTypeName: 'Коробка',
 			name: 'Коробка с микросхемами',
-			isContainer: true
+			newTypeIsContainer: true
 		});
 		await createItem(actor, { typeId: type.id, quantity: 10, parentId: box.id });
 		await setKeyedParams(actor, { typeId: type.id }, [
@@ -70,6 +71,111 @@ describe('types', () => {
 		expect(card.items).toMatchObject([
 			{ name: 'NE555', quantity: 10, path: [{ name: 'Коробка с микросхемами' }] }
 		]);
+	});
+
+	describe('description', () => {
+		it('stores a trimmed description, keeps it when omitted and clears it', async () => {
+			const type = await createType(actor, {
+				name: 'NE555',
+				description: '  Таймер, корпус DIP-8 '
+			});
+			expect(type).toMatchObject({ description: 'Таймер, корпус DIP-8', isContainer: false });
+			await updateType(actor, type.id, { name: 'NE555P' });
+			expect((await getTypeCard(actor, type.id)).type).toMatchObject({
+				name: 'NE555P',
+				description: 'Таймер, корпус DIP-8'
+			});
+			await updateType(actor, type.id, { name: 'NE555P', description: '' });
+			expect((await getTypeCard(actor, type.id)).type.description).toBeNull();
+		});
+
+		it('rejects a description longer than 2000 characters', async () => {
+			const type = await createType(actor, { name: 'NE555' });
+			await expect(
+				updateType(actor, type.id, { name: 'NE555', description: 'а'.repeat(2001) })
+			).rejects.toThrow('длиннее 2000');
+		});
+
+		it('finds types by name or description in autocomplete', async () => {
+			const timer = await createType(actor, { name: 'NE555', description: 'Таймер' });
+			const knife = await createType(actor, {
+				name: 'Нож',
+				description: 'Складной, для таймера нет'
+			});
+			await createType(actor, { name: 'Паяльник' });
+			expect((await listTypes(actor, 'таймер')).map((t) => t.id)).toEqual([timer.id, knife.id]);
+			expect((await listTypes(actor, 'СКЛАДН')).map((t) => [t.name, t.description])).toEqual([
+				['Нож', 'Складной, для таймера нет']
+			]);
+			expect((await listTypes(actor, 'ne5')).map((t) => t.id)).toEqual([timer.id]);
+		});
+	});
+
+	describe('container mark', () => {
+		it('creates and lists a container type', async () => {
+			const type = await createType(actor, { name: 'Коробка', isContainer: true });
+			expect(type.isContainer).toBe(true);
+			expect((await listTypes(actor)).map((t) => [t.name, t.isContainer])).toEqual([
+				['Коробка', true]
+			]);
+			expect((await getTypeCard(actor, type.id)).type.isContainer).toBe(true);
+		});
+
+		it('becomes a container only when every item has quantity 1', async () => {
+			const type = await createType(actor, { name: 'Пакет' });
+			const single = await createItem(actor, { typeId: type.id });
+			const several = await createItem(actor, { typeId: type.id, name: 'Пакеты', quantity: 3 });
+			await db.item.update({ where: { id: several.id }, data: { status: 'ARCHIVED' } });
+			await expect(
+				updateType(actor, type.id, { name: 'Пакет', isContainer: true })
+			).rejects.toThrow('а у «Пакеты» 3 шт.');
+			expect((await db.itemType.findUniqueOrThrow({ where: { id: type.id } })).isContainer).toBe(
+				false
+			);
+			await db.item.update({ where: { id: several.id }, data: { quantity: 1 } });
+			await updateType(actor, type.id, { name: 'Пакет', isContainer: true });
+			expect((await getItemCard(actor, single.id)).item.isContainer).toBe(true);
+			await createItem(actor, { newTypeName: 'NE555', quantity: 5, parentId: single.id });
+		});
+
+		it('stops being a container only when nothing lies in its items or was taken from them', async () => {
+			const type = await createType(actor, { name: 'Коробка', isContainer: true });
+			const box = await createItem(actor, { typeId: type.id });
+			const chip = await createItem(actor, { newTypeName: 'NE555', parentId: box.id });
+			await expect(
+				updateType(actor, type.id, { name: 'Коробка', isContainer: false })
+			).rejects.toThrow('Внутри лежат вещи');
+
+			const bench = await createWorkbench(actor, { name: 'Гараж' });
+			await take(actor, chip.id, { workbenchId: bench.id });
+			await expect(
+				updateType(actor, type.id, { name: 'Коробка', isContainer: false })
+			).rejects.toThrow('на рабочем столе');
+			expect((await db.itemType.findUniqueOrThrow({ where: { id: type.id } })).isContainer).toBe(
+				true
+			);
+
+			await relocate(actor, chip.id, null);
+			await updateType(actor, type.id, { name: 'Коробка', isContainer: false });
+			expect((await getItemCard(actor, box.id)).item.isContainer).toBe(false);
+			await expect(moveItem(actor, chip.id, box.id)).rejects.toThrow('не контейнер');
+		});
+
+		it('keeps the mark when it is omitted', async () => {
+			const type = await createType(actor, { name: 'Коробка', isContainer: true });
+			await updateType(actor, type.id, { name: 'Ящик' });
+			expect((await db.itemType.findUniqueOrThrow({ where: { id: type.id } })).isContainer).toBe(
+				true
+			);
+		});
+
+		it('creates a container type in findOrCreateType only when it is new', async () => {
+			const created = await findOrCreateType(actor, 'Коробка', db, { isContainer: true });
+			expect(created.isContainer).toBe(true);
+			const plain = await createType(actor, { name: 'Пакет' });
+			const found = await findOrCreateType(actor, 'пакет', db, { isContainer: true });
+			expect(found).toMatchObject({ id: plain.id, isContainer: false });
+		});
 	});
 
 	describe('photo', () => {

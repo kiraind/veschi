@@ -1,19 +1,18 @@
 <script lang="ts">
-	import { Button, Card, Input, Label, Select } from 'flowbite-svelte';
+	import { Button, Card, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import {
-		PARAM_VALUE_TYPES,
-		PARAM_VALUE_TYPE_LABELS,
 		normalizeParamKey,
+		paramKindLabel,
 		type ParamDefView,
 		type ParamValueType
 	} from '$lib/domain/params';
-	import type { DictionaryView } from '$lib/server/services/dictionaries';
+	import ParamDefFields from './ParamDefFields.svelte';
 
 	/**
 	 * Chooses a parameter: search the existing ones by name or create a new one
-	 * (name, value type and, for a drop-down, its list) right here.
+	 * (name, value type, unit or drop-down options) right here.
 	 */
 	let {
 		onpick,
@@ -27,21 +26,17 @@
 	} = $props();
 
 	let defs = $state<ParamDefView[] | null>(null);
-	let dictionaries = $state<DictionaryView[] | null>(null);
 	let query = $state('');
 	let creating = $state(false);
 	let valueType = $state<ParamValueType>('STRING');
-	let dictionaryId = $state('');
+	let unit = $state('');
+	let multiple = $state(false);
+	let options = $state<{ label: string }[]>([]);
 	let busy = $state(false);
 	let error = $state('');
 
 	$effect(() => {
 		api.get<ParamDefView[]>('/api/param-defs').then((list) => (defs = list));
-	});
-	$effect(() => {
-		if (creating && valueType === 'ENUM' && dictionaries === null) {
-			api.get<DictionaryView[]>('/api/dictionaries').then((list) => (dictionaries = list));
-		}
 	});
 
 	const q = $derived(normalizeParamKey(query));
@@ -60,7 +55,9 @@
 			const def = await api.post<ParamDefView>('/api/param-defs', {
 				name: query,
 				valueType,
-				dictionaryId: valueType === 'ENUM' ? dictionaryId || null : null
+				unit,
+				multiple,
+				options
 			});
 			onpick(def);
 		} catch (e) {
@@ -96,7 +93,7 @@
 							>
 								<span class="break-words">{def.name}</span>
 								<span class="shrink-0 text-sm text-gray-500 dark:text-gray-400">
-									{def.dictionaryName ?? PARAM_VALUE_TYPE_LABELS[def.valueType]}
+									{paramKindLabel(def)}
 								</span>
 							</button>
 						</li>
@@ -121,43 +118,10 @@
 		</div>
 	{:else}
 		<form class="flex flex-col gap-3" onsubmit={create}>
-			<Label>
-				Название
-				<Input class="mt-1" bind:value={query} required />
-			</Label>
-			<Label>
-				Тип значения
-				<Select class="mt-1" bind:value={valueType} placeholder="">
-					{#each PARAM_VALUE_TYPES as type (type)}
-						<option value={type}>{PARAM_VALUE_TYPE_LABELS[type]}</option>
-					{/each}
-				</Select>
-			</Label>
-			{#if valueType === 'ENUM'}
-				{#if dictionaries === null}
-					<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка списков…</p>
-				{:else if dictionaries.length === 0}
-					<p class="text-sm text-gray-500 dark:text-gray-400">
-						Выпадающих списков нет. <a
-							class="text-primary-700 hover:underline dark:text-primary-400"
-							href="/params#lists">Создать список</a
-						>
-					</p>
-				{:else}
-					<Label>
-						Выпадающий список
-						<Select class="mt-1" bind:value={dictionaryId} placeholder="" required>
-							<option value="" disabled>Выберите список…</option>
-							{#each dictionaries as d (d.id)}
-								<option value={d.id}>{d.name}</option>
-							{/each}
-						</Select>
-					</Label>
-				{/if}
-			{/if}
+			<ParamDefFields bind:name={query} bind:valueType bind:unit bind:multiple bind:options />
 			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 			<div class="flex flex-wrap gap-2">
-				<Button type="submit" disabled={busy || (valueType === 'ENUM' && !dictionaryId)}>
+				<Button type="submit" disabled={busy || (valueType === 'ENUM' && options.length === 0)}>
 					Создать
 				</Button>
 				<Button type="button" color="alternative" onclick={() => (creating = false)}>Назад</Button>

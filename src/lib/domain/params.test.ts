@@ -4,7 +4,7 @@ import {
 	formatFileSize,
 	formatNumber,
 	formatParamValue,
-	mergeParams,
+	inheritedParams,
 	paramDefInputSchema,
 	paramInputSchema,
 	paramListSchema
@@ -18,8 +18,8 @@ describe('paramInputSchema', () => {
 	it('accepts every value type', () => {
 		const inputs = [
 			{ defId: DEF, valueType: 'STRING', text: 'DIP-8' },
-			{ defId: DEF, valueType: 'NUMBER', value: 85, unit: 'мм' },
-			{ defId: DEF, valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
+			{ defId: DEF, valueType: 'NUMBER', value: 85 },
+			{ defId: DEF, valueType: 'RANGE', min: 4.5, max: 16 },
 			{
 				defId: DEF,
 				valueType: 'ENUM',
@@ -58,10 +58,10 @@ describe('paramInputSchema', () => {
 		expect(paramInputSchema.safeParse({ defId: DEF, valueType: 'REF' }).success).toBe(false);
 	});
 
-	it('empties the unit', () => {
-		expect(paramInputSchema.parse({ defId: DEF, valueType: 'NUMBER', value: 3, unit: '' })).toEqual(
-			{ defId: DEF, valueType: 'NUMBER', value: 3, unit: null }
-		);
+	it('drops a unit given with a value (the unit belongs to the parameter)', () => {
+		expect(
+			paramInputSchema.parse({ defId: DEF, valueType: 'NUMBER', value: 3, unit: 'мм' })
+		).toEqual({ defId: DEF, valueType: 'NUMBER', value: 3 });
 	});
 
 	it('rejects the same parameter twice in one list', () => {
@@ -74,17 +74,70 @@ describe('paramInputSchema', () => {
 });
 
 describe('paramDefInputSchema', () => {
-	it('trims the name and needs a list for ENUM', () => {
+	it('trims the name and empties the unit', () => {
 		expect(paramDefInputSchema.parse({ name: ' вес ', valueType: 'NUMBER' })).toEqual({
 			name: 'вес',
 			valueType: 'NUMBER',
-			dictionaryId: null
+			unit: null,
+			multiple: false,
+			options: []
 		});
-		expect(paramDefInputSchema.safeParse({ name: 'цвет', valueType: 'ENUM' }).success).toBe(false);
+		expect(paramDefInputSchema.parse({ name: 'вес', valueType: 'NUMBER', unit: ' г ' }).unit).toBe(
+			'г'
+		);
+		expect(paramDefInputSchema.parse({ name: 'вес', valueType: 'NUMBER', unit: '' }).unit).toBe(
+			null
+		);
+	});
+
+	it('keeps a unit only for numbers and options only for ENUM', () => {
 		expect(
-			paramDefInputSchema.parse({ name: 'вес', valueType: 'NUMBER', dictionaryId: DEF })
-				.dictionaryId
-		).toBeNull();
+			paramDefInputSchema.parse({
+				name: 'цвет',
+				valueType: 'STRING',
+				unit: 'мм',
+				multiple: true,
+				options: [{ label: 'красный' }]
+			})
+		).toEqual({ name: 'цвет', valueType: 'STRING', unit: null, multiple: false, options: [] });
+		expect(
+			paramDefInputSchema.parse({ name: 'напряжение', valueType: 'RANGE', unit: 'В' }).unit
+		).toBe('В');
+		expect(
+			paramDefInputSchema.parse({
+				name: 'интерфейсы',
+				valueType: 'ENUM',
+				unit: 'мм',
+				multiple: true,
+				options: [{ label: ' USB ' }, { label: 'Bluetooth' }]
+			})
+		).toEqual({
+			name: 'интерфейсы',
+			valueType: 'ENUM',
+			unit: null,
+			multiple: true,
+			options: [{ label: 'USB' }, { label: 'Bluetooth' }]
+		});
+	});
+
+	it('rejects duplicate and empty option labels', () => {
+		const dup = paramDefInputSchema.safeParse({
+			name: 'интерфейсы',
+			valueType: 'ENUM',
+			options: [{ label: 'USB' }, { label: ' usb' }]
+		});
+		expect(dup.success).toBe(false);
+		expect(dup.error?.issues[0]).toMatchObject({
+			message: 'Вариант «usb» повторяется',
+			path: ['options', 1, 'label']
+		});
+		expect(
+			paramDefInputSchema.safeParse({
+				name: 'интерфейсы',
+				valueType: 'ENUM',
+				options: [{ label: '  ' }]
+			}).success
+		).toBe(false);
 	});
 });
 
@@ -101,6 +154,8 @@ describe('formatting', () => {
 	it('formats each value type', () => {
 		const f = formatParamValue;
 		expect(f({ valueType: 'NUMBER', value: 85, unit: 'мм' })).toBe('85 мм');
+		expect(f({ valueType: 'NUMBER', value: 85, unit: null })).toBe('85');
+		expect(f({ valueType: 'RANGE', min: 1, max: 2 })).toBe('1–2');
 		expect(f({ valueType: 'NUMBER', value: 4500, unit: '₽' })).toBe(`4${NNBSP}500 ₽`);
 		expect(f({ valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' })).toBe('4,5–16 В');
 		expect(f({ valueType: 'BOOLEAN', value: true })).toBe('да');
@@ -133,22 +188,28 @@ describe('formatting', () => {
 	});
 });
 
-describe('mergeParams', () => {
-	it('lets an item value override the type value of the same parameter', () => {
-		const merged = mergeParams(
+describe('inheritedParams', () => {
+	it('keeps the type values the item has no own value of, in type order', () => {
+		const inherited = inheritedParams(
 			[
 				{ defId: 'color', v: 'красный' },
-				{ defId: 'weight', v: '10 г' }
+				{ defId: 'weight', v: '10 г' },
+				{ defId: 'size', v: 'M' }
 			],
 			[
-				{ defId: 'color', v: 'синий' },
-				{ defId: 'serial', v: 'A1' }
+				{ defId: 'serial', v: 'A1' },
+				{ defId: 'color', v: 'синий' }
 			]
 		);
-		expect(merged).toEqual([
-			{ defId: 'color', v: 'синий', source: 'item' },
-			{ defId: 'weight', v: '10 г', source: 'type' },
-			{ defId: 'serial', v: 'A1', source: 'item' }
+		expect(inherited).toEqual([
+			{ defId: 'weight', v: '10 г' },
+			{ defId: 'size', v: 'M' }
 		]);
+	});
+
+	it('returns every type value when the item has none and nothing without a type', () => {
+		const typeParams = [{ defId: 'color' }, { defId: 'weight' }];
+		expect(inheritedParams(typeParams, [])).toEqual(typeParams);
+		expect(inheritedParams([], [{ defId: 'color' }])).toEqual([]);
 	});
 });

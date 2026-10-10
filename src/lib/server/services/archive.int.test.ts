@@ -14,7 +14,7 @@ describe('archive service', () => {
 
 	async function item(name: string, parentId: string | null = null) {
 		return db.item.create({
-			data: { ownerId: actor.userId, typeId, name, parentId, isContainer: true }
+			data: { ownerId: actor.userId, typeId, name, parentId }
 		});
 	}
 
@@ -28,7 +28,9 @@ describe('archive service', () => {
 
 	beforeEach(async () => {
 		actor = await createTestActor();
-		typeId = (await db.itemType.create({ data: { ownerId: actor.userId, name: 'Вещь' } })).id;
+		typeId = (
+			await db.itemType.create({ data: { ownerId: actor.userId, name: 'Вещь', isContainer: true } })
+		).id;
 	});
 
 	it('discards a box by default: contents where the box was, box archived, sticker written off', async () => {

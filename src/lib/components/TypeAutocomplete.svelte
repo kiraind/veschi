@@ -1,20 +1,32 @@
 <script lang="ts">
-	import { Input, Label } from 'flowbite-svelte';
+	import { tick } from 'svelte';
+	import { Badge, Input, Label } from 'flowbite-svelte';
+	import { CloseOutline } from 'flowbite-svelte-icons';
 	import { api } from '$lib/api';
 	import Thumb from './Thumb.svelte';
-	import type { TypeSummary } from '$lib/server/services/types';
+	import type { TypeInfo, TypeSummary } from '$lib/server/services/types';
 
 	/**
 	 * Type field with autocomplete over existing types. Picking a suggestion
-	 * sets `typeId`; free text leaves `typeId` null and `typeName` becomes the
-	 * name of a new type (the server reuses a type with the same name).
+	 * replaces the field with the type's card (photo, name; the cross brings
+	 * the field back) and sets `typeId` / `selected`; free text leaves them
+	 * null and `typeName` becomes the name of a new type (the server reuses a
+	 * type with the same name).
 	 */
 	let {
 		typeId = $bindable(null),
 		typeName = $bindable(''),
+		selected = $bindable(null),
 		label = 'Тип'
-	}: { typeId?: string | null; typeName?: string; label?: string } = $props();
+	}: {
+		typeId?: string | null;
+		typeName?: string;
+		/** The picked existing type. */
+		selected?: TypeInfo | null;
+		label?: string;
+	} = $props();
 
+	const uid = $props.id();
 	let suggestions = $state<TypeSummary[]>([]);
 	let focused = $state(false);
 	let request = 0;
@@ -36,53 +48,87 @@
 	function pick(type: TypeSummary) {
 		typeId = type.id;
 		typeName = type.name;
+		selected = type;
 		suggestions = [];
+	}
+
+	async function reset() {
+		typeId = null;
+		typeName = '';
+		selected = null;
+		await tick();
+		document.getElementById(`${uid}-input`)?.focus();
 	}
 </script>
 
 <div class="flex flex-col gap-1.5">
-	<Label>
-		{label}
-		<Input
-			class="mt-1"
-			value={typeName}
-			oninput={(e) => {
-				typeName = (e.currentTarget as HTMLInputElement).value;
-				typeId = null;
-			}}
-			onfocus={() => (focused = true)}
-			onblur={() => setTimeout(() => (focused = false), 150)}
-			autocomplete="off"
-			placeholder="Например, NE555 или Нож Victorinox"
-			required
-		/>
-	</Label>
-	{#if suggestions.length > 0}
-		<ul
-			class="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
-			role="listbox"
+	{#if typeId && selected}
+		<span class="text-sm font-medium text-gray-900 dark:text-white">{label}</span>
+		<div
+			class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
 		>
-			{#each suggestions as type (type.id)}
-				<li>
-					<button
-						type="button"
-						role="option"
-						aria-selected="false"
-						class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
-						onclick={() => pick(type)}
-					>
-						<Thumb photoKey={type.photoKey} size={28} />
-						<span class="min-w-0 break-words">{type.name}</span>
-					</button>
-				</li>
-			{/each}
-		</ul>
-	{/if}
-	{#if typeId}
-		<span class="text-sm text-gray-500 dark:text-gray-400">Существующий тип</span>
-	{:else if typeName.trim()}
-		<span class="text-sm break-words text-gray-500 dark:text-gray-400"
-			>Будет создан новый тип «{typeName.trim()}», если такого ещё нет</span
-		>
+			<Thumb photoKey={selected.photoKey} size={56} />
+			<div class="min-w-0 flex-1">
+				<strong class="wrap-anywhere">{selected.name}</strong>
+				{#if selected.isContainer}<Badge color="indigo" class="ms-1">контейнер</Badge>{/if}
+				{#if selected.description}
+					<p class="line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
+						{selected.description}
+					</p>
+				{/if}
+			</div>
+			<button
+				type="button"
+				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+				onclick={reset}
+				title="Выбрать другой тип"
+				aria-label="Выбрать другой тип"><CloseOutline class="h-5 w-5" /></button
+			>
+		</div>
+	{:else}
+		<Label>
+			{label}
+			<Input
+				id="{uid}-input"
+				class="mt-1"
+				value={typeName}
+				oninput={(e) => {
+					typeName = (e.currentTarget as HTMLInputElement).value;
+					typeId = null;
+					selected = null;
+				}}
+				onfocus={() => (focused = true)}
+				onblur={() => setTimeout(() => (focused = false), 150)}
+				autocomplete="off"
+				placeholder="Например, NE555 или Нож Victorinox"
+				required
+			/>
+		</Label>
+		{#if suggestions.length > 0}
+			<ul
+				class="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+				role="listbox"
+			>
+				{#each suggestions as type (type.id)}
+					<li>
+						<button
+							type="button"
+							role="option"
+							aria-selected="false"
+							class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
+							onclick={() => pick(type)}
+						>
+							<Thumb photoKey={type.photoKey} size={28} />
+							<span class="min-w-0 break-words">{type.name}</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		{#if typeName.trim()}
+			<span class="text-sm break-words text-gray-500 dark:text-gray-400"
+				>Будет создан новый тип «{typeName.trim()}», если такого ещё нет</span
+			>
+		{/if}
 	{/if}
 </div>

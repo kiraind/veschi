@@ -20,7 +20,7 @@
 	const card = $derived(data.card);
 	const item = $derived(card.item);
 	const active = $derived(item.status === 'ACTIVE');
-	const container = $derived(item.isContainer || item.isWorkbench);
+	const container = $derived(item.isContainer);
 
 	let moving = $state(false);
 	let adding = $state(false);
@@ -125,10 +125,15 @@
 		{:else if item.isWorkbench}
 			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
-		{#if item.isContainer && !item.isWorkbench}<Badge color="indigo">контейнер</Badge>{/if}
+		{#if card.type?.isContainer}<Badge color="indigo">контейнер</Badge>{/if}
 		{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
 		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
+	{#if card.type?.description}
+		<p class="mt-1 text-sm whitespace-pre-line text-gray-500 dark:text-gray-400">
+			{card.type.description}
+		</p>
+	{/if}
 </div>
 
 {#if card.type}
@@ -137,7 +142,6 @@
 		photoKey={type.photoKey}
 		alt="Фото типа «{type.name}»"
 		editable={active}
-		caption="Фото общее для всех вещей типа «{type.name}»"
 		onfile={async (file) => {
 			const body = new FormData();
 			body.set('file', file);
@@ -175,11 +179,12 @@
 			<ContainerPicker
 				title="Куда переложить «{item.displayName}»?"
 				excludeId={item.id}
+				excludeIds={item.parentId && !item.takenById ? [item.parentId] : []}
 				onpick={(c) => {
 					if (!quantityError(item.quantity, moveQuantity)) moveTo(c.id);
 				}}
 			/>
-			{#if card.path.length > 0}
+			{#if item.parentId}
 				<Button
 					color="alternative"
 					onclick={() => moveTo(null)}
@@ -198,13 +203,23 @@
 		<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
 	</Card>
 
-	<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
+	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
 	<ParamSection
-		params={card.params}
+		params={card.itemParams}
 		target={{ kind: 'item', id: item.id }}
-		type={card.type}
 		editable={active}
+		emptyText="Только у этой вещи параметров нет."
 	/>
+
+	{#if card.type}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
+		<ParamSection
+			params={card.typeParams}
+			target={{ kind: 'type', id: card.type.id }}
+			editable={active}
+			exclude={card.itemParams.map((p) => p.defId)}
+		/>
+	{/if}
 {/if}
 
 {#if container}
@@ -250,6 +265,7 @@
 			<ContainerPicker
 				title="Что положить в «{item.displayName}»? Найдите вещь или отсканируйте её наклейку"
 				excludeId={item.id}
+				excludeParentId={item.id}
 				containersOnly={false}
 				onpick={pickChild}
 			/>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
+	import { confirmAction } from '$lib/confirm.svelte';
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { page } from '$app/state';
@@ -8,7 +9,7 @@
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
-	import type { TypeCard } from '$lib/server/services/types';
+	import type { TypeInfo } from '$lib/server/services/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -20,6 +21,8 @@
 	let typeId = $state<string | null>(data.type?.id ?? null);
 	// svelte-ignore state_referenced_locally
 	let typeName = $state(data.type?.name ?? '');
+	// svelte-ignore state_referenced_locally
+	let selectedType = $state<TypeInfo | null>(data.type);
 	let name = $state(freeSticker?.caption ?? '');
 	let quantity = $state(1);
 	// svelte-ignore state_referenced_locally
@@ -28,34 +31,16 @@
 			? { id: data.parent.id, name: data.parent.name, path: formatPath(data.parent.path) }
 			: null
 	);
-	let isContainer = $state(page.url.searchParams.get('container') === '1');
+	/** A new type is a container type (an existing type has its own mark). */
+	let newTypeIsContainer = $state(page.url.searchParams.get('container') === '1');
+	const isContainer = $derived(selectedType ? selectedType.isContainer : newTypeIsContainer);
+	/** An existing type keeps its photo; a photo can be added when it has none. */
+	const askPhoto = $derived(!selectedType?.photoKey);
 	let photo = $state<File | null>(null);
 	let photoUrl = $derived(photo ? URL.createObjectURL(photo) : null);
-	/** Photo the chosen existing type already has (shown until a new one is picked). */
-	// svelte-ignore state_referenced_locally
-	let typePhoto = $state<{ typeId: string; photoKey: string | null } | null>(
-		data.type ? { typeId: data.type.id, photoKey: data.type.photoKey } : null
-	);
 	let picking = $state(false);
 	let busy = $state(false);
 	let error = $state('');
-
-	$effect(() => {
-		const id = typeId;
-		if (!id || typePhoto?.typeId === id) return;
-		let stale = false;
-		api
-			.get<TypeCard>(`/api/types/${id}`)
-			.then((card) => {
-				if (!stale) typePhoto = { typeId: id, photoKey: card.type.photoKey };
-			})
-			.catch(() => {
-				// no preview of the type photo, not critical
-			});
-		return () => {
-			stale = true;
-		};
-	});
 
 	$effect(() => {
 		const url = photoUrl;
@@ -70,24 +55,31 @@
 		error = '';
 		try {
 			const { id } = await api.post<{ id: string }>('/api/items', {
-				...(typeId ? { typeId } : { newTypeName: typeName }),
+				...(typeId ? { typeId } : { newTypeName: typeName, newTypeIsContainer }),
 				name,
 				// A container is a single instance: its quantity is always 1.
 				quantity: isContainer ? 1 : quantity,
 				parentId: parent?.id ?? null,
-				isContainer,
 				stickerCode: freeSticker?.code
 			});
-			if (photo) {
+			if (photo && askPhoto) {
 				const body = new FormData();
 				body.set('file', photo);
 				try {
-					// The photo belongs to the type: a picked photo replaces the type photo.
-					const card = await api.get<{ type: { id: string } | null }>(`/api/items/${id}`);
-					if (card.type) await api.put(`/api/types/${card.type.id}/photo`, body);
+					// The photo belongs to the type; only a type without a photo gets one here.
+					const card = await api.get<{ type: TypeInfo | null }>(`/api/items/${id}`);
+					if (card.type && !card.type.photoKey) {
+						await api.put(`/api/types/${card.type.id}/photo`, body);
+					}
 				} catch (e) {
 					// The item exists already: show its card, the photo can be added there.
-					alert(`Вещь создана, но фото не сохранилось: ${e instanceof ApiError ? e.message : e}`);
+					await confirmAction({
+						title: 'Вещь создана, но фото не сохранилось',
+						message: e instanceof ApiError ? e.message : String(e),
+						confirmLabel: 'Понятно',
+						cancelLabel: null,
+						danger: false
+					});
 				}
 			}
 			await goto(`/items/${id}`, { replaceState: true });
@@ -118,7 +110,7 @@
 		<p>Наклейка <strong class="font-mono">{formatCode(freeSticker.code)}</strong></p>
 	{/if}
 
-	<TypeAutocomplete bind:typeId bind:typeName />
+	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />
 
 	<div>
 		<Label for="item-name">Своё название (необязательно)</Label>
@@ -146,30 +138,32 @@
 		</div>
 	{/if}
 
-	<div>
-		<Checkbox bind:checked={isContainer}>Это контейнер</Checkbox>
-		<Helper class="mt-1 ps-6">В контейнер можно класть другие вещи: шкаф, ящик, коробка.</Helper>
-	</div>
+	{#if !selectedType}
+		<div>
+			<Checkbox bind:checked={newTypeIsContainer}>Это контейнер</Checkbox>
+			<Helper class="mt-1 ps-6">
+				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
+			</Helper>
+		</div>
+	{/if}
 
-	<div class="space-y-1">
-		<span class="text-sm font-medium">Фото типа (необязательно)</span>
-		<PhotoField
-			photoKey={typeId && typePhoto?.typeId === typeId ? typePhoto.photoKey : null}
-			previewUrl={photoUrl}
-			alt="Фото типа"
-			caption={photo && typeId && typePhoto?.typeId === typeId && typePhoto.photoKey
-				? 'Новое фото заменит фото типа — оно общее для всех вещей этого типа.'
-				: 'Фото общее для всех вещей этого типа.'}
-			onfile={async (file) => {
-				photo = file;
-			}}
-			onremove={photo
-				? async () => {
-						photo = null;
-					}
-				: undefined}
-		/>
-	</div>
+	{#if askPhoto}
+		<div class="space-y-1">
+			<span class="text-sm font-medium">Фото (необязательно)</span>
+			<PhotoField
+				previewUrl={photoUrl}
+				alt="Фото типа"
+				onfile={async (file) => {
+					photo = file;
+				}}
+				onremove={photo
+					? async () => {
+							photo = null;
+						}
+					: undefined}
+			/>
+		</div>
+	{/if}
 
 	<Card class="max-w-none space-y-2 p-4">
 		<span class="text-sm text-gray-500 dark:text-gray-400">Где лежит</span>

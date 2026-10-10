@@ -5,7 +5,15 @@ import { itemDisplayName } from '$lib/domain/item';
 import { quantityError } from '$lib/domain/workbench';
 import { isWorkbenchIconKey } from '$lib/domain/workbench-icons';
 import { discard } from './archive';
-import { assertCanPlace, assertIsContainer, getPath, getPaths, type PathNode } from './paths';
+import {
+	assertCanPlace,
+	assertIsContainer,
+	containerTypeInclude,
+	getPath,
+	getPaths,
+	isContainerItem,
+	type PathNode
+} from './paths';
 import { notTaken, partCount, placePart } from './split';
 
 // ---------------------------------------------------------------------------
@@ -184,7 +192,7 @@ type HomeState = {
 	status: string;
 	takenById: string | null;
 	isWorkbench: boolean;
-	isContainer: boolean;
+	type: { isContainer: boolean } | null;
 };
 
 /** Why the item cannot go back to `home` (null = it can). */
@@ -194,7 +202,7 @@ function returnBlocker(home: HomeState | null, homePath: PathNode[]): string | n
 	if (home.takenById || home.isWorkbench || homePath.some((n) => n.isWorkbench)) {
 		return 'Исходное место само сейчас на рабочем столе';
 	}
-	if (!home.isContainer) return 'Исходное место больше не контейнер';
+	if (!isContainerItem(home)) return 'Исходное место больше не контейнер';
 	return null;
 }
 
@@ -212,7 +220,13 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 			type: { select: { name: true } },
 			takenBy: { select: { name: true } },
 			home: {
-				select: { id: true, status: true, takenById: true, isWorkbench: true, isContainer: true }
+				select: {
+					id: true,
+					status: true,
+					takenById: true,
+					isWorkbench: true,
+					type: { select: { isContainer: true } }
+				}
 			},
 			_count: { select: { children: { where: { status: 'ACTIVE' } } } }
 		},
@@ -274,7 +288,10 @@ export async function returnHome(
 		const count = partCount(item, quantity);
 		const whole = count === item.quantity;
 		const home = item.homeId
-			? await tx.item.findFirst({ where: { id: item.homeId, ...visibleTo(actor) } })
+			? await tx.item.findFirst({
+					where: { id: item.homeId, ...visibleTo(actor) },
+					include: { type: { select: { isContainer: true } } }
+				})
 			: null;
 		const blocker = returnBlocker(home, home ? await getPath(home.id, tx) : []);
 		if (blocker) throw new ConflictError(`${blocker} — положите вещь в другое место`);
@@ -333,7 +350,7 @@ export async function relocate(
 		if (containerId) {
 			const container = await tx.item.findFirst({
 				where: { id: containerId, ...visibleTo(actor) },
-				include: { type: { select: { name: true } } }
+				include: containerTypeInclude
 			});
 			if (!container) throw new NotFoundError('Контейнер не найден');
 			if (container.isWorkbench) {

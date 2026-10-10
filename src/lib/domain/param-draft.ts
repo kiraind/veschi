@@ -1,7 +1,7 @@
 /**
- * Editable form state of one parameter value (ParamRowEditor). The definition
- * fixes the name, the value type and the drop-down list; numbers stay strings
- * until saving so «4,5» can be typed.
+ * Editable form state of one parameter value (ParamSection). The definition
+ * fixes the name, the value type, the unit and the drop-down options; numbers
+ * stay strings until saving so «4,5» can be typed.
  */
 import type { ParamInput, ParamValueType, ParamView } from './params';
 
@@ -10,7 +10,8 @@ export interface DraftDef {
 	id: string;
 	name: string;
 	valueType: ParamValueType;
-	dictionaryId: string | null;
+	/** NUMBER, RANGE: shown next to the number, not edited here. */
+	unit?: string | null;
 }
 
 export interface ParamDraft {
@@ -23,8 +24,8 @@ export interface ParamDraft {
 	number: string;
 	min: string;
 	max: string;
+	/** The definition's unit (display only). */
 	unit: string;
-	dictionaryId: string;
 	optionIds: string[];
 	url: string;
 	file: { fileKey: string; fileName: string; fileMime: string; fileSize: number } | null;
@@ -45,8 +46,7 @@ export function emptyDraft(def: DraftDef): ParamDraft {
 		number: '',
 		min: '',
 		max: '',
-		unit: '',
-		dictionaryId: def.dictionaryId ?? '',
+		unit: def.unit ?? '',
 		optionIds: [],
 		url: '',
 		file: null,
@@ -71,7 +71,7 @@ export function draftFromView(p: ParamView): ParamDraft {
 		id: p.defId,
 		name: p.key,
 		valueType: p.valueType,
-		dictionaryId: p.dictionaryId ?? null
+		unit: p.unit ?? null
 	});
 	switch (p.valueType) {
 		case 'STRING':
@@ -79,12 +79,10 @@ export function draftFromView(p: ParamView): ParamDraft {
 			break;
 		case 'NUMBER':
 			d.number = numberText(p.value);
-			d.unit = p.unit ?? '';
 			break;
 		case 'RANGE':
 			d.min = numberText(p.min);
 			d.max = numberText(p.max);
-			d.unit = p.unit ?? '';
 			break;
 		case 'ENUM':
 			d.optionIds = [...p.optionIds];
@@ -120,14 +118,13 @@ export function draftToInput(d: ParamDraft): Partial<ParamInput> & Record<string
 		case 'STRING':
 			return { ...base, valueType: 'STRING', text: d.text };
 		case 'NUMBER':
-			return { ...base, valueType: 'NUMBER', value: parseNumberInput(d.number), unit: d.unit };
+			return { ...base, valueType: 'NUMBER', value: parseNumberInput(d.number) };
 		case 'RANGE':
 			return {
 				...base,
 				valueType: 'RANGE',
 				min: parseNumberInput(d.min),
-				max: parseNumberInput(d.max),
-				unit: d.unit
+				max: parseNumberInput(d.max)
 			};
 		case 'ENUM':
 			return { ...base, valueType: 'ENUM', optionIds: d.optionIds };

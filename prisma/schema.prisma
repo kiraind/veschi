@@ -109,6 +109,10 @@ model ItemType {
   ownerId     String?  @db.Uuid
   householdId String?  @db.Uuid
   name        String
+  // Free-text description; search matches it too.
+  description String?
+  // Items of a container type can hold other items (and always have quantity 1).
+  isContainer Boolean  @default(false)
   // Object key of the single photo in S3/MinIO; shared by every item of the type.
   photoKey    String?
   createdAt   DateTime @default(now())
@@ -137,10 +141,8 @@ model Item {
   typeId      String?    @db.Uuid
   // Own name of this instance; when empty the type name is shown.
   name        String?
-  // Always 1 for containers and workbenches.
+  // Always 1 for containers (items of a container type) and workbenches.
   quantity    Int        @default(1)
-  // Other items can be put inside (workbenches are always containers).
-  isContainer Boolean    @default(false)
   // Where the item lies; null = top level.
   parentId    String?    @db.Uuid
   // Container the item was taken from (set while the item is on a workbench).
@@ -251,7 +253,8 @@ model EnumDictionary {
   household Household?   @relation(fields: [householdId], references: [id], onDelete: Cascade)
   options   EnumOption[]
   params    Param[]
-  paramDefs ParamDef[]
+  // The ENUM parameter whose options these are; a list belongs to exactly one.
+  paramDef  ParamDef?
 
   @@index([ownerId])
 }
@@ -282,17 +285,19 @@ enum ParamValueType {
   BOOLEAN
 }
 
-// A parameter («Параметры» page): its name and value type, shared by every
-// type and item that has a value for it. Names are unique per owner
-// (case-insensitive, checked by the service layer).
+// A parameter («Параметры» page): its name, value type, unit (numbers) and
+// option list (ENUM), shared by every type and item that has a value for it.
+// Names are unique per owner (case-insensitive, checked by the service layer).
 model ParamDef {
   id           String         @id @default(uuid()) @db.Uuid
   ownerId      String?        @db.Uuid
   householdId  String?        @db.Uuid
   name         String
   valueType    ParamValueType
-  // ENUM: the drop-down list the values are chosen from.
-  dictionaryId String?        @db.Uuid
+  // NUMBER, RANGE: unit of every value («мм», «В»).
+  unit         String?
+  // ENUM: the parameter's own option list.
+  dictionaryId String?        @unique @db.Uuid
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -320,7 +325,6 @@ model Param {
   textValue    String? // STRING, URL
   numberValue  Float? // NUMBER; RANGE minimum
   numberMax    Float? // RANGE maximum
-  unit         String? // NUMBER, RANGE
   dateValue    DateTime? @db.Date // DATE
   boolValue    Boolean? // BOOLEAN
   fileKey      String? // FILE: object key in S3/MinIO
