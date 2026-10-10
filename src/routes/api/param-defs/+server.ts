@@ -4,7 +4,7 @@ import { createParamDef, listParamDefs } from '$lib/server/services/params';
 
 export const GET = apiHandler(async ({ actor }) => listParamDefs(actor));
 
-/** A new parameter: name, value type and, for ENUM, its drop-down list. */
+/** A new parameter: name, value type, unit (numbers) or drop-down options (ENUM). */
 export const POST = apiHandler(async ({ actor, request }) =>
 	createParamDef(actor, await parseBody(request, paramDefInputSchema))
 );

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
-	import { Button, Checkbox, Helper, Input, Label } from 'flowbite-svelte';
+	import { Button, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
+	import type { TypeInfo } from '$lib/server/services/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -13,9 +14,11 @@
 	const { item, type } = data.card;
 	let typeId = $state<string | null>(type?.id ?? null);
 	let typeName = $state(type?.name ?? '');
+	let selectedType = $state<TypeInfo | null>(type);
 	let name = $state(item.name ?? '');
 	let quantity = $state(item.quantity);
-	let isContainer = $state(item.isContainer);
+	/** A new type (typed name) is an ordinary one; containers come from their type. */
+	const isContainer = $derived(selectedType?.isContainer ?? false);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -28,8 +31,7 @@
 				...(typeId ? { typeId } : { newTypeName: typeName }),
 				name,
 				// A container is a single instance: its quantity is always 1.
-				quantity: isContainer ? 1 : quantity,
-				isContainer
+				quantity: isContainer ? 1 : quantity
 			});
 			await goto(`/items/${item.id}`);
 		} catch (e) {
@@ -52,7 +54,7 @@
 <h1 class="mb-3 text-2xl font-bold">Изменить вещь</h1>
 
 <form class="flex flex-col gap-4" onsubmit={save}>
-	<TypeAutocomplete bind:typeId bind:typeName />
+	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />
 	<div>
 		<Label for="item-name">Своё название (необязательно)</Label>
 		<Input id="item-name" class="mt-1" bind:value={name} placeholder={typeName} />
@@ -76,12 +78,6 @@
 			Сейчас {item.quantity} шт. — у контейнера количество всегда 1, после сохранения будет 1.
 		</p>
 	{/if}
-	<div>
-		<Checkbox bind:checked={isContainer}>Это контейнер</Checkbox>
-		<Helper class="mt-1 ps-6">
-			В контейнер можно класть другие вещи. Снять отметку можно, когда внутри пусто.
-		</Helper>
-	</div>
 	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 	<div class="flex flex-wrap gap-2">
 		<Button type="submit" disabled={busy || !typeName.trim()} loading={busy}>Сохранить</Button>

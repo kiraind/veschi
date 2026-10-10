@@ -19,18 +19,18 @@ import {
 describe('workbench service', () => {
 	let actor: Actor;
 	let typeId: string;
+	let containerTypeId: string;
 	let garage: string;
 
-	/** Single items are containers (so things can go in); several are plain things. */
+	/** Single items are of a container type (so things can go in); several are plain things. */
 	async function item(name: string, parentId: string | null = null, quantity = 1) {
 		return db.item.create({
 			data: {
 				ownerId: actor.userId,
-				typeId,
+				typeId: quantity === 1 ? containerTypeId : typeId,
 				name,
 				parentId,
-				quantity,
-				isContainer: quantity === 1
+				quantity
 			}
 		});
 	}
@@ -40,6 +40,11 @@ describe('workbench service', () => {
 	beforeEach(async () => {
 		actor = await createTestActor();
 		typeId = (await db.itemType.create({ data: { ownerId: actor.userId, name: 'Вещь' } })).id;
+		containerTypeId = (
+			await db.itemType.create({
+				data: { ownerId: actor.userId, name: 'Ёмкость', isContainer: true }
+			})
+		).id;
 		garage = (await createWorkbench(actor, { name: 'Гараж' })).id;
 	});
 
@@ -145,7 +150,36 @@ describe('workbench service', () => {
 				homeId: box.id
 			});
 			expect(part.sticker).toBeNull();
-			expect(part.params).toEqual([]);
+			expect(part.params).toMatchObject([{ valueType: 'STRING', textValue: 'DIP-8' }]);
+			expect(await db.param.count({ where: { itemId: chips.id } })).toBe(1);
+		});
+
+		it('takes two parts to the same bench as one record', async () => {
+			const first = await take(actor, chips.id, { workbenchId: garage, quantity: 2 });
+			const second = await take(actor, chips.id, { workbenchId: garage, quantity: 3 });
+			expect(second.itemId).toBe(first.itemId);
+			expect(await reload(first.itemId)).toMatchObject({
+				quantity: 5,
+				parentId: garage,
+				homeId: box.id,
+				splitFromId: chips.id
+			});
+			expect(await reload(chips.id)).toMatchObject({ quantity: 5, parentId: box.id });
+			expect((await listWorkbench(actor)).map((i) => [i.id, i.quantity])).toEqual([
+				[first.itemId, 5]
+			]);
+			// Everything merges back into the source.
+			expect(await returnHome(actor, first.itemId)).toEqual({ itemId: chips.id, merged: true });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 10 });
+		});
+
+		it('keeps parts taken to different benches apart', async () => {
+			const home = (await createWorkbench(actor, { name: 'Дом' })).id;
+			const a = await take(actor, chips.id, { workbenchId: garage, quantity: 2 });
+			const b = await take(actor, chips.id, { workbenchId: home, quantity: 3 });
+			expect(b.itemId).not.toBe(a.itemId);
+			expect(await reload(a.itemId)).toMatchObject({ quantity: 2, parentId: garage });
+			expect(await reload(b.itemId)).toMatchObject({ quantity: 3, parentId: home });
 		});
 
 		it('returns those 2: one record of 10 in the box, the bench is empty', async () => {
@@ -247,6 +281,36 @@ describe('workbench service', () => {
 					takenById: actor.userId
 				});
 				expect((await listWorkbench(actor)).map((i) => [i.id, i.quantity])).toEqual([[onBench, 1]]);
+			});
+
+			it('relocates into a drawer that has the same thing: adds to it', async () => {
+				const drawer = await item('Ящик');
+				const first = await relocate(actor, onBench, drawer.id, { quantity: 1 });
+				const twin = await reload(first.itemId);
+				expect(twin).toMatchObject({ quantity: 1, parentId: drawer.id, splitFromId: null });
+				// A part merges into the record already there…
+				expect(await relocate(actor, onBench, drawer.id, { quantity: 2 })).toEqual({
+					itemId: twin.id
+				});
+				expect(await reload(twin.id)).toMatchObject({ quantity: 3 });
+				expect(await reload(onBench)).toMatchObject({ quantity: 1, parentId: garage });
+				// …and so does the whole rest, whose record disappears.
+				expect(await relocate(actor, onBench, drawer.id)).toEqual({ itemId: twin.id });
+				expect(await reload(twin.id)).toMatchObject({ quantity: 4, takenById: null });
+				expect(await db.item.findUnique({ where: { id: onBench } })).toBeNull();
+				expect(await listWorkbench(actor)).toEqual([]);
+				expect(await db.item.count({ where: { parentId: drawer.id } })).toBe(1);
+				expect(await db.param.count({ where: { itemId: twin.id } })).toBe(1);
+			});
+
+			it('returns into the home next to an identical record when the source moved away', async () => {
+				await db.item.update({ where: { id: chips.id }, data: { parentId: null } });
+				const first = await returnHome(actor, onBench, { quantity: 1 });
+				expect(first.merged).toBe(false);
+				const second = await returnHome(actor, onBench, { quantity: 2 });
+				expect(second).toEqual({ itemId: first.itemId, merged: false });
+				expect(await reload(first.itemId)).toMatchObject({ quantity: 3, parentId: box.id });
+				expect(await reload(onBench)).toMatchObject({ quantity: 1, parentId: garage });
 			});
 
 			it('relocates all 4 as the record itself', async () => {

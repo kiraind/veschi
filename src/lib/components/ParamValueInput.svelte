@@ -2,27 +2,24 @@
 	import { Button, Fileupload, Input, Radio, Select } from 'flowbite-svelte';
 	import { api, ApiError } from '$lib/api';
 	import type { ParamDraft } from '$lib/domain/param-draft';
-	import { formatFileSize } from '$lib/domain/params';
+	import { formatFileSize, type ParamDefView } from '$lib/domain/params';
+	import { shortenFileName } from '$lib/domain/shorten';
 	import type { FileValue } from '$lib/server/services/files';
-	import type { DictionaryView } from '$lib/server/services/dictionaries';
 	import DateInput from './DateInput.svelte';
 	import RefPicker from './RefPicker.svelte';
 
 	/**
-	 * Value fields of one parameter, depending on its value type. ENUM values
-	 * come from the definition's drop-down list (`dictionaries` holds the lists).
+	 * Value fields of one parameter, depending on its value type. The unit is
+	 * the definition's (shown, not edited); ENUM options come from the
+	 * definition (`def`, null while loading).
 	 */
-	let {
-		draft = $bindable(),
-		dictionaries
-	}: { draft: ParamDraft; dictionaries: DictionaryView[] | null } = $props();
+	let { draft = $bindable(), def }: { draft: ParamDraft; def: ParamDefView | null } = $props();
 
-	const dictionary = $derived(dictionaries?.find((d) => d.id === draft.dictionaryId));
 	let uploading = $state(false);
 	let uploadError = $state('');
 
 	function toggleOption(id: string, checked: boolean) {
-		if (!dictionary?.multiple) draft.optionIds = checked ? [id] : [];
+		if (!def?.multiple) draft.optionIds = checked ? [id] : [];
 		else
 			draft.optionIds = checked
 				? [...draft.optionIds, id]
@@ -55,9 +52,7 @@
 		<div class="min-w-0 flex-1">
 			<Input bind:value={draft.number} inputmode="decimal" placeholder="85" aria-label="Число" />
 		</div>
-		<div class="w-20 shrink-0">
-			<Input bind:value={draft.unit} placeholder="мм" aria-label="Единица" />
-		</div>
+		{#if draft.unit}<span class="shrink-0 text-gray-500 dark:text-gray-400">{draft.unit}</span>{/if}
 	</div>
 {:else if draft.valueType === 'RANGE'}
 	<div class="flex items-center gap-1.5">
@@ -68,26 +63,21 @@
 		<div class="min-w-0 flex-1">
 			<Input bind:value={draft.max} inputmode="decimal" placeholder="до" aria-label="Максимум" />
 		</div>
-		<div class="w-16 shrink-0">
-			<Input bind:value={draft.unit} placeholder="В" aria-label="Единица" />
-		</div>
+		{#if draft.unit}<span class="shrink-0 text-gray-500 dark:text-gray-400">{draft.unit}</span>{/if}
 	</div>
 {:else if draft.valueType === 'ENUM'}
-	{#if dictionaries === null}
+	{#if !def}
 		<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка вариантов…</p>
-	{:else if !dictionary}
-		<p class="text-sm text-gray-500 dark:text-gray-400">Выпадающий список не найден.</p>
-	{:else if dictionary.options.length === 0}
+	{:else if def.options.length === 0}
 		<p class="text-sm text-gray-500 dark:text-gray-400">
-			В списке «{dictionary.name}» нет вариантов.
-			<a
-				class="text-primary-700 hover:underline dark:text-primary-400"
-				href="/params/lists/{dictionary.id}">Добавить варианты</a
+			У параметра «{def.name}» нет вариантов.
+			<a class="text-primary-700 hover:underline dark:text-primary-400" href="/params/{def.id}"
+				>Добавить варианты</a
 			>
 		</p>
-	{:else if dictionary.multiple}
+	{:else if def.multiple}
 		<div class="flex flex-wrap gap-x-4 gap-y-1">
-			{#each dictionary.options as option (option.id)}
+			{#each def.options as option (option.id)}
 				<label class="flex min-h-10 items-center gap-2 text-sm text-gray-900 dark:text-white">
 					<input
 						class="h-4 w-4 rounded-sm border-gray-300 bg-gray-100 text-primary-600 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 dark:focus:ring-primary-600"
@@ -107,7 +97,7 @@
 			placeholder=""
 		>
 			<option value="" disabled>Выберите…</option>
-			{#each dictionary.options as option (option.id)}
+			{#each def.options as option (option.id)}
 				<option value={option.id}>{option.label}</option>
 			{/each}
 		</Select>
@@ -117,7 +107,9 @@
 {:else if draft.valueType === 'FILE'}
 	{#if draft.file}
 		<div class="flex flex-wrap items-center gap-2">
-			<span class="min-w-0 break-words">{draft.file.fileName}</span>
+			<span class="min-w-0 break-words" title={draft.file.fileName}
+				>{shortenFileName(draft.file.fileName)}</span
+			>
 			<span class="text-sm text-gray-500 dark:text-gray-400"
 				>{formatFileSize(draft.file.fileSize)}</span
 			>

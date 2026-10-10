@@ -14,11 +14,18 @@
 	let {
 		onpick,
 		excludeId,
+		excludeIds = [],
+		excludeParentId,
 		title = 'Куда положить?',
 		containersOnly = true
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
+		/** The item being placed: it cannot go into itself. */
 		excludeId?: string;
+		/** Containers not offered, e.g. the one the item already lies in. */
+		excludeIds?: string[];
+		/** Items lying directly in this container are not offered (they are there already). */
+		excludeParentId?: string;
 		title?: string;
 		containersOnly?: boolean;
 	} = $props();
@@ -41,7 +48,13 @@
 			if (id !== request) return;
 			results = groups
 				.flatMap((g) => g.locations)
-				.filter((l) => l.itemId !== excludeId && (!containersOnly || l.isContainer))
+				.filter(
+					(l) =>
+						l.itemId !== excludeId &&
+						!excludeIds.includes(l.itemId) &&
+						(!excludeParentId || l.path.at(-1)?.id !== excludeParentId) &&
+						(!containersOnly || l.isContainer)
+				)
 				.map((l) => ({ id: l.itemId, name: l.name, path: formatPath(l.path) }));
 		}, 250);
 		return () => clearTimeout(timer);
@@ -66,7 +79,15 @@
 				message = 'Нельзя положить вещь в саму себя';
 				return;
 			}
+			if (excludeIds.includes(resolved.itemId)) {
+				message = 'Вещь уже лежит в этом контейнере';
+				return;
+			}
 			const card = await api.get<ItemCard>(`/api/items/${resolved.itemId}`);
+			if (excludeParentId && card.item.parentId === excludeParentId && !card.item.takenById) {
+				message = `«${card.item.displayName}» уже лежит здесь`;
+				return;
+			}
 			if (containersOnly && !card.item.isContainer) {
 				message = `«${card.item.displayName}» — не контейнер`;
 				return;

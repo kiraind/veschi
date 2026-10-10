@@ -6,6 +6,7 @@
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import type { PageData } from './$types';
+	import { confirmAction } from '$lib/confirm.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -27,9 +28,13 @@
 
 	const restore = (id: string) => act(id, () => api.post(`/api/items/${id}/restore`));
 
-	function purge(item: { id: string; name: string }) {
-		const question = `Удалить «${item.name}» навсегда? Это нельзя отменить; всё, что выкинуто вместе с ней, тоже удалится.`;
-		if (!confirm(question)) return;
+	async function purge(item: { id: string; name: string }) {
+		const ok = await confirmAction({
+			title: `Удалить «${item.name}» навсегда?`,
+			message: 'Это нельзя отменить; всё, что выкинуто вместе с ней, тоже удалится.',
+			confirmLabel: 'Удалить навсегда'
+		});
+		if (!ok) return;
 		return act(item.id, () => api.post(`/api/items/${item.id}/purge`));
 	}
 </script>

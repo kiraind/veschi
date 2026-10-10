@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
-	import { Badge, Button, Input, Label, Select } from 'flowbite-svelte';
+	import { Badge, Button } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
-	import {
-		PARAM_VALUE_TYPES,
-		PARAM_VALUE_TYPE_LABELS,
-		type ParamValueType
-	} from '$lib/domain/params';
+	import { confirmAction } from '$lib/confirm.svelte';
+	import ParamDefFields from '$lib/components/ParamDefFields.svelte';
+	import type { ParamValueType } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -15,13 +13,17 @@
 	const def = $derived(data.card.def);
 	const used = $derived(def.typeCount + def.itemCount > 0);
 
-	// The form is filled from the page data once.
+	// The form is filled from the page data once (and again after saving).
 	// svelte-ignore state_referenced_locally
 	let name = $state(data.card.def.name);
 	// svelte-ignore state_referenced_locally
 	let valueType = $state<ParamValueType>(data.card.def.valueType);
 	// svelte-ignore state_referenced_locally
-	let dictionaryId = $state(data.card.def.dictionaryId ?? '');
+	let unit = $state(data.card.def.unit ?? '');
+	// svelte-ignore state_referenced_locally
+	let multiple = $state(data.card.def.multiple);
+	// svelte-ignore state_referenced_locally
+	let options = $state(data.card.def.options.map((o) => ({ ...o })));
 	let busy = $state(false);
 	let error = $state('');
 	let saved = $state(false);
@@ -45,15 +47,19 @@
 			await api.put(`/api/param-defs/${def.id}`, {
 				name,
 				valueType,
-				dictionaryId: valueType === 'ENUM' ? dictionaryId || null : null
+				unit,
+				multiple,
+				options: options.map(({ id, label }) => ({ id, label }))
 			});
 			await invalidateAll();
+			// New options got ids and usage counts.
+			options = data.card.def.options.map((o) => ({ ...o }));
 			saved = true;
 		});
 	}
 
-	function remove() {
-		if (!confirm(`Удалить параметр «${def.name}»?`)) return;
+	async function remove() {
+		if (!(await confirmAction({ title: `Удалить параметр «${def.name}»?` }))) return;
 		run(async () => {
 			await api.delete(`/api/param-defs/${def.id}`);
 			await goto('/params');
@@ -72,40 +78,11 @@
 <h1 class="mb-3 text-2xl font-bold break-words">{def.name}</h1>
 
 <form class="flex flex-col gap-3" onsubmit={save}>
-	<Label>
-		Название
-		<Input class="mt-1" bind:value={name} required />
-	</Label>
-	<Label>
-		Тип значения
-		<Select class="mt-1" bind:value={valueType} placeholder="" disabled={used}>
-			{#each PARAM_VALUE_TYPES as type (type)}
-				<option value={type}>{PARAM_VALUE_TYPE_LABELS[type]}</option>
-			{/each}
-		</Select>
-	</Label>
-	{#if valueType === 'ENUM'}
-		<Label>
-			Выпадающий список
-			<Select class="mt-1" bind:value={dictionaryId} placeholder="" disabled={used} required>
-				<option value="" disabled>Выберите список…</option>
-				{#each data.dictionaries as d (d.id)}
-					<option value={d.id}>{d.name}</option>
-				{/each}
-			</Select>
-		</Label>
-		{#if def.dictionaryId}
-			<p class="text-sm">
-				<a
-					class="text-primary-700 hover:underline dark:text-primary-400"
-					href="/params/lists/{def.dictionaryId}">Изменить варианты списка «{def.dictionaryName}»</a
-				>
-			</p>
-		{/if}
-	{/if}
+	<ParamDefFields bind:name bind:valueType bind:unit bind:multiple bind:options typeLocked={used} />
 	{#if used}
 		<p class="text-sm text-gray-500 dark:text-gray-400">
-			Тип значения и список можно поменять, только пока параметр нигде не задан.
+			Тип значения можно поменять, только пока параметр нигде не задан. Вариант, который выбран у
+			вещей или типов, удалить нельзя.
 		</p>
 	{/if}
 	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}

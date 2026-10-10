@@ -4,6 +4,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
+	import { confirmAction } from '$lib/confirm.svelte';
 
 	/** The item's sticker with «Привязать» / «Отвязать» actions. */
 	let {
@@ -41,10 +42,13 @@
 
 	const bind = (code: string) => run(() => api.post('/api/stickers/bind', { code, itemId }));
 
-	function unbind() {
-		if (!confirm('Отвязать наклейку? Она будет списана, к вещи можно будет привязать новую.'))
-			return;
-		run(() => api.post('/api/stickers/unbind', { itemId }));
+	async function unbind() {
+		const ok = await confirmAction({
+			title: 'Отвязать наклейку?',
+			message: 'Она будет списана, к вещи можно будет привязать новую.',
+			confirmLabel: 'Отвязать'
+		});
+		if (ok) run(() => api.post('/api/stickers/unbind', { itemId }));
 	}
 </script>
 

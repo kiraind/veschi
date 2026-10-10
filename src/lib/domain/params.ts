@@ -1,8 +1,9 @@
 /**
- * Parameters. A parameter definition (ParamDef, «Параметры» page) has a name
- * and a value type; types and items hold typed values of definitions. Input
- * validation, display formatting and the merge rule for the item card. Pure
- * functions, shared by the server and the browser.
+ * Parameters. A parameter definition (ParamDef, «Параметры» page) has a name,
+ * a value type, a unit (numbers) and its own option list (ENUM); types and
+ * items hold typed values of definitions. Input validation, display
+ * formatting and the rule for the item card. Pure functions, shared by the
+ * server and the browser.
  */
 import { z } from 'zod';
 
@@ -36,6 +37,7 @@ export const PARAM_VALUE_TYPE_LABELS: Record<ParamValueType, string> = {
 export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
 
 const MAX_PARAMS = 100;
+const MAX_OPTIONS = 200;
 
 const unit = z
 	.string()
@@ -43,6 +45,7 @@ const unit = z
 	.max(20, 'Единица длиннее 20 символов')
 	.nullish()
 	.transform((v) => v || null);
+const optionLabel = z.string().trim().min(1, 'Пустой вариант').max(100);
 const finite = z.number().finite('Нужно число');
 const uuid = z.uuid('Некорректный идентификатор');
 
@@ -56,29 +59,67 @@ export const paramNameSchema = z
 	.min(1, 'Укажите название параметра')
 	.max(100, 'Название длиннее 100 символов');
 
-/** A new or changed parameter definition; ENUM needs its drop-down list. */
+/** Value types with a unit («мм», «В»). */
+export function hasUnit(valueType: ParamValueType): boolean {
+	return valueType === 'NUMBER' || valueType === 'RANGE';
+}
+
+/**
+ * A new or changed parameter definition. Numbers may have a unit; a
+ * drop-down (ENUM) has its options: the full ordered list, options with an id
+ * are kept (and renamed), others are new.
+ */
 export const paramDefInputSchema = z
 	.object({
 		name: paramNameSchema,
 		valueType: z.enum(PARAM_VALUE_TYPES),
-		dictionaryId: uuid.nullish().transform((v) => v ?? null)
+		unit,
+		multiple: z.boolean().default(false),
+		options: z
+			.array(z.object({ id: uuid.optional(), label: optionLabel }))
+			.max(MAX_OPTIONS, `Не больше ${MAX_OPTIONS} вариантов`)
+			.default([])
 	})
-	.refine((v) => v.valueType !== 'ENUM' || v.dictionaryId !== null, {
-		message: 'Выберите выпадающий список',
-		path: ['dictionaryId']
+	.superRefine((v, ctx) => {
+		const seen = new Set<string>();
+		v.options.forEach((o, i) => {
+			const k = o.label.toLocaleLowerCase('ru');
+			if (seen.has(k)) {
+				ctx.addIssue({
+					code: 'custom',
+					message: `Вариант «${o.label}» повторяется`,
+					path: ['options', i, 'label']
+				});
+			}
+			seen.add(k);
+		});
 	})
-	.transform((v) => (v.valueType === 'ENUM' ? v : { ...v, dictionaryId: null }));
+	.transform((v) => ({
+		...v,
+		unit: hasUnit(v.valueType) ? v.unit : null,
+		multiple: v.valueType === 'ENUM' ? v.multiple : false,
+		options: v.valueType === 'ENUM' ? v.options : []
+	}));
 
 export type ParamDefInput = z.input<typeof paramDefInputSchema>;
+
+/** «Число, мм», «Выпадающий список» — what kind of value a parameter takes. */
+export function paramKindLabel(def: { valueType: ParamValueType; unit: string | null }): string {
+	const label = PARAM_VALUE_TYPE_LABELS[def.valueType];
+	return hasUnit(def.valueType) && def.unit ? `${label}, ${def.unit}` : label;
+}
 
 /** A parameter definition as listed on the «Параметры» page and in pickers. */
 export interface ParamDefView {
 	id: string;
 	name: string;
 	valueType: ParamValueType;
-	dictionaryId: string | null;
-	/** ENUM: the list's name. */
-	dictionaryName: string | null;
+	/** NUMBER, RANGE. */
+	unit: string | null;
+	/** ENUM: several options can be chosen. */
+	multiple: boolean;
+	/** ENUM: options in list order; usage = values that have it chosen. */
+	options: { id: string; label: string; usage: number }[];
 	/** Types and items that have a value of it. */
 	typeCount: number;
 	itemCount: number;
@@ -90,8 +131,8 @@ export interface ParamDefView {
 
 const valueVariants = {
 	STRING: { text: z.string().trim().min(1, 'Пустое значение').max(1000) },
-	NUMBER: { value: finite, unit },
-	RANGE: { min: finite, max: finite, unit },
+	NUMBER: { value: finite },
+	RANGE: { min: finite, max: finite },
 	ENUM: { optionIds: z.array(uuid).min(1, 'Выберите вариант') },
 	URL: { url: z.string().trim().max(2000).refine(isHttpUrl, 'Нужна ссылка вида https://…') },
 	FILE: {
@@ -157,16 +198,13 @@ export type ParamView = ParamInput & {
 	id: string;
 	/** The definition's name. */
 	key: string;
-	/** ENUM: the drop-down list of the definition. */
-	dictionaryId?: string | null;
+	/** NUMBER, RANGE: the definition's unit. */
+	unit?: string | null;
 	/** ENUM: chosen options; renaming an option shows here at once. */
 	options?: { id: string; label: string }[];
 	/** REF: the target, or null when it no longer exists. */
 	ref?: { kind: 'item' | 'type'; id: string; name: string; archived: boolean } | null;
 };
-
-export type ParamSource = 'type' | 'item';
-export type MergedParam = ParamView & { source: ParamSource };
 
 /** Name comparison is case-insensitive and ignores surrounding spaces. */
 export function normalizeParamKey(k: string): string {
@@ -174,26 +212,16 @@ export function normalizeParamKey(k: string): string {
 }
 
 /**
- * Type and item parameters as seen on the item card: an item value overrides
- * the type value of the same definition (shown at the type parameter's
- * position); the item's own extra parameters follow.
+ * Type parameters shown on an item card under «Параметры»: those the item
+ * has no own value of (own values are listed under «Индивидуальные
+ * параметры» and take precedence).
  */
-export function mergeParams<T extends { defId: string }>(
+export function inheritedParams<T extends { defId: string }>(
 	typeParams: T[],
 	itemParams: T[]
-): (T & { source: ParamSource })[] {
-	const own = new Map(itemParams.map((p) => [p.defId, p]));
-	const used = new Set<string>();
-	const merged: (T & { source: ParamSource })[] = typeParams.map((p) => {
-		const override = own.get(p.defId);
-		if (!override) return { ...p, source: 'type' };
-		used.add(p.defId);
-		return { ...override, source: 'item' };
-	});
-	for (const p of itemParams) {
-		if (!used.has(p.defId)) merged.push({ ...p, source: 'item' });
-	}
-	return merged;
+): T[] {
+	const own = new Set(itemParams.map((p) => p.defId));
+	return typeParams.filter((p) => !own.has(p.defId));
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +260,9 @@ export function formatFileSize(bytes: number): string {
 }
 
 /** The value of a parameter as one line of text. */
-export function formatParamValue(p: ParamValue & Pick<ParamView, 'options' | 'ref'>): string {
+export function formatParamValue(
+	p: ParamValue & Pick<ParamView, 'options' | 'ref' | 'unit'>
+): string {
 	switch (p.valueType) {
 		case 'STRING':
 			return p.text;

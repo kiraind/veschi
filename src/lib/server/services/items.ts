@@ -4,12 +4,20 @@ import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
-import { mergeParams, paramListSchema, type MergedParam, type ParamView } from '$lib/domain/params';
+import { inheritedParams, paramListSchema, type ParamView } from '$lib/domain/params';
 import { getParamsOf, replaceParams } from './params';
-import { assertCanPlace, assertIsContainer, getPath, type PathNode } from './paths';
+import {
+	assertCanPlace,
+	assertIsContainer,
+	assertNothingInside,
+	containerTypeInclude,
+	getPath,
+	isContainerItem,
+	type PathNode
+} from './paths';
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
-import { findOrCreateType } from './types';
+import { CONTAINER_QUANTITY, findOrCreateType } from './types';
 
 const ownName = z
 	.string()
@@ -33,7 +41,8 @@ export const createItemSchema = z
 		name: ownName,
 		quantity: quantity.default(1),
 		parentId: z.uuid().nullish(),
-		isContainer: z.boolean().default(false),
+		/** A new type (newTypeName) is a container type. */
+		newTypeIsContainer: z.boolean().default(false),
 		stickerCode: z.string().trim().min(1).optional(),
 		params: paramListSchema.optional()
 	})
@@ -46,8 +55,7 @@ export const updateItemSchema = z
 	.object({
 		...typeChoice,
 		name: ownName.optional(),
-		quantity: quantity.optional(),
-		isContainer: z.boolean().optional()
+		quantity: quantity.optional()
 	})
 	.refine((v) => !(v.typeId && v.newTypeName), {
 		message: 'Либо существующий тип, либо новый',
@@ -59,9 +67,6 @@ export const moveItemSchema = z.object({
 	/** Part of the quantity; omitted → the whole record. */
 	quantity: z.number().int().positive().optional()
 });
-
-/** A container is a single instance: one thing never lies in two identical boxes. */
-const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
 
 /** One entry of a container's contents (or of the top level). */
 export interface ContentEntry {
@@ -88,18 +93,25 @@ export interface ItemCard {
 		status: 'ACTIVE' | 'ARCHIVED';
 		archivedAt: Date | null;
 		isWorkbench: boolean;
+		/** Things can be put inside: a workbench or an item of a container type. */
 		isContainer: boolean;
 		parentId: string | null;
 		homeId: string | null;
 		takenById: string | null;
 	};
-	type: { id: string; name: string; photoKey: string | null } | null;
+	type: {
+		id: string;
+		name: string;
+		description: string | null;
+		isContainer: boolean;
+		photoKey: string | null;
+	} | null;
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
 	path: PathNode[];
-	/** Type and item parameters merged (item values override type values with the same key). */
-	params: MergedParam[];
-	/** The item's own parameters, for editing. */
+	/** The item's own parameters («Индивидуальные параметры»). */
 	itemParams: ParamView[];
+	/** The type's parameters an own value does not override («Параметры»). */
+	typeParams: ParamView[];
 	children: ContentEntry[];
 }
 
@@ -119,7 +131,7 @@ async function findVisibleType(actor: Actor, id: string, tx: Tx) {
 async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
 	const parent = await tx.item.findFirst({
 		where: { id: parentId, ...visibleTo(actor) },
-		include: { type: { select: { name: true } } }
+		include: containerTypeInclude
 	});
 	if (!parent) throw new NotFoundError('Контейнер не найден');
 	if (parent.status !== 'ACTIVE') throw new ValidationError('Контейнер в архиве');
@@ -131,16 +143,19 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
 }
 
 /**
- * Creates an item: an existing type or a new one by name, optional own name,
- * container, parameters and a free sticker — all in one transaction.
+ * Creates an item: an existing type or a new one by name (optionally a
+ * container type), own name, parameters and a free sticker — all in one
+ * transaction. Items of a container type have quantity 1.
  */
 export async function createItem(actor: Actor, input: unknown): Promise<{ id: string }> {
 	const data = createItemSchema.parse(input);
-	if (data.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 	return db.$transaction(async (tx) => {
 		const type = data.typeId
 			? await findVisibleType(actor, data.typeId, tx)
-			: await findOrCreateType(actor, data.newTypeName ?? '', tx);
+			: await findOrCreateType(actor, data.newTypeName ?? '', tx, {
+					isContainer: data.newTypeIsContainer
+				});
+		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const item = await tx.item.create({
 			data: {
@@ -148,7 +163,6 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				typeId: type.id,
 				name: data.name,
 				quantity: data.quantity,
-				isContainer: data.isContainer,
 				parentId: data.parentId ?? null
 			}
 		});
@@ -159,21 +173,26 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 }
 
 /**
- * Changes the own name, quantity (≥ 1), type or container mark of an active,
- * ordinary item. A container's quantity is always 1.
+ * Changes the own name, quantity (≥ 1) or type of an active, ordinary item.
+ * An item of a container type has quantity 1; moving a container to a
+ * non-container type needs it empty.
  */
 export async function updateItem(actor: Actor, id: string, input: unknown): Promise<void> {
 	const data = updateItemSchema.parse(input);
 	await db.$transaction(async (tx) => {
-		const item = await findItem(actor, id, tx);
+		const item = await tx.item.findFirst({
+			where: { id, ...visibleTo(actor) },
+			include: { type: true }
+		});
+		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол меняется на странице стола');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
-		const typeId = data.typeId
-			? (await findVisibleType(actor, data.typeId, tx)).id
+		const type = data.typeId
+			? await findVisibleType(actor, data.typeId, tx)
 			: data.newTypeName
-				? (await findOrCreateType(actor, data.newTypeName, tx)).id
-				: undefined;
-		if (data.isContainer ?? item.isContainer) {
+				? await findOrCreateType(actor, data.newTypeName, tx)
+				: item.type;
+		if (type?.isContainer) {
 			if (data.quantity !== undefined && data.quantity !== 1) {
 				throw new ValidationError(CONTAINER_QUANTITY);
 			}
@@ -183,21 +202,12 @@ export async function updateItem(actor: Actor, id: string, input: unknown): Prom
 				);
 			}
 		}
-		if (data.isContainer === false && item.isContainer) {
-			const [inside, taken] = await Promise.all([
-				tx.item.count({ where: { parentId: id, status: 'ACTIVE' } }),
-				tx.item.count({ where: { homeId: id, status: 'ACTIVE', takenById: { not: null } } })
-			]);
-			if (inside > 0) {
-				throw new ValidationError('Внутри лежат вещи — сначала переложите их');
-			}
-			if (taken > 0) {
-				throw new ValidationError('Вещи из него лежат на рабочем столе — сначала верните их');
-			}
+		if (item.type?.isContainer && !type?.isContainer) {
+			await assertNothingInside(id, tx);
 		}
 		await tx.item.update({
 			where: { id },
-			data: { typeId, name: data.name, quantity: data.quantity, isContainer: data.isContainer }
+			data: { typeId: type?.id, name: data.name, quantity: data.quantity }
 		});
 	});
 }
@@ -221,6 +231,9 @@ export async function moveItem(
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол нельзя переложить');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
 		const count = partCount(item, quantity);
+		if (parentId === item.parentId && !item.takenById) {
+			throw new ValidationError('Вещь уже лежит здесь');
+		}
 		if (parentId) await findPlaceableParent(actor, parentId, tx);
 		await assertCanPlace(itemId, parentId, tx);
 		return { itemId: await placePart(tx, item, count, { parentId, ...notTaken }) };
@@ -237,7 +250,7 @@ export async function listContents(
 	const items = await tx.item.findMany({
 		where: { parentId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) },
 		include: {
-			type: { select: { name: true, photoKey: true } },
+			type: { select: { name: true, photoKey: true, isContainer: true } },
 			sticker: { select: { code: true, status: true } }
 		}
 	});
@@ -260,7 +273,7 @@ export async function listContents(
 			typeName: i.type?.name ?? null,
 			photoKey: i.type?.photoKey ?? null,
 			quantity: i.quantity,
-			isContainer: i.isContainer,
+			isContainer: isContainerItem(i),
 			childCount: childCount.get(i.id) ?? 0,
 			stickerCode: i.sticker?.status === 'BOUND' ? i.sticker.code : null,
 			onWorkbench: i.takenById !== null
@@ -281,7 +294,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		getPath(id),
 		item.typeId ? getParamsOf(actor, 'typeId', [item.typeId]) : null,
 		getParamsOf(actor, 'itemId', [id]),
-		item.isContainer || item.isWorkbench ? listContents(actor, id) : []
+		isContainerItem(item) ? listContents(actor, id) : []
 	]);
 	const own = itemParams.get(id) ?? [];
 	return {
@@ -293,20 +306,26 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 			status: item.status,
 			archivedAt: item.archivedAt,
 			isWorkbench: item.isWorkbench,
-			isContainer: item.isContainer || item.isWorkbench,
+			isContainer: isContainerItem(item),
 			parentId: item.parentId,
 			homeId: item.homeId,
 			takenById: item.takenById
 		},
 		type: item.type
-			? { id: item.type.id, name: item.type.name, photoKey: item.type.photoKey }
+			? {
+					id: item.type.id,
+					name: item.type.name,
+					description: item.type.description,
+					isContainer: item.type.isContainer,
+					photoKey: item.type.photoKey
+				}
 			: null,
 		sticker: item.sticker
 			? { code: item.sticker.code, status: item.sticker.status, caption: item.sticker.caption }
 			: null,
 		path,
-		params: mergeParams(typeParams?.get(item.typeId ?? '') ?? [], own),
 		itemParams: own,
+		typeParams: inheritedParams(typeParams?.get(item.typeId ?? '') ?? [], own),
 		children
 	};
 }

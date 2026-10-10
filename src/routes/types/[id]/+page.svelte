@@ -7,6 +7,7 @@
 	import PathTrail from '$lib/components/PathTrail.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import type { PageData } from './$types';
+	import { confirmAction } from '$lib/confirm.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -15,7 +16,7 @@
 	let error = $state('');
 
 	async function remove() {
-		if (!confirm(`Удалить тип «${type.name}»?`)) return;
+		if (!(await confirmAction({ title: `Удалить тип «${type.name}»?` }))) return;
 		error = '';
 		try {
 			await api.delete(`/api/types/${type.id}`);
@@ -31,10 +32,16 @@
 <p class="mb-2">
 	<a
 		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы</a
+		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
 	>
 </p>
-<h1 class="mb-3 text-2xl font-bold break-words">{type.name}</h1>
+<h1 class="text-2xl font-bold break-words">{type.name}</h1>
+<div class="mt-1 mb-3 flex flex-col gap-1">
+	{#if type.isContainer}<div><Badge color="indigo">контейнер</Badge></div>{/if}
+	{#if type.description}
+		<p class="whitespace-pre-line text-gray-700 dark:text-gray-300">{type.description}</p>
+	{/if}
+</div>
 
 <PhotoField
 	photoKey={type.photoKey}
@@ -52,11 +59,10 @@
 />
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
-<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">Общие для всех вещей этого типа.</p>
 <ParamSection params={data.card.params} target={{ kind: 'type', id: type.id }} />
 
 <div class="mt-4 flex flex-wrap gap-2">
-	<Button color="alternative" href="/types/{type.id}/edit">Переименовать</Button>
+	<Button color="alternative" href="/types/{type.id}/edit">Изменить</Button>
 	<Button color="alternative" href="/items/new?type={type.id}">
 		<PlusOutline class="me-1 h-4 w-4" />Вещь этого типа
 	</Button>

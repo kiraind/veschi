@@ -27,6 +27,7 @@
 		UserCircleOutline,
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
+	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -42,7 +43,7 @@
 	];
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
-		{ href: '/types', label: 'Типы', icon: SwatchbookOutline },
+		{ href: '/types', label: 'Типы вещей', icon: SwatchbookOutline },
 		{ href: '/params', label: 'Параметры', icon: AdjustmentsHorizontalOutline },
 		{ href: '/archive', label: 'Архив', icon: ArchiveOutline }
 	];
@@ -172,3 +173,5 @@
 		</Sidebar>
 	</Drawer>
 {/if}
+
+<ConfirmHost />

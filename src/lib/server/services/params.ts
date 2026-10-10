@@ -6,6 +6,7 @@ import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import {
 	PARAM_VALUE_TYPE_LABELS,
+	hasUnit,
 	normalizeParamKey,
 	paramDefInputSchema,
 	paramInputSchema,
@@ -14,6 +15,7 @@ import {
 	type ParamInput,
 	type ParamView
 } from '$lib/domain/params';
+import { createOptionList, updateOptionList } from './dictionaries';
 import { deleteUnreferencedFiles, isOwnUpload } from './files';
 
 /** Body of the PUT …/params endpoints. */
@@ -44,9 +46,9 @@ function toColumns(
 		case 'STRING':
 			return { valueType: p.valueType, textValue: p.text };
 		case 'NUMBER':
-			return { valueType: p.valueType, numberValue: p.value, unit: p.unit };
+			return { valueType: p.valueType, numberValue: p.value };
 		case 'RANGE':
-			return { valueType: p.valueType, numberValue: p.min, numberMax: p.max, unit: p.unit };
+			return { valueType: p.valueType, numberValue: p.min, numberMax: p.max };
 		case 'ENUM':
 			return { valueType: p.valueType };
 		case 'URL':
@@ -74,14 +76,13 @@ function fromRow(row: ParamRow): ParamInput {
 		case 'STRING':
 			return { ...base, valueType: 'STRING', text: row.textValue ?? '' };
 		case 'NUMBER':
-			return { ...base, valueType: 'NUMBER', value: row.numberValue ?? 0, unit: row.unit };
+			return { ...base, valueType: 'NUMBER', value: row.numberValue ?? 0 };
 		case 'RANGE':
 			return {
 				...base,
 				valueType: 'RANGE',
 				min: row.numberValue ?? 0,
-				max: row.numberMax ?? 0,
-				unit: row.unit
+				max: row.numberMax ?? 0
 			};
 		case 'ENUM':
 			return {
@@ -110,7 +111,7 @@ function fromRow(row: ParamRow): ParamInput {
 }
 
 /**
- * Stored parameters → views: enum options (current labels, dictionary order)
+ * Stored parameters → views: units, enum options (current labels, list order)
  * and REF targets (name, archived mark) are resolved in two batched queries.
  */
 async function toViews(actor: Actor, rows: ParamRow[], tx: Tx): Promise<ParamView[]> {
@@ -136,8 +137,8 @@ async function toViews(actor: Actor, rows: ParamRow[], tx: Tx): Promise<ParamVie
 
 	return rows.map((row) => {
 		const view: ParamView = { ...fromRow(row), id: row.id, key: row.def.name };
+		if (hasUnit(view.valueType)) view.unit = row.def.unit;
 		if (view.valueType === 'ENUM') {
-			view.dictionaryId = row.dictionaryId;
 			const chosen = new Set(view.optionIds);
 			view.options = options
 				.filter((o) => chosen.has(o.id))
@@ -224,9 +225,7 @@ async function assertValueValid(actor: Actor, def: ParamDef, p: ParamInput, tx: 
 			throw new ValidationError(`«${def.name}»: такого варианта нет в списке`);
 		}
 		if (!dictionary.multiple && new Set(p.optionIds).size > 1) {
-			throw new ValidationError(
-				`«${def.name}»: в списке «${dictionary.name}» можно выбрать только один вариант`
-			);
+			throw new ValidationError(`«${def.name}»: можно выбрать только один вариант`);
 		}
 	}
 	if (p.valueType === 'REF') {
@@ -360,7 +359,6 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 			textValue: null,
 			numberValue: null,
 			numberMax: null,
-			unit: null,
 			dateValue: null,
 			boolValue: null,
 			fileKey: null,
@@ -412,7 +410,14 @@ export async function moveParam(actor: Actor, id: string, delta: -1 | 1): Promis
 // ---------------------------------------------------------------------------
 
 const defInclude = {
-	dictionary: { select: { name: true } }
+	dictionary: {
+		include: {
+			options: {
+				orderBy: { position: 'asc' },
+				include: { _count: { select: { values: true } } }
+			}
+		}
+	}
 } satisfies Prisma.ParamDefInclude;
 
 async function defViews(
@@ -431,8 +436,13 @@ async function defViews(
 		id: d.id,
 		name: d.name,
 		valueType: d.valueType,
-		dictionaryId: d.dictionaryId,
-		dictionaryName: d.dictionary?.name ?? null,
+		unit: d.unit,
+		multiple: d.dictionary?.multiple ?? false,
+		options: (d.dictionary?.options ?? []).map((o) => ({
+			id: o.id,
+			label: o.label,
+			usage: o._count.values
+		})),
 		typeCount: byDef.get(d.id)?.typeId ?? 0,
 		itemCount: byDef.get(d.id)?.itemId ?? 0
 	}));
@@ -507,54 +517,60 @@ async function assertNameFree(actor: Actor, name: string, exceptId: string | nul
 	}
 }
 
-async function assertDictionaryVisible(actor: Actor, dictionaryId: string | null, tx: Tx) {
-	if (!dictionaryId) return;
-	const found = await tx.enumDictionary.findFirst({
-		where: { id: dictionaryId, ...visibleTo(actor) }
-	});
-	if (!found) throw new ValidationError('Выпадающий список не найден');
-}
-
 export async function createParamDef(actor: Actor, input: unknown): Promise<ParamDefView> {
-	const data = paramDefInputSchema.parse(input);
+	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
+	if (options.some((o) => o.id)) throw new ValidationError('У новых вариантов не бывает id');
 	const id = await db.$transaction(async (tx) => {
 		await assertNameFree(actor, data.name, null, tx);
-		await assertDictionaryVisible(actor, data.dictionaryId, tx);
-		return (await tx.paramDef.create({ data: { ...data, ...ownedBy(actor) } })).id;
+		const dictionaryId =
+			data.valueType === 'ENUM'
+				? await createOptionList(actor, { name: data.name, multiple, options }, tx)
+				: null;
+		return (await tx.paramDef.create({ data: { ...data, dictionaryId, ...ownedBy(actor) } })).id;
 	});
 	return (await getParamDef(actor, id)).def;
 }
 
 /**
- * Renames a definition (every value shows the new name at once). The value
- * type and the list can change only while no type or item has a value.
+ * Renames a definition (every value shows the new name at once), changes its
+ * unit or its drop-down options. The value type can change only while no
+ * type or item has a value.
  */
 export async function updateParamDef(
 	actor: Actor,
 	id: string,
 	input: unknown
 ): Promise<ParamDefView> {
-	const data = paramDefInputSchema.parse(input);
+	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
 	await db.$transaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
 		await assertNameFree(actor, data.name, id, tx);
-		if (data.valueType !== def.valueType || data.dictionaryId !== def.dictionaryId) {
-			if (await tx.param.count({ where: { defId: id } })) {
-				throw new ConflictError(
-					'Тип значения и список можно поменять, только пока у параметра нет значений'
-				);
-			}
-			await assertDictionaryVisible(actor, data.dictionaryId, tx);
+		if (data.valueType !== def.valueType && (await tx.param.count({ where: { defId: id } }))) {
+			throw new ConflictError('Тип значения можно поменять, только пока у параметра нет значений');
 		}
-		await tx.paramDef.update({ where: { id }, data });
+		let dictionaryId = def.dictionaryId;
+		if (data.valueType === 'ENUM') {
+			if (dictionaryId) {
+				await updateOptionList(dictionaryId, { name: data.name, multiple, options }, tx);
+			} else {
+				if (options.some((o) => o.id)) throw new ValidationError('Вариант не из этого списка');
+				dictionaryId = await createOptionList(actor, { name: data.name, multiple, options }, tx);
+			}
+		} else {
+			dictionaryId = null;
+		}
+		await tx.paramDef.update({ where: { id }, data: { ...data, dictionaryId } });
+		if (def.dictionaryId && !dictionaryId) {
+			await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
+		}
 	});
 	return (await getParamDef(actor, id)).def;
 }
 
-/** Deletes a definition no type or item has a value of. */
+/** Deletes a definition no type or item has a value of (with its options). */
 export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 	await db.$transaction(async (tx) => {
-		await findDef(actor, id, tx);
+		const def = await findDef(actor, id, tx);
 		const used = await tx.param.count({ where: { defId: id } });
 		if (used > 0) {
 			throw new ConflictError(
@@ -562,5 +578,6 @@ export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 			);
 		}
 		await tx.paramDef.delete({ where: { id } });
+		if (def.dictionaryId) await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
 	});
 }

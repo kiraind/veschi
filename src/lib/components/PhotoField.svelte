@@ -8,6 +8,7 @@
 	} from 'flowbite-svelte-icons';
 	import { ApiError } from '$lib/api';
 	import CameraCapture from './CameraCapture.svelte';
+	import { confirmAction } from '$lib/confirm.svelte';
 
 	/**
 	 * A photo (or a placeholder) with a small round button over its corner that opens
@@ -58,9 +59,9 @@
 		run(() => onfile(file));
 	}
 
-	function remove() {
+	async function remove() {
 		menuOpen = false;
-		if (onremove && confirm('Удалить фото?')) run(onremove);
+		if (onremove && (await confirmAction({ title: 'Удалить фото?' }))) run(onremove);
 	}
 </script>
 

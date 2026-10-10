@@ -35,25 +35,24 @@ describe('drafts', () => {
 			}
 		];
 		for (const view of views) {
-			const { id: _id, key: _key, ref: _ref, ...input } = view;
+			const { id: _id, key: _key, ref: _ref, unit: _unit, ...input } = view;
 			expect(paramInputSchema.parse(draftToInput(draftFromView(view)))).toEqual(input);
 		}
 	});
 
 	it('turns a typed number into a value', () => {
-		const d = emptyDraft({ id: DEF, name: 'цена', valueType: 'NUMBER', dictionaryId: null });
+		const d = emptyDraft({ id: DEF, name: 'цена', valueType: 'NUMBER', unit: '₽' });
 		d.number = '4 500';
-		d.unit = '₽';
+		expect(d.unit).toBe('₽');
 		expect(paramInputSchema.parse(draftToInput(d))).toEqual({
 			defId: DEF,
 			valueType: 'NUMBER',
-			value: 4500,
-			unit: '₽'
+			value: 4500
 		});
 	});
 
 	it('leaves an empty number invalid', () => {
-		const d = emptyDraft({ id: DEF, name: 'вес', valueType: 'NUMBER', dictionaryId: null });
+		const d = emptyDraft({ id: DEF, name: 'вес', valueType: 'NUMBER' });
 		expect(paramInputSchema.safeParse(draftToInput(d)).success).toBe(false);
 	});
 });

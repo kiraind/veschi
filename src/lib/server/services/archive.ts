@@ -2,7 +2,7 @@ import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
-import { getPaths, type PathNode } from './paths';
+import { getPaths, isContainerItem, type PathNode } from './paths';
 import { restoreStickerOf, writeOffStickerOf } from './stickers';
 
 /** Where the active contents of a discarded container go. */
@@ -116,10 +116,10 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
 	const parent = item.parentId
 		? await tx.item.findUnique({
 				where: { id: item.parentId },
-				select: { status: true, isContainer: true, isWorkbench: true }
+				select: { status: true, isWorkbench: true, type: { select: { isContainer: true } } }
 			})
 		: null;
-	if (parent?.status !== 'ACTIVE' || !(parent.isContainer || parent.isWorkbench)) {
+	if (parent?.status !== 'ACTIVE' || !isContainerItem(parent)) {
 		await tx.item.update({
 			where: { id: item.id },
 			data: { parentId: null, takenById: null, takenAt: null, homeId: null, splitFromId: null }

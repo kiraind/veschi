@@ -10,13 +10,17 @@ describe('paths', () => {
 
 	async function item(name: string, parentId: string | null = null) {
 		return db.item.create({
-			data: { ownerId: actor.userId, typeId, name, parentId, isContainer: true }
+			data: { ownerId: actor.userId, typeId, name, parentId }
 		});
 	}
 
 	beforeEach(async () => {
 		actor = await createTestActor();
-		typeId = (await db.itemType.create({ data: { ownerId: actor.userId, name: 'Коробка' } })).id;
+		typeId = (
+			await db.itemType.create({
+				data: { ownerId: actor.userId, name: 'Коробка', isContainer: true }
+			})
+		).id;
 	});
 
 	it('returns the full path from the top level', async () => {
