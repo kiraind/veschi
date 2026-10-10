@@ -12,7 +12,6 @@
 		SidebarItem
 	} from 'flowbite-svelte';
 	import {
-		ArchiveOutline,
 		ArrowRightToBracketOutline,
 		ClockOutline,
 		CogOutline,
@@ -21,11 +20,12 @@
 		QrCodeOutline,
 		SearchOutline,
 		TagOutline,
-		ToolsOutline,
 		UserCircleOutline,
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
+	import BoxIcon from '$lib/components/icons/BoxIcon.svelte';
+	import DeskIcon from '$lib/components/icons/DeskIcon.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
 	import type { LayoutData } from './$types';
 
@@ -37,8 +37,8 @@
 	const primary: Link[] = [
 		{ href: '/', label: 'Поиск', icon: SearchOutline },
 		{ href: '/scan', label: 'Скан', icon: QrCodeOutline },
-		{ href: '/workbench', label: 'Стол', icon: ToolsOutline },
-		{ href: '/containers', label: 'Контейнеры', icon: ArchiveOutline }
+		{ href: '/workbench', label: 'Стол', icon: DeskIcon },
+		{ href: '/containers', label: 'Контейнеры', icon: BoxIcon }
 	];
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
