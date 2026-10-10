@@ -2,6 +2,7 @@
 	import { Card } from 'flowbite-svelte';
 	import Thumb from './Thumb.svelte';
 	import PathTrail from './PathTrail.svelte';
+	import { plural } from '$lib/domain/plural';
 	import type { SearchGroup } from '$lib/server/services/search';
 
 	/**
@@ -21,7 +22,10 @@
 						<a href="/types/{group.typeId}" class="wrap-anywhere"
 							><strong>{group.typeName}</strong></a
 						>
-						<div class="text-sm text-gray-500 dark:text-gray-400">всего {group.total} шт.</div>
+						<div class="text-sm text-gray-500 dark:text-gray-400">
+							всего {group.total}
+							{plural(group.total, ['штука', 'штуки', 'штук'])}
+						</div>
 					</div>
 				</div>
 				<ul class="divide-y divide-gray-200 dark:divide-gray-700">
