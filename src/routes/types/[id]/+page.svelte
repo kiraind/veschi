@@ -103,8 +103,8 @@
 		>Контейнер</Checkbox
 	>
 	<Helper class="mt-1 ps-6">
-		В вещи этого типа можно класть другие вещи; количество у каждой — 1. Снять отметку можно, когда
-		в них пусто.
+		В вещи этого типа можно класть другие вещи.
+		{#if type.isContainer && data.card.hasContents}Снять отметку можно, когда в контейнере пусто.{/if}
 	</Helper>
 	{#if containerError}<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">
 			{containerError}
