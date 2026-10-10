@@ -2,11 +2,13 @@
 	import { untrack } from 'svelte';
 	import { Alert, Button, Modal } from 'flowbite-svelte';
 	import { CloseOutline, ImageOutline, RefreshOutline } from 'flowbite-svelte-icons';
+	import { centerSquare } from '$lib/domain/photo';
 
 	/**
 	 * Our own camera in a modal (full screen on phones): live preview from the back
-	 * camera, a shutter, a camera switch, then «Переснять» / «Использовать». The shot
-	 * is a JPEG with the longest side ≤ MAX_SIDE. Without a camera (plain HTTP, no
+	 * camera, a shutter, a camera switch, then «Переснять» / «Использовать». Photos
+	 * are square, so the preview shows the centered square of the frame and the shot
+	 * is exactly that square: a JPEG with the side ≤ MAX_SIDE. Without a camera (plain HTTP, no
 	 * permission, no device) it explains why and offers «Выбрать файл».
 	 */
 	let { open = $bindable(false), oncapture }: { open?: boolean; oncapture: (file: File) => void } =
@@ -121,13 +123,12 @@
 		const width = video.videoWidth;
 		const height = video.videoHeight;
 		if (!width || !height) return;
-		const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+		const { sx, sy, side, size } = centerSquare(width, height, MAX_SIDE);
 		const canvas = document.createElement('canvas');
-		canvas.width = Math.round(width * scale);
-		canvas.height = Math.round(height * scale);
+		canvas.width = canvas.height = size;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
-		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+		ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
 		canvas.toBlob(
 			(blob) => {
 				if (!blob) {
@@ -185,17 +186,18 @@
 			</div>
 		</Alert>
 	{:else}
+		<!-- A square, like the photo will be: the frame is cropped (object-cover), not fitted. -->
 		<div
-			class="relative flex min-h-64 flex-1 items-center justify-center overflow-hidden rounded-lg bg-black"
+			class="relative mx-auto flex aspect-square w-full max-w-[min(100%,70dvh)] items-center justify-center overflow-hidden rounded-lg bg-black"
 		>
 			<video
-				class="max-h-[70dvh] w-full object-contain {shot ? 'hidden' : ''}"
+				class="h-full w-full object-cover {shot ? 'hidden' : ''}"
 				bind:this={video}
 				playsinline
 				muted
 			></video>
 			{#if shot}
-				<img class="max-h-[70dvh] w-full object-contain" src={shot.url} alt="Снимок" />
+				<img class="h-full w-full object-cover" src={shot.url} alt="Снимок" />
 			{:else if !ready}
 				<p class="absolute text-sm text-gray-300">Включаем камеру…</p>
 			{/if}
