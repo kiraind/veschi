@@ -159,6 +159,7 @@
 			<span class="text-sm font-medium">Фото (необязательно)</span>
 			<PhotoField
 				previewUrl={photoUrl}
+				container={isContainer}
 				alt="Фото типа"
 				onfile={async (file) => {
 					photo = file;

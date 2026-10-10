@@ -32,7 +32,7 @@
 			<div
 				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800"
 			>
-				<Thumb photoKey={entry.photoKey} size={40} />
+				<Thumb photoKey={entry.photoKey} size={40} container={entry.isContainer} />
 				<a
 					class="min-w-0 flex-1 font-medium break-words text-gray-900 hover:underline dark:text-white"
 					href="/items/{entry.id}">{entry.name}</a

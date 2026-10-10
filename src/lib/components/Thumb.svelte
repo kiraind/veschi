@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { ImageOutline } from 'flowbite-svelte-icons';
+	import NoPhoto from './NoPhoto.svelte';
 
-	/** Square thumbnail of an item or type photo, or a placeholder. */
-	let { photoKey, size = 48 }: { photoKey: string | null; size?: number } = $props();
+	/** Square thumbnail of an item or type photo, or a placeholder (a box for containers). */
+	let {
+		photoKey,
+		size = 48,
+		container = false
+	}: { photoKey: string | null; size?: number; container?: boolean } = $props();
 </script>
 
 {#if photoKey}
@@ -23,6 +27,8 @@
 		style:height="{size}px"
 		aria-hidden="true"
 	>
-		<ImageOutline width={size / 2} height={size / 2} />
+		<span style:width="{size / 2}px" style:height="{size / 2}px" class="inline-flex">
+			<NoPhoto {container} class="h-full w-full" />
+		</span>
 	</span>
 {/if}

@@ -175,6 +175,7 @@
 	{@const type = card.type}
 	<PhotoField
 		photoKey={type.photoKey}
+		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
 		editable={active}
 		onfile={async (file) => {

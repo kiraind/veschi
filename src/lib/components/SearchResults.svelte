@@ -16,7 +16,7 @@
 		<li>
 			<Card class="max-w-none gap-3 p-4">
 				<div class="flex items-center gap-3">
-					<Thumb photoKey={group.photoKey} size={56} />
+					<Thumb photoKey={group.photoKey} size={56} container={group.isContainer} />
 					<div class="min-w-0">
 						<a href="/types/{group.typeId}" class="wrap-anywhere"
 							><strong>{group.typeName}</strong></a

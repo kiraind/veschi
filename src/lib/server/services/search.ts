@@ -22,6 +22,8 @@ export interface SearchGroup {
 	typeId: string;
 	typeName: string;
 	photoKey: string | null;
+	/** A container type (its placeholder without a photo is a box). */
+	isContainer: boolean;
 	total: number;
 	locations: SearchLocation[];
 }
@@ -126,6 +128,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 				typeId: row.type_id,
 				typeName: row.type_name,
 				photoKey: row.photo_key,
+				isContainer: row.is_container,
 				total: 0,
 				locations: []
 			};

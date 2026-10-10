@@ -71,6 +71,7 @@
 <div class="mt-3">
 	<PhotoField
 		photoKey={type.photoKey}
+		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
 		onfile={async (file) => {
 			const body = new FormData();
