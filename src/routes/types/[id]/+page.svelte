@@ -72,7 +72,6 @@
 	<PhotoField
 		photoKey={type.photoKey}
 		alt="Фото типа «{type.name}»"
-		wide
 		onfile={async (file) => {
 			const body = new FormData();
 			body.set('file', file);

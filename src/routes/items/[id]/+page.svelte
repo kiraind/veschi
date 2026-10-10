@@ -180,7 +180,6 @@
 		photoKey={type.photoKey}
 		alt="Фото типа «{type.name}»"
 		editable={active}
-		wide
 		onfile={async (file) => {
 			const body = new FormData();
 			body.set('file', file);
