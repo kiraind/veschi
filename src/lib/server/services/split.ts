@@ -76,7 +76,7 @@ async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void
  * container or a workbench, or something points at it: a sticker, contents,
  * a REF parameter.
  */
-async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
+export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 	const item = await tx.item.findUnique({
 		where: { id },
 		include: {
@@ -134,6 +134,20 @@ async function findTwin(
 	const signatures = await paramSignatures(tx, [item.id, ...candidates.map((c) => c.id)]);
 	const own = signatures.get(item.id);
 	return candidates.find((c) => signatures.get(c.id) === own) ?? null;
+}
+
+/**
+ * Do two records hold the same thing: the same type, own name and own
+ * parameter values? Only such records may become one.
+ */
+export async function sameThing(
+	tx: Tx,
+	a: Pick<Item, 'id' | 'typeId' | 'name'>,
+	b: Pick<Item, 'id' | 'typeId' | 'name'>
+): Promise<boolean> {
+	if (a.typeId !== b.typeId || a.name !== b.name) return false;
+	const signatures = await paramSignatures(tx, [a.id, b.id]);
+	return signatures.get(a.id) === signatures.get(b.id);
 }
 
 async function isPlainType(tx: Tx, typeId: string | null): Promise<boolean> {

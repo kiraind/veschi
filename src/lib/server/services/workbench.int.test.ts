@@ -4,6 +4,7 @@ import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import { discard } from './archive';
 import { getPath } from './paths';
+import { setKeyedParams } from '$lib/server/testing/params';
 import {
 	consume,
 	createWorkbench,
@@ -134,9 +135,6 @@ describe('workbench service', () => {
 		beforeEach(async () => {
 			box = await item('Коробка');
 			chips = await item('NE555', box.id, 10);
-			await db.sticker.create({
-				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
-			});
 			const def = await db.paramDef.create({
 				data: { ownerId: actor.userId, name: 'Корпус', valueType: 'STRING' }
 			});
@@ -145,7 +143,7 @@ describe('workbench service', () => {
 			});
 		});
 
-		it('takes 2 of 10: the box keeps 8 with the sticker, the bench gets a new record of 2', async () => {
+		it('takes 2 of 10: the box keeps 8, the bench gets a new record of 2', async () => {
 			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 2 });
 			expect(itemId).not.toBe(chips.id);
 			expect(await reload(chips.id)).toMatchObject({
@@ -218,6 +216,41 @@ describe('workbench service', () => {
 				homeId: null,
 				splitFromId: null
 			});
+		});
+
+		it('keeps a part renamed on the bench apart from its source when returned', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 1 });
+			await db.item.update({ where: { id: itemId }, data: { name: 'NE555 старая' } });
+			expect(await returnHome(actor, itemId)).toEqual({ itemId, merged: false });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 9, parentId: box.id });
+			expect(await reload(itemId)).toMatchObject({
+				quantity: 1,
+				parentId: box.id,
+				name: 'NE555 старая',
+				takenById: null
+			});
+		});
+
+		it('keeps a returned part with other own values apart from its source', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 2 });
+			await setKeyedParams(actor, { itemId }, [
+				{ key: 'корпус', valueType: 'STRING', text: 'SOIC-8' }
+			]);
+			expect(await returnHome(actor, itemId, { quantity: 1 })).toMatchObject({ merged: false });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 8 });
+			// The rest joins the part already back in the box: the same thing in one place.
+			const { itemId: back } = await returnHome(actor, itemId);
+			expect(await reload(back)).toMatchObject({ quantity: 2, parentId: box.id });
+		});
+
+		it('keeps a returned part apart from a source that got a sticker meanwhile', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 9 });
+			await db.sticker.create({
+				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
+			});
+			expect(await returnHome(actor, itemId)).toEqual({ itemId, merged: false });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 1 });
+			expect(await reload(itemId)).toMatchObject({ quantity: 9, parentId: box.id });
 		});
 
 		it('uses 2 of 2 on the bench: the record is archived, the box keeps 8', async () => {

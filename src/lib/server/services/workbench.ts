@@ -16,7 +16,7 @@ import {
 	isContainerItem,
 	type PathNode
 } from './paths';
-import { notTaken, partCount, placePart } from './split';
+import { isPlainRecord, notTaken, partCount, placePart, sameThing } from './split';
 
 // ---------------------------------------------------------------------------
 // Workbenches
@@ -339,9 +339,10 @@ export interface PartOptions {
 /**
  * «Вернуть на место» for the whole record or part of its quantity. What goes
  * back merges into its split source when the source is active and still lies
- * in the home, untaken (a whole record also must not have got a sticker or
- * contents of its own meanwhile); otherwise it lies in the home as its own
- * record. A part leaves the rest on the bench, still taken. Returns the id of
+ * in the home, untaken, and both are still the same thing with nothing
+ * pointing at them (same own name and own values; no sticker, contents or
+ * references); otherwise it goes into the home through `placePart`, so it
+ * may still join another identical record there. A part leaves the rest on the bench, still taken. Returns the id of
  * the record in the home.
  */
 export async function returnHome(
@@ -382,14 +383,15 @@ export async function returnHome(
 					...visibleTo(actor)
 				}
 			});
-			// A part is a fresh record: it has no sticker or contents to lose.
-			const [sticker, children] = whole
-				? await Promise.all([
-						tx.sticker.findUnique({ where: { itemId: item.id } }),
-						tx.item.count({ where: { parentId: item.id } })
-					])
-				: [null, 0];
-			if (source && !sticker && children === 0) {
+			// The same rules as for identical records in one place (see findTwin in split.ts):
+			// still the same thing (a renamed part or one with other own values stays apart),
+			// and neither record has a sticker, contents or references. A part is a fresh record.
+			if (
+				source &&
+				(await sameThing(tx, item, source)) &&
+				(await isPlainRecord(tx, source.id)) &&
+				(!whole || (await isPlainRecord(tx, item.id)))
+			) {
 				await tx.item.update({
 					where: { id: source.id },
 					data: { quantity: source.quantity + count }
