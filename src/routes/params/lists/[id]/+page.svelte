@@ -33,21 +33,21 @@
 	function save(event: SubmitEvent) {
 		event.preventDefault();
 		const body = { name, multiple, options: options.map(({ id, label }) => ({ id, label })) };
-		run(() => api.put(`/api/dictionaries/${dictionary.id}`, body), '/dictionaries');
+		run(() => api.put(`/api/dictionaries/${dictionary.id}`, body), '/params#lists');
 	}
 
 	function remove() {
-		if (!confirm(`Удалить справочник «${dictionary.name}»?`)) return;
-		run(() => api.delete(`/api/dictionaries/${dictionary.id}`), '/dictionaries');
+		if (!confirm(`Удалить список «${dictionary.name}»?`)) return;
+		run(() => api.delete(`/api/dictionaries/${dictionary.id}`), '/params#lists');
 	}
 </script>
 
-<svelte:head><title>{dictionary.name} — Справочники</title></svelte:head>
+<svelte:head><title>{dictionary.name} — Выпадающие списки</title></svelte:head>
 
 <p class="mb-2">
 	<a
 		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/dictionaries"><ArrowLeftOutline class="h-4 w-4" />Справочники</a
+		href="/params#lists"><ArrowLeftOutline class="h-4 w-4" />Параметры</a
 	>
 </p>
 <h1 class="mb-3 text-2xl font-bold break-words">{dictionary.name}</h1>
@@ -65,7 +65,7 @@
 	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 	<div class="flex flex-wrap gap-2">
 		<Button type="submit" disabled={busy}>Сохранить</Button>
-		<Button color="alternative" href="/dictionaries">Отмена</Button>
+		<Button color="alternative" href="/params#lists">Отмена</Button>
 	</div>
 </form>
 
@@ -75,6 +75,6 @@
 			Используется в параметрах: {dictionary.usage}. Удалить нельзя.
 		</p>
 	{:else}
-		<Button color="red" outline onclick={remove} disabled={busy}>Удалить справочник</Button>
+		<Button color="red" outline onclick={remove} disabled={busy}>Удалить список</Button>
 	{/if}
 </div>

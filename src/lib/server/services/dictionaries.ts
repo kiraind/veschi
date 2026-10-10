@@ -20,7 +20,7 @@ export interface DictionaryView {
 	name: string;
 	multiple: boolean;
 	options: { id: string; label: string; usage: number }[];
-	/** Parameters using this dictionary. */
+	/** Parameter definitions using this list. */
 	usage: number;
 }
 
@@ -38,7 +38,7 @@ const withOptions = {
 		orderBy: { position: 'asc' },
 		include: { _count: { select: { values: true } } }
 	},
-	_count: { select: { params: true } }
+	_count: { select: { paramDefs: true } }
 } satisfies Prisma.EnumDictionaryInclude;
 
 function toView(
@@ -49,7 +49,7 @@ function toView(
 		name: d.name,
 		multiple: d.multiple,
 		options: d.options.map((o) => ({ id: o.id, label: o.label, usage: o._count.values })),
-		usage: d._count.params
+		usage: d._count.paramDefs
 	};
 }
 
@@ -68,7 +68,7 @@ export async function getDictionary(actor: Actor, id: string): Promise<Dictionar
 		where: { id, ...visibleTo(actor) },
 		include: withOptions
 	});
-	if (!dictionary) throw new NotFoundError('Справочник не найден');
+	if (!dictionary) throw new NotFoundError('Выпадающий список не найден');
 	return toView(dictionary);
 }
 
@@ -105,11 +105,11 @@ export async function updateDictionary(
 			where: { id, ...visibleTo(actor) },
 			include: { options: { include: { _count: { select: { values: true } } } } }
 		});
-		if (!dictionary) throw new NotFoundError('Справочник не найден');
+		if (!dictionary) throw new NotFoundError('Выпадающий список не найден');
 
 		const existing = new Map(dictionary.options.map((o) => [o.id, o]));
 		if (options.some((o) => o.id && !existing.has(o.id))) {
-			throw new ValidationError('Вариант не из этого справочника');
+			throw new ValidationError('Вариант не из этого списка');
 		}
 		const keptIds = new Set(options.flatMap((o) => (o.id ? [o.id] : [])));
 		const removed = dictionary.options.filter((o) => !keptIds.has(o.id));
@@ -145,11 +145,11 @@ export async function updateDictionary(
 	return getDictionary(actor, id);
 }
 
-/** Deletes a dictionary no parameter uses. */
+/** Deletes a list no parameter uses. */
 export async function deleteDictionary(actor: Actor, id: string): Promise<void> {
 	const dictionary = await getDictionary(actor, id);
 	if (dictionary.usage > 0) {
-		throw new ConflictError('Справочник используется в параметрах, его нельзя удалить');
+		throw new ConflictError('Список используется в параметрах, его нельзя удалить');
 	}
 	await db.enumDictionary.delete({ where: { id } });
 }

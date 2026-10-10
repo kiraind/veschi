@@ -5,7 +5,7 @@ import { createTestActor } from '$lib/server/testing/db';
 import { MAX_PARAM_FILE_SIZE } from '$lib/domain/params';
 import { openFile, uploadParamFile } from './files';
 import { createItem } from './items';
-import { setParams } from './params';
+import { setKeyedParams } from '$lib/server/testing/params';
 
 describe('files', () => {
 	let actor: Actor;
@@ -37,7 +37,7 @@ describe('files', () => {
 	it('opens a saved file parameter for its owner only', async () => {
 		const file = await upload();
 		const item = await createItem(actor, { newTypeName: 'Паяльник' });
-		await setParams(actor, { itemId: item.id }, [{ key: 'инструкция', ...file }]);
+		await setKeyedParams(actor, { itemId: item.id }, [{ key: 'инструкция', ...file }]);
 
 		const opened = await openFile(actor, file.fileKey);
 		expect(opened).toMatchObject({

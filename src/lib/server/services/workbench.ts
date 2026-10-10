@@ -3,8 +3,10 @@ import { ConflictError, NotFoundError, ValidationError } from '$lib/server/error
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { quantityError } from '$lib/domain/workbench';
+import { isWorkbenchIconKey } from '$lib/domain/workbench-icons';
 import { discard } from './archive';
 import { assertCanPlace, assertIsContainer, getPath, getPaths, type PathNode } from './paths';
+import { notTaken, partCount, placePart } from './split';
 
 // ---------------------------------------------------------------------------
 // Workbenches
@@ -16,6 +18,8 @@ export interface WorkbenchInput {
 	geoLat?: number | null;
 	geoLng?: number | null;
 	geoRadiusM?: number | null;
+	/** A key from WORKBENCH_ICONS; null = the default icon, undefined = keep as is. */
+	icon?: string | null;
 }
 
 export interface Workbench {
@@ -24,6 +28,7 @@ export interface Workbench {
 	geoLat: number | null;
 	geoLng: number | null;
 	geoRadiusM: number | null;
+	icon: string | null;
 }
 
 const workbenchSelect = {
@@ -31,7 +36,8 @@ const workbenchSelect = {
 	name: true,
 	geoLat: true,
 	geoLng: true,
-	geoRadiusM: true
+	geoRadiusM: true,
+	icon: true
 } as const;
 
 function workbenchData(input: WorkbenchInput) {
@@ -49,7 +55,11 @@ function workbenchData(input: WorkbenchInput) {
 	if (geoRadiusM !== null && !(geoRadiusM > 0)) {
 		throw new ValidationError('Радиус должен быть больше нуля');
 	}
-	return { name, geoLat, geoLng, geoRadiusM };
+	const { icon } = input;
+	if (icon !== undefined && icon !== null && !isWorkbenchIconKey(icon)) {
+		throw new ValidationError('Неизвестная иконка стола');
+	}
+	return { name, geoLat, geoLng, geoRadiusM, icon };
 }
 
 async function requireWorkbench(actor: Actor, id: string, tx: Tx = db): Promise<Workbench> {
@@ -145,32 +155,10 @@ export async function take(
 	return db.$transaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		const bench = await requireWorkbench(actor, workbenchId, tx);
-		const count = quantity ?? item.quantity;
-		const problem = quantityError(item.quantity, count);
-		if (problem) throw new ValidationError(problem);
-
+		const count = partCount(item, quantity);
 		const homeId = item.takenById ? item.homeId : item.parentId;
 		const taken = { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId };
-		let result: string;
-		if (count === item.quantity) {
-			await tx.item.update({ where: { id: item.id }, data: taken });
-			result = item.id;
-		} else {
-			await tx.item.update({ where: { id: item.id }, data: { quantity: item.quantity - count } });
-			// The part belongs to whoever owns the source (a shared item stays shared).
-			const part = await tx.item.create({
-				data: {
-					ownerId: item.ownerId,
-					householdId: item.householdId,
-					typeId: item.typeId,
-					name: item.name,
-					quantity: count,
-					splitFromId: item.splitFromId ?? item.id,
-					...taken
-				}
-			});
-			result = part.id;
-		}
+		const result = await placePart(tx, item, count, taken, { rememberSource: true });
 		await tx.user.update({ where: { id: actor.userId }, data: { lastWorkbenchId: bench.id } });
 		return { itemId: result };
 	});
@@ -262,21 +250,29 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 	});
 }
 
-const notTaken = { takenById: null, takenAt: null, homeId: null, splitFromId: null };
+export interface PartOptions {
+	/** Part of the quantity; omitted or equal to the whole → the whole record. */
+	quantity?: number;
+}
 
 /**
- * «Вернуть на место»: a split part merges back into its source when the source
- * is active and still lies in the home (and the part got no sticker or
- * contents of its own meanwhile); otherwise the item moves home as is.
- * Returns the id of the resulting record.
+ * «Вернуть на место» for the whole record or part of its quantity. What goes
+ * back merges into its split source when the source is active and still lies
+ * in the home, untaken (a whole record also must not have got a sticker or
+ * contents of its own meanwhile); otherwise it lies in the home as its own
+ * record. A part leaves the rest on the bench, still taken. Returns the id of
+ * the record in the home.
  */
 export async function returnHome(
 	actor: Actor,
-	itemId: string
+	itemId: string,
+	{ quantity }: PartOptions = {}
 ): Promise<{ itemId: string; merged: boolean }> {
 	return db.$transaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		if (!item.takenById) throw new ValidationError('Вещь не на рабочем столе');
+		const count = partCount(item, quantity);
+		const whole = count === item.quantity;
 		const home = item.homeId
 			? await tx.item.findFirst({ where: { id: item.homeId, ...visibleTo(actor) } })
 			: null;
@@ -293,35 +289,47 @@ export async function returnHome(
 					...visibleTo(actor)
 				}
 			});
-			const [sticker, children] = await Promise.all([
-				tx.sticker.findUnique({ where: { itemId: item.id } }),
-				tx.item.count({ where: { parentId: item.id } })
-			]);
+			// A part is a fresh record: it has no sticker or contents to lose.
+			const [sticker, children] = whole
+				? await Promise.all([
+						tx.sticker.findUnique({ where: { itemId: item.id } }),
+						tx.item.count({ where: { parentId: item.id } })
+					])
+				: [null, 0];
 			if (source && !sticker && children === 0) {
 				await tx.item.update({
 					where: { id: source.id },
-					data: { quantity: source.quantity + item.quantity }
+					data: { quantity: source.quantity + count }
 				});
-				await tx.item.delete({ where: { id: item.id } });
+				if (whole) await tx.item.delete({ where: { id: item.id } });
+				else {
+					await tx.item.update({
+						where: { id: item.id },
+						data: { quantity: item.quantity - count }
+					});
+				}
 				return { itemId: source.id, merged: true };
 			}
 		}
-		await tx.item.update({ where: { id: item.id }, data: { parentId: item.homeId, ...notTaken } });
-		return { itemId: item.id, merged: false };
+		const id = await placePart(tx, item, count, { parentId: item.homeId, ...notTaken });
+		return { itemId: id, merged: false };
 	});
 }
 
 /**
- * «Положить в другое место»: puts the item into another container (null = top
- * level) and forgets where it was taken from.
+ * «Положить в другое место»: puts the item or part of its quantity into
+ * another container (null = top level); what moves forgets where it was
+ * taken from, a rest stays on the bench. Returns the id of the moved record.
  */
 export async function relocate(
 	actor: Actor,
 	itemId: string,
-	containerId: string | null
-): Promise<void> {
-	await db.$transaction(async (tx) => {
+	containerId: string | null,
+	{ quantity }: PartOptions = {}
+): Promise<{ itemId: string }> {
+	return db.$transaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
+		const count = partCount(item, quantity);
 		if (containerId) {
 			const container = await tx.item.findFirst({
 				where: { id: containerId, ...visibleTo(actor) },
@@ -335,7 +343,9 @@ export async function relocate(
 			assertIsContainer(container);
 			await assertCanPlace(item.id, container.id, tx);
 		}
-		await tx.item.update({ where: { id: item.id }, data: { parentId: containerId, ...notTaken } });
+		return {
+			itemId: await placePart(tx, item, count, { parentId: containerId, ...notTaken })
+		};
 	});
 }
 

@@ -43,6 +43,10 @@ prisma/              схема и миграции
 - Несколько изменений, которые должны пройти вместе, — в `db.$transaction(async (tx) => ...)`; хелперы принимают необязательный `tx: Tx = db`.
 - Пути контейнеров считаются одним рекурсивным запросом: `getPaths(ids)` / `getPath(id)` в `services/paths.ts`; защита от циклов — `assertCanPlace(itemId, newParentId)`. Для показа — `formatPath` / `pathNodeName` из `$lib/domain/item` (рабочий стол показывается как «Рабочий стол Гараж»).
 - Имя вещи для показа — `itemDisplayName(item)` (своё имя, иначе имя типа).
+- **Параметры**: определение (`ParamDef`, страница «Параметры») задаёт название и тип значения, значения (`Param`) лежат у типа или вещи и ссылаются на него (`defId`). Схемы — в `$lib/domain/params` (`paramDefInputSchema`, `paramInputSchema`), сервис — `services/params.ts`. В интеграционных тестах параметры удобно задавать по названию: `setKeyedParams` / `keyed` из `testing/params.ts`.
+- Фото есть только у типа (`ItemType.photoKey`); в интерфейсе — компонент `PhotoField` (иконка поверх фото → своя камера `CameraCapture`, выбор файла, удаление).
+- Часть количества переносится через `placePart` (`services/split.ts`); у контейнера количество всегда 1.
+- Даты показываются только как ГГГГ-ММ-ДД (`$lib/domain/dates`), ввод даты — `DateInput`.
 - Положить вещь можно только в контейнер (`isContainer` или рабочий стол): проверка — `assertIsContainer` из `services/paths.ts`.
 - **Интерфейс**: компоненты Flowbite Svelte (`Button`, `Card`, `Input`, `Badge`, `Alert`…) и утилиты Tailwind; `<style>` в компонентах — только если без него никак. Сначала вёрстка под телефон (≈390 px), кнопки не ниже 40 px. Общие приёмы: h1 — `text-2xl font-bold`, вторичный текст — `text-sm text-gray-500 dark:text-gray-400`, ошибка — `text-sm text-red-600 dark:text-red-500` с `role="alert"`.
 - ID наклеек хранятся без дефиса заглавными (`K7M4QX`), показываются через `formatCode` (`K7M-4QX`), ввод нормализуется `normalizeCode`.

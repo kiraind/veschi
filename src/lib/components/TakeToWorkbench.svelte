@@ -19,9 +19,11 @@
 
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Card, Input, Label, Radio } from 'flowbite-svelte';
+	import { Button, Card, Radio } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import { pickWorkbench, quantityError } from '$lib/domain/workbench';
+	import QuantityField from './QuantityField.svelte';
+	import WorkbenchIcon from './WorkbenchIcon.svelte';
 
 	interface Bench {
 		id: string;
@@ -29,6 +31,7 @@
 		geoLat: number | null;
 		geoLng: number | null;
 		geoRadiusM: number | null;
+		icon: string | null;
 	}
 
 	let { item }: { item: { id: string; quantity: number; name: string } } = $props();
@@ -95,7 +98,11 @@
 		{:else}
 			<p class="text-lg wrap-anywhere">
 				{item.name} →
-				<span class="rounded bg-yellow-100 px-1 dark:bg-yellow-900/50">{selected?.name ?? '?'}</span
+				<span class="rounded bg-yellow-100 px-1 dark:bg-yellow-900/50"
+					>{#if selected}<WorkbenchIcon
+							icon={selected.icon}
+							class="me-1 inline h-5 w-5 align-[-0.2em]"
+						/>{/if}{selected?.name ?? '?'}</span
 				>
 			</p>
 			{#if benches.length > 1}
@@ -110,26 +117,13 @@
 									'min-h-10 cursor-pointer rounded-lg border border-gray-200 px-3 text-base font-normal text-gray-900 dark:border-gray-700 dark:text-white'
 							}}
 						>
-							{bench.name}
+							<WorkbenchIcon icon={bench.icon} class="me-1.5 h-5 w-5" />{bench.name}
 						</Radio>
 					{/each}
 				</div>
 			{/if}
 			{#if item.quantity > 1}
-				<Label>
-					Сколько достать (из {item.quantity})
-					<Input
-						class="mt-1 max-w-40"
-						type="number"
-						min="1"
-						max={item.quantity}
-						step="1"
-						bind:value={quantity}
-					/>
-				</Label>
-				{#if quantityProblem}
-					<p class="text-sm text-red-600 dark:text-red-500">{quantityProblem}</p>
-				{/if}
+				<QuantityField available={item.quantity} bind:value={quantity} label="Сколько достать" />
 			{/if}
 			<div class="flex flex-wrap gap-2">
 				<Button onclick={confirm} disabled={busy || !selectedId || !!quantityProblem}

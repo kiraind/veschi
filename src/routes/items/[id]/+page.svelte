@@ -4,11 +4,13 @@
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
 	import ItemContents from '$lib/components/ItemContents.svelte';
-	import ParamList from '$lib/components/ParamList.svelte';
+	import ParamSection from '$lib/components/ParamSection.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
+	import QuantityField from '$lib/components/QuantityField.svelte';
+	import { quantityError } from '$lib/domain/workbench';
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
-	import ItemPhoto from '$lib/components/ItemPhoto.svelte';
+	import PhotoField from '$lib/components/PhotoField.svelte';
 	import { Alert, Badge, Button, Card } from 'flowbite-svelte';
 	import { ArrowsRepeatOutline, PenOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
@@ -40,12 +42,53 @@
 		}
 	}
 
-	const moveTo = (parentId: string | null) =>
-		run(() => api.post(`/api/items/${item.id}/move`, { parentId }));
+	/** How much «Переложить» moves (asked only when there is more than one). */
+	let moveQuantity = $state(1);
+	/** «Положить сюда существующую»: the picked item while asking how much of it. */
+	let picked = $state<{ id: string; name: string; quantity: number } | null>(null);
+	let pickedQuantity = $state(1);
 
-	/** «Добавить сюда» → existing item: move the picked item into this container. */
-	const moveHere = (childId: string) =>
-		run(() => api.post(`/api/items/${childId}/move`, { parentId: item.id }));
+	function toggleMoving() {
+		moving = !moving;
+		moveQuantity = item.quantity;
+	}
+
+	function toggleAdding() {
+		adding = !adding;
+		picked = null;
+	}
+
+	const moveTo = (parentId: string | null) =>
+		run(() =>
+			api.post(`/api/items/${item.id}/move`, {
+				parentId,
+				...(moveQuantity < item.quantity ? { quantity: moveQuantity } : {})
+			})
+		);
+
+	/** «Положить сюда существующую»: asks how much when the picked item has more than one. */
+	async function pickChild(c: { id: string; name: string }) {
+		error = '';
+		try {
+			const fresh = await api.get<{ item: { quantity: number } }>(`/api/items/${c.id}`);
+			if (fresh.item.quantity > 1) {
+				picked = { ...c, quantity: fresh.item.quantity };
+				pickedQuantity = fresh.item.quantity;
+				return;
+			}
+		} catch (e) {
+			error = e instanceof ApiError ? e.message : String(e);
+			return;
+		}
+		await moveHere(c.id);
+	}
+
+	/** Moves the picked item (or `quantity` of it) into this container. */
+	const moveHere = (childId: string, quantity?: number) =>
+		run(async () => {
+			await api.post(`/api/items/${childId}/move`, { parentId: item.id, quantity });
+			picked = null;
+		});
 
 	const restore = () => run(() => api.post(`/api/items/${item.id}/restore`));
 
@@ -88,19 +131,30 @@
 	</div>
 </div>
 
-{#if !item.isWorkbench}
-	<ItemPhoto
-		itemId={item.id}
-		photoKey={item.photoKey}
-		typePhotoKey={card.type?.photoKey ?? null}
+{#if card.type}
+	{@const type = card.type}
+	<PhotoField
+		photoKey={type.photoKey}
+		alt="Фото типа «{type.name}»"
 		editable={active}
+		caption="Фото общее для всех вещей типа «{type.name}»"
+		onfile={async (file) => {
+			const body = new FormData();
+			body.set('file', file);
+			await api.put(`/api/types/${type.id}/photo`, body);
+			await invalidateAll();
+		}}
+		onremove={async () => {
+			await api.delete(`/api/types/${type.id}/photo`);
+			await invalidateAll();
+		}}
 	/>
 {/if}
 
 {#if active && !item.isWorkbench}
 	<div class="my-3 flex flex-wrap gap-2">
 		<TakeToWorkbench item={{ id: item.id, quantity: item.quantity, name: item.displayName }} />
-		<Button color="alternative" onclick={() => (moving = !moving)}>
+		<Button color="alternative" onclick={toggleMoving}>
 			<ArrowsRepeatOutline class="me-1.5 h-5 w-5" />
 			Переложить
 		</Button>
@@ -111,13 +165,26 @@
 	</div>
 	{#if moving}
 		<div class="mb-3 space-y-2">
+			{#if item.quantity > 1}
+				<QuantityField
+					available={item.quantity}
+					bind:value={moveQuantity}
+					label="Сколько переложить"
+				/>
+			{/if}
 			<ContainerPicker
 				title="Куда переложить «{item.displayName}»?"
 				excludeId={item.id}
-				onpick={(c) => moveTo(c.id)}
+				onpick={(c) => {
+					if (!quantityError(item.quantity, moveQuantity)) moveTo(c.id);
+				}}
 			/>
 			{#if card.path.length > 0}
-				<Button color="alternative" onclick={() => moveTo(null)} disabled={busy}>
+				<Button
+					color="alternative"
+					onclick={() => moveTo(null)}
+					disabled={busy || !!quantityError(item.quantity, moveQuantity)}
+				>
 					На верхний уровень
 				</Button>
 			{/if}
@@ -132,7 +199,12 @@
 	</Card>
 
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
-	<ParamList params={card.params} showSource />
+	<ParamSection
+		params={card.params}
+		target={{ kind: 'item', id: item.id }}
+		type={card.type}
+		editable={active}
+	/>
 {/if}
 
 {#if container}
@@ -148,16 +220,38 @@
 				<PlusOutline class="me-1.5 h-5 w-5" />
 				Новая вещь сюда
 			</Button>
-			<Button color="alternative" onclick={() => (adding = !adding)}>
+			<Button color="alternative" onclick={toggleAdding}>
 				{adding ? 'Отмена' : 'Положить сюда существующую'}
 			</Button>
 		</div>
-		{#if adding}
+		{#if adding && picked}
+			{@const child = picked}
+			<Card class="max-w-none gap-3 p-4">
+				<p class="text-lg wrap-anywhere">{child.name} → {item.displayName}</p>
+				<QuantityField
+					available={child.quantity}
+					bind:value={pickedQuantity}
+					label="Сколько положить"
+				/>
+				<div class="flex flex-wrap gap-2">
+					<Button
+						onclick={() =>
+							moveHere(child.id, pickedQuantity < child.quantity ? pickedQuantity : undefined)}
+						disabled={busy || !!quantityError(child.quantity, pickedQuantity)}
+					>
+						Положить
+					</Button>
+					<Button color="alternative" onclick={() => (picked = null)} disabled={busy}>
+						Другая вещь
+					</Button>
+				</div>
+			</Card>
+		{:else if adding}
 			<ContainerPicker
 				title="Что положить в «{item.displayName}»? Найдите вещь или отсканируйте её наклейку"
 				excludeId={item.id}
 				containersOnly={false}
-				onpick={(c) => moveHere(c.id)}
+				onpick={pickChild}
 			/>
 		{/if}
 	{/if}

@@ -5,73 +5,86 @@ import {
 	formatNumber,
 	formatParamValue,
 	mergeParams,
+	paramDefInputSchema,
 	paramInputSchema,
 	paramListSchema
 } from './params';
 
 const NNBSP = '\u202f';
 
+const DEF = '00000000-0000-4000-8000-0000000000d1';
+
 describe('paramInputSchema', () => {
 	it('accepts every value type', () => {
 		const inputs = [
-			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' },
-			{ key: 'длина', valueType: 'NUMBER', value: 85, unit: 'мм' },
-			{ key: 'питание', valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
+			{ defId: DEF, valueType: 'STRING', text: 'DIP-8' },
+			{ defId: DEF, valueType: 'NUMBER', value: 85, unit: 'мм' },
+			{ defId: DEF, valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
 			{
-				key: 'состояние',
+				defId: DEF,
 				valueType: 'ENUM',
-				dictionaryId: '00000000-0000-4000-8000-000000000001',
 				optionIds: ['00000000-0000-4000-8000-000000000002']
 			},
-			{ key: 'даташит', valueType: 'URL', url: 'https://example.com/ne555.pdf' },
+			{ defId: DEF, valueType: 'URL', url: 'https://example.com/ne555.pdf' },
 			{
-				key: 'инструкция',
+				defId: DEF,
 				valueType: 'FILE',
 				fileKey: 'params/u/f',
 				fileName: 'manual.pdf',
 				fileMime: 'application/pdf',
 				fileSize: 1000
 			},
-			{ key: 'гарантия до', valueType: 'DATE', date: '2027-05-01' },
-			{ key: 'зарядка', valueType: 'REF', refItemId: '00000000-0000-4000-8000-000000000003' },
-			{ key: 'работает', valueType: 'BOOLEAN', value: false }
+			{ defId: DEF, valueType: 'DATE', date: '2027-05-01' },
+			{ defId: DEF, valueType: 'REF', refItemId: '00000000-0000-4000-8000-000000000003' },
+			{ defId: DEF, valueType: 'BOOLEAN', value: false }
 		];
 		for (const input of inputs) expect(paramInputSchema.parse(input)).toMatchObject(input);
 	});
 
 	it('rejects a range with min > max', () => {
-		const r = paramInputSchema.safeParse({ key: 'питание', valueType: 'RANGE', min: 16, max: 4.5 });
+		const r = paramInputSchema.safeParse({ defId: DEF, valueType: 'RANGE', min: 16, max: 4.5 });
 		expect(r.success).toBe(false);
 		expect(r.error?.issues[0]?.message).toBe('Минимум больше максимума');
 	});
 
 	it('rejects invalid dates, urls and refs', () => {
 		expect(
-			paramInputSchema.safeParse({ key: 'd', valueType: 'DATE', date: '2027-02-30' }).success
+			paramInputSchema.safeParse({ defId: DEF, valueType: 'DATE', date: '2027-02-30' }).success
 		).toBe(false);
 		expect(
-			paramInputSchema.safeParse({ key: 'u', valueType: 'URL', url: 'javascript:alert(1)' }).success
+			paramInputSchema.safeParse({ defId: DEF, valueType: 'URL', url: 'javascript:alert(1)' })
+				.success
 		).toBe(false);
-		expect(paramInputSchema.safeParse({ key: 'r', valueType: 'REF' }).success).toBe(false);
+		expect(paramInputSchema.safeParse({ defId: DEF, valueType: 'REF' }).success).toBe(false);
 	});
 
-	it('trims keys and empties the unit', () => {
-		expect(
-			paramInputSchema.parse({ key: ' вес ', valueType: 'NUMBER', value: 3, unit: '' })
-		).toEqual({
-			key: 'вес',
-			valueType: 'NUMBER',
-			value: 3,
-			unit: null
-		});
+	it('empties the unit', () => {
+		expect(paramInputSchema.parse({ defId: DEF, valueType: 'NUMBER', value: 3, unit: '' })).toEqual(
+			{ defId: DEF, valueType: 'NUMBER', value: 3, unit: null }
+		);
 	});
 
-	it('rejects duplicate keys in one list, case-insensitively', () => {
+	it('rejects the same parameter twice in one list', () => {
 		const r = paramListSchema.safeParse([
-			{ key: 'Цвет', valueType: 'STRING', text: 'красный' },
-			{ key: 'цвет', valueType: 'STRING', text: 'синий' }
+			{ defId: DEF, valueType: 'STRING', text: 'красный' },
+			{ defId: DEF, valueType: 'STRING', text: 'синий' }
 		]);
 		expect(r.success).toBe(false);
+	});
+});
+
+describe('paramDefInputSchema', () => {
+	it('trims the name and needs a list for ENUM', () => {
+		expect(paramDefInputSchema.parse({ name: ' вес ', valueType: 'NUMBER' })).toEqual({
+			name: 'вес',
+			valueType: 'NUMBER',
+			dictionaryId: null
+		});
+		expect(paramDefInputSchema.safeParse({ name: 'цвет', valueType: 'ENUM' }).success).toBe(false);
+		expect(
+			paramDefInputSchema.parse({ name: 'вес', valueType: 'NUMBER', dictionaryId: DEF })
+				.dictionaryId
+		).toBeNull();
 	});
 });
 
@@ -92,11 +105,10 @@ describe('formatting', () => {
 		expect(f({ valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' })).toBe('4,5–16 В');
 		expect(f({ valueType: 'BOOLEAN', value: true })).toBe('да');
 		expect(f({ valueType: 'BOOLEAN', value: false })).toBe('нет');
-		expect(f({ valueType: 'DATE', date: '2027-05-01' })).toBe('1 мая 2027');
+		expect(f({ valueType: 'DATE', date: '2027-05-01' })).toBe('2027-05-01');
 		expect(
 			f({
 				valueType: 'ENUM',
-				dictionaryId: 'd',
 				optionIds: ['a', 'b'],
 				options: [
 					{ id: 'a', label: 'USB' },
@@ -115,28 +127,28 @@ describe('formatting', () => {
 	});
 
 	it('formats dates and sizes', () => {
-		expect(formatDate('2026-12-31')).toBe('31 декабря 2026');
+		expect(formatDate('2026-12-31')).toBe('2026-12-31');
 		expect(formatFileSize(500)).toBe('500 Б');
 		expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2,5 МБ');
 	});
 });
 
 describe('mergeParams', () => {
-	it('lets an item value override the type value with the same key', () => {
+	it('lets an item value override the type value of the same parameter', () => {
 		const merged = mergeParams(
 			[
-				{ key: 'Цвет', v: 'красный' },
-				{ key: 'вес', v: '10 г' }
+				{ defId: 'color', v: 'красный' },
+				{ defId: 'weight', v: '10 г' }
 			],
 			[
-				{ key: 'цвет ', v: 'синий' },
-				{ key: 'серийный номер', v: 'A1' }
+				{ defId: 'color', v: 'синий' },
+				{ defId: 'serial', v: 'A1' }
 			]
 		);
 		expect(merged).toEqual([
-			{ key: 'цвет ', v: 'синий', source: 'item' },
-			{ key: 'вес', v: '10 г', source: 'type' },
-			{ key: 'серийный номер', v: 'A1', source: 'item' }
+			{ defId: 'color', v: 'синий', source: 'item' },
+			{ defId: 'weight', v: '10 г', source: 'type' },
+			{ defId: 'serial', v: 'A1', source: 'item' }
 		]);
 	});
 });

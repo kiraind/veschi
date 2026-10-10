@@ -1,10 +1,19 @@
-import type { Param, ParamEnumValue, Prisma } from '@prisma/client';
+import type { Param, ParamDef, ParamEnumValue, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { db, type Tx } from '$lib/server/db';
-import { NotFoundError, ValidationError } from '$lib/server/errors';
-import { visibleTo, type Actor } from '$lib/server/scope';
+import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
+import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
-import { paramListSchema, type ParamInput, type ParamView } from '$lib/domain/params';
+import {
+	PARAM_VALUE_TYPE_LABELS,
+	normalizeParamKey,
+	paramDefInputSchema,
+	paramInputSchema,
+	paramListSchema,
+	type ParamDefView,
+	type ParamInput,
+	type ParamView
+} from '$lib/domain/params';
 import { deleteUnreferencedFiles, isOwnUpload } from './files';
 
 /** Body of the PUT …/params endpoints. */
@@ -13,7 +22,7 @@ export const paramsBodySchema = z.object({ params: paramListSchema });
 /** Whose parameter list: a type's (shared by its items) or one item's. */
 export type ParamTarget = { typeId: string } | { itemId: string };
 
-type ParamRow = Param & { enumValues: ParamEnumValue[] };
+type ParamRow = Param & { enumValues: ParamEnumValue[]; def: ParamDef };
 
 function targetWhere(target: ParamTarget) {
 	return 'typeId' in target ? { typeId: target.typeId } : { itemId: target.itemId };
@@ -28,7 +37,9 @@ async function assertTargetVisible(actor: Actor, target: ParamTarget, tx: Tx): P
 }
 
 /** Value columns of a Param row for one input. */
-function toColumns(p: ParamInput): Omit<Prisma.ParamUncheckedCreateInput, 'key' | 'position'> {
+function toColumns(
+	p: ParamInput
+): Omit<Prisma.ParamUncheckedCreateInput, 'defId' | 'dictionaryId' | 'position'> {
 	switch (p.valueType) {
 		case 'STRING':
 			return { valueType: p.valueType, textValue: p.text };
@@ -37,7 +48,7 @@ function toColumns(p: ParamInput): Omit<Prisma.ParamUncheckedCreateInput, 'key' 
 		case 'RANGE':
 			return { valueType: p.valueType, numberValue: p.min, numberMax: p.max, unit: p.unit };
 		case 'ENUM':
-			return { valueType: p.valueType, dictionaryId: p.dictionaryId };
+			return { valueType: p.valueType };
 		case 'URL':
 			return { valueType: p.valueType, textValue: p.url };
 		case 'FILE':
@@ -58,15 +69,15 @@ function toColumns(p: ParamInput): Omit<Prisma.ParamUncheckedCreateInput, 'key' 
 }
 
 function fromRow(row: ParamRow): ParamInput {
-	const key = row.key;
+	const base = { defId: row.defId };
 	switch (row.valueType) {
 		case 'STRING':
-			return { key, valueType: 'STRING', text: row.textValue ?? '' };
+			return { ...base, valueType: 'STRING', text: row.textValue ?? '' };
 		case 'NUMBER':
-			return { key, valueType: 'NUMBER', value: row.numberValue ?? 0, unit: row.unit };
+			return { ...base, valueType: 'NUMBER', value: row.numberValue ?? 0, unit: row.unit };
 		case 'RANGE':
 			return {
-				key,
+				...base,
 				valueType: 'RANGE',
 				min: row.numberValue ?? 0,
 				max: row.numberMax ?? 0,
@@ -74,16 +85,15 @@ function fromRow(row: ParamRow): ParamInput {
 			};
 		case 'ENUM':
 			return {
-				key,
+				...base,
 				valueType: 'ENUM',
-				dictionaryId: row.dictionaryId ?? '',
 				optionIds: row.enumValues.map((v) => v.optionId)
 			};
 		case 'URL':
-			return { key, valueType: 'URL', url: row.textValue ?? '' };
+			return { ...base, valueType: 'URL', url: row.textValue ?? '' };
 		case 'FILE':
 			return {
-				key,
+				...base,
 				valueType: 'FILE',
 				fileKey: row.fileKey ?? '',
 				fileName: row.fileName ?? '',
@@ -91,11 +101,11 @@ function fromRow(row: ParamRow): ParamInput {
 				fileSize: row.fileSize ?? 0
 			};
 		case 'DATE':
-			return { key, valueType: 'DATE', date: row.dateValue?.toISOString().slice(0, 10) ?? '' };
+			return { ...base, valueType: 'DATE', date: row.dateValue?.toISOString().slice(0, 10) ?? '' };
 		case 'REF':
-			return { key, valueType: 'REF', refItemId: row.refItemId, refTypeId: row.refTypeId };
+			return { ...base, valueType: 'REF', refItemId: row.refItemId, refTypeId: row.refTypeId };
 		case 'BOOLEAN':
-			return { key, valueType: 'BOOLEAN', value: row.boolValue ?? false };
+			return { ...base, valueType: 'BOOLEAN', value: row.boolValue ?? false };
 	}
 }
 
@@ -125,8 +135,9 @@ async function toViews(actor: Actor, rows: ParamRow[], tx: Tx): Promise<ParamVie
 	const typesById = new Map(refTypes.map((t) => [t.id, t]));
 
 	return rows.map((row) => {
-		const view: ParamView = { ...fromRow(row), id: row.id };
+		const view: ParamView = { ...fromRow(row), id: row.id, key: row.def.name };
 		if (view.valueType === 'ENUM') {
+			view.dictionaryId = row.dictionaryId;
 			const chosen = new Set(view.optionIds);
 			view.options = options
 				.filter((o) => chosen.has(o.id))
@@ -162,7 +173,7 @@ export async function getParamsOf(
 	if (ids.length === 0) return result;
 	const rows = await tx.param.findMany({
 		where: { [kind]: { in: ids } },
-		include: { enumValues: true },
+		include: { enumValues: true, def: true },
 		orderBy: { position: 'asc' }
 	});
 	const views = await toViews(actor, rows, tx);
@@ -184,43 +195,68 @@ export async function listParams(
 	return (await getParamsOf(actor, kind, [id], tx)).get(id) ?? [];
 }
 
-/** Checks references inside the inputs: dictionaries, options, REF targets, uploaded files. */
-async function assertReferencesValid(actor: Actor, params: ParamInput[], tx: Tx): Promise<void> {
-	for (const p of params) {
-		if (p.valueType === 'ENUM') {
-			const dictionary = await tx.enumDictionary.findFirst({
-				where: { id: p.dictionaryId, ...visibleTo(actor) },
-				include: { options: { select: { id: true } } }
-			});
-			if (!dictionary) throw new ValidationError(`«${p.key}»: справочник не найден`);
-			const known = new Set(dictionary.options.map((o) => o.id));
-			if (!p.optionIds.every((id) => known.has(id))) {
-				throw new ValidationError(`«${p.key}»: такого варианта нет в справочнике`);
-			}
-			if (!dictionary.multiple && new Set(p.optionIds).size > 1) {
-				throw new ValidationError(
-					`«${p.key}»: в справочнике «${dictionary.name}» можно выбрать только один вариант`
-				);
-			}
+/** Visible definitions by id; a missing one is an error. */
+async function findDefs(actor: Actor, ids: string[], tx: Tx): Promise<Map<string, ParamDef>> {
+	const defs = await tx.paramDef.findMany({ where: { id: { in: ids }, ...visibleTo(actor) } });
+	const byId = new Map(defs.map((d) => [d.id, d]));
+	if (ids.some((id) => !byId.has(id))) throw new ValidationError('Параметр не найден');
+	return byId;
+}
+
+/**
+ * Checks one value against its definition and the references inside it:
+ * value type, drop-down options, REF targets, uploaded files.
+ */
+async function assertValueValid(actor: Actor, def: ParamDef, p: ParamInput, tx: Tx): Promise<void> {
+	if (p.valueType !== def.valueType) {
+		throw new ValidationError(
+			`«${def.name}»: нужно значение типа «${PARAM_VALUE_TYPE_LABELS[def.valueType]}»`
+		);
+	}
+	if (p.valueType === 'ENUM') {
+		const dictionary = await tx.enumDictionary.findFirst({
+			where: { id: def.dictionaryId ?? '', ...visibleTo(actor) },
+			include: { options: { select: { id: true } } }
+		});
+		if (!dictionary) throw new ValidationError(`«${def.name}»: выпадающий список не найден`);
+		const known = new Set(dictionary.options.map((o) => o.id));
+		if (!p.optionIds.every((id) => known.has(id))) {
+			throw new ValidationError(`«${def.name}»: такого варианта нет в списке`);
 		}
-		if (p.valueType === 'REF') {
-			const found = p.refItemId
-				? await tx.item.findFirst({
-						where: { id: p.refItemId, isWorkbench: false, ...visibleTo(actor) }
-					})
-				: await tx.itemType.findFirst({ where: { id: p.refTypeId ?? '', ...visibleTo(actor) } });
-			if (!found) throw new ValidationError(`«${p.key}»: вещь или тип не найдены`);
-		}
-		if (p.valueType === 'FILE' && !isOwnUpload(actor, p.fileKey)) {
-			const known = await tx.param.findFirst({
-				where: {
-					fileKey: p.fileKey,
-					OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }]
-				}
-			});
-			if (!known) throw new ValidationError(`«${p.key}»: файл не найден, загрузите его заново`);
+		if (!dictionary.multiple && new Set(p.optionIds).size > 1) {
+			throw new ValidationError(
+				`«${def.name}»: в списке «${dictionary.name}» можно выбрать только один вариант`
+			);
 		}
 	}
+	if (p.valueType === 'REF') {
+		const found = p.refItemId
+			? await tx.item.findFirst({
+					where: { id: p.refItemId, isWorkbench: false, ...visibleTo(actor) }
+				})
+			: await tx.itemType.findFirst({ where: { id: p.refTypeId ?? '', ...visibleTo(actor) } });
+		if (!found) throw new ValidationError(`«${def.name}»: вещь или тип не найдены`);
+	}
+	if (p.valueType === 'FILE' && !isOwnUpload(actor, p.fileKey)) {
+		const known = await tx.param.findFirst({
+			where: {
+				fileKey: p.fileKey,
+				OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }]
+			}
+		});
+		if (!known) throw new ValidationError(`«${def.name}»: файл не найден, загрузите его заново`);
+	}
+}
+
+/** Row data of a value: value columns plus the definition's type and list. */
+function rowData(def: ParamDef, p: ParamInput) {
+	return { ...toColumns(p), defId: def.id, dictionaryId: def.dictionaryId };
+}
+
+function enumValues(p: ParamInput) {
+	return p.valueType === 'ENUM'
+		? { create: [...new Set(p.optionIds)].map((optionId) => ({ optionId })) }
+		: undefined;
 }
 
 /**
@@ -235,23 +271,19 @@ export async function replaceParams(
 ): Promise<string[]> {
 	const params = paramListSchema.parse(inputs);
 	await assertTargetVisible(actor, target, tx);
-	await assertReferencesValid(actor, params, tx);
+	const defs = await findDefs(
+		actor,
+		params.map((p) => p.defId),
+		tx
+	);
+	for (const p of params) await assertValueValid(actor, defs.get(p.defId)!, p, tx);
 
 	const where = targetWhere(target);
 	const old = await tx.param.findMany({ where, select: { fileKey: true } });
 	await tx.param.deleteMany({ where });
 	for (const [position, p] of params.entries()) {
 		await tx.param.create({
-			data: {
-				...where,
-				...toColumns(p),
-				key: p.key,
-				position,
-				enumValues:
-					p.valueType === 'ENUM'
-						? { create: [...new Set(p.optionIds)].map((optionId) => ({ optionId })) }
-						: undefined
-			}
+			data: { ...where, ...rowData(defs.get(p.defId)!, p), position, enumValues: enumValues(p) }
 		});
 	}
 	const kept = new Set(params.flatMap((p) => (p.valueType === 'FILE' ? [p.fileKey] : [])));
@@ -267,4 +299,268 @@ export async function setParams(
 	const dropped = await db.$transaction((tx) => replaceParams(actor, target, inputs, tx));
 	await deleteUnreferencedFiles(dropped);
 	return listParams(actor, target);
+}
+
+/** Adds the value of one more parameter at the end of a type's or an item's list. */
+export async function addParam(
+	actor: Actor,
+	target: ParamTarget,
+	input: unknown
+): Promise<ParamView> {
+	const p = paramInputSchema.parse(input);
+	const id = await db.$transaction(async (tx) => {
+		await assertTargetVisible(actor, target, tx);
+		const def = (await findDefs(actor, [p.defId], tx)).get(p.defId)!;
+		await assertValueValid(actor, def, p, tx);
+		const where = targetWhere(target);
+		if (await tx.param.findFirst({ where: { ...where, defId: def.id } })) {
+			throw new ConflictError(`Параметр «${def.name}» уже есть — измените его значение`);
+		}
+		const last = await tx.param.aggregate({ where, _max: { position: true } });
+		const row = await tx.param.create({
+			data: {
+				...where,
+				...rowData(def, p),
+				position: (last._max.position ?? -1) + 1,
+				enumValues: enumValues(p)
+			}
+		});
+		return row.id;
+	});
+	return getParam(actor, id);
+}
+
+/** A stored value the actor can see (through its type or item). */
+async function findParam(actor: Actor, id: string, tx: Tx = db) {
+	const param = await tx.param.findFirst({
+		where: { id, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] },
+		include: { def: true }
+	});
+	if (!param) throw new NotFoundError('Параметр не найден');
+	return param;
+}
+
+export async function getParam(actor: Actor, id: string, tx: Tx = db): Promise<ParamView> {
+	const row = await tx.param.findFirstOrThrow({
+		where: { id: (await findParam(actor, id, tx)).id },
+		include: { enumValues: true, def: true }
+	});
+	return (await toViews(actor, [row], tx))[0]!;
+}
+
+/** Changes a stored value; its parameter stays the same. */
+export async function updateParam(actor: Actor, id: string, input: unknown): Promise<ParamView> {
+	const p = paramInputSchema.parse(input);
+	const dropped = await db.$transaction(async (tx) => {
+		const param = await findParam(actor, id, tx);
+		if (p.defId !== param.defId) throw new ValidationError('Параметр значения менять нельзя');
+		await assertValueValid(actor, param.def, p, tx);
+		await tx.paramEnumValue.deleteMany({ where: { paramId: id } });
+		const cleared = {
+			textValue: null,
+			numberValue: null,
+			numberMax: null,
+			unit: null,
+			dateValue: null,
+			boolValue: null,
+			fileKey: null,
+			fileName: null,
+			fileMime: null,
+			fileSize: null,
+			refItemId: null,
+			refTypeId: null
+		};
+		await tx.param.update({
+			where: { id },
+			data: { ...cleared, ...rowData(param.def, p), enumValues: enumValues(p) }
+		});
+		const keep = p.valueType === 'FILE' ? p.fileKey : null;
+		return param.fileKey && param.fileKey !== keep ? [param.fileKey] : [];
+	});
+	await deleteUnreferencedFiles(dropped);
+	return getParam(actor, id);
+}
+
+export async function deleteParam(actor: Actor, id: string): Promise<void> {
+	const param = await findParam(actor, id);
+	await db.param.delete({ where: { id } });
+	if (param.fileKey) await deleteUnreferencedFiles([param.fileKey]);
+}
+
+/** Moves a value one place up (-1) or down (+1) in its list. */
+export async function moveParam(actor: Actor, id: string, delta: -1 | 1): Promise<void> {
+	await db.$transaction(async (tx) => {
+		const param = await findParam(actor, id, tx);
+		const where = param.typeId ? { typeId: param.typeId } : { itemId: param.itemId };
+		const list = await tx.param.findMany({
+			where,
+			orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+			select: { id: true }
+		});
+		const from = list.findIndex((r) => r.id === id);
+		const to = from + delta;
+		if (to < 0 || to >= list.length) return;
+		[list[from], list[to]] = [list[to]!, list[from]!];
+		for (const [position, row] of list.entries()) {
+			await tx.param.update({ where: { id: row.id }, data: { position } });
+		}
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Definitions («Параметры»)
+// ---------------------------------------------------------------------------
+
+const defInclude = {
+	dictionary: { select: { name: true } }
+} satisfies Prisma.ParamDefInclude;
+
+async function defViews(
+	defs: Prisma.ParamDefGetPayload<{ include: typeof defInclude }>[],
+	tx: Tx
+): Promise<ParamDefView[]> {
+	const counts = defs.length
+		? await tx.param.groupBy({
+				by: ['defId'],
+				where: { defId: { in: defs.map((d) => d.id) } },
+				_count: { typeId: true, itemId: true }
+			})
+		: [];
+	const byDef = new Map(counts.map((c) => [c.defId, c._count]));
+	return defs.map((d) => ({
+		id: d.id,
+		name: d.name,
+		valueType: d.valueType,
+		dictionaryId: d.dictionaryId,
+		dictionaryName: d.dictionary?.name ?? null,
+		typeCount: byDef.get(d.id)?.typeId ?? 0,
+		itemCount: byDef.get(d.id)?.itemId ?? 0
+	}));
+}
+
+/** Parameter definitions sorted by name, with usage counts. */
+export async function listParamDefs(actor: Actor): Promise<ParamDefView[]> {
+	const defs = await db.paramDef.findMany({
+		where: visibleTo(actor),
+		include: defInclude,
+		orderBy: { name: 'asc' }
+	});
+	return defViews(defs, db);
+}
+
+async function findDef(actor: Actor, id: string, tx: Tx = db) {
+	const def = await tx.paramDef.findFirst({
+		where: { id, ...visibleTo(actor) },
+		include: defInclude
+	});
+	if (!def) throw new NotFoundError('Параметр не найден');
+	return def;
+}
+
+export interface ParamDefCard {
+	def: ParamDefView;
+	/** Where it has values. */
+	types: { id: string; name: string }[];
+	items: { id: string; name: string; archived: boolean }[];
+}
+
+export async function getParamDef(actor: Actor, id: string): Promise<ParamDefCard> {
+	const def = await findDef(actor, id);
+	const values = await db.param.findMany({
+		where: { defId: id },
+		include: {
+			type: { select: { id: true, name: true } },
+			item: { include: { type: { select: { name: true } } } }
+		}
+	});
+	const collator = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'ru');
+	return {
+		def: (await defViews([def], db))[0]!,
+		types: values.flatMap((v) => (v.type ? [v.type] : [])).sort(collator),
+		items: values
+			.flatMap((v) =>
+				v.item
+					? [
+							{
+								id: v.item.id,
+								name: itemDisplayName(v.item),
+								archived: v.item.status === 'ARCHIVED'
+							}
+						]
+					: []
+			)
+			.sort(collator)
+	};
+}
+
+async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
+	const same = await tx.paramDef.findMany({
+		where: {
+			name: { equals: name, mode: 'insensitive' },
+			...visibleTo(actor),
+			...(exceptId ? { id: { not: exceptId } } : {})
+		},
+		select: { name: true }
+	});
+	if (same.some((d) => normalizeParamKey(d.name) === normalizeParamKey(name))) {
+		throw new ConflictError(`Параметр «${name}» уже есть`);
+	}
+}
+
+async function assertDictionaryVisible(actor: Actor, dictionaryId: string | null, tx: Tx) {
+	if (!dictionaryId) return;
+	const found = await tx.enumDictionary.findFirst({
+		where: { id: dictionaryId, ...visibleTo(actor) }
+	});
+	if (!found) throw new ValidationError('Выпадающий список не найден');
+}
+
+export async function createParamDef(actor: Actor, input: unknown): Promise<ParamDefView> {
+	const data = paramDefInputSchema.parse(input);
+	const id = await db.$transaction(async (tx) => {
+		await assertNameFree(actor, data.name, null, tx);
+		await assertDictionaryVisible(actor, data.dictionaryId, tx);
+		return (await tx.paramDef.create({ data: { ...data, ...ownedBy(actor) } })).id;
+	});
+	return (await getParamDef(actor, id)).def;
+}
+
+/**
+ * Renames a definition (every value shows the new name at once). The value
+ * type and the list can change only while no type or item has a value.
+ */
+export async function updateParamDef(
+	actor: Actor,
+	id: string,
+	input: unknown
+): Promise<ParamDefView> {
+	const data = paramDefInputSchema.parse(input);
+	await db.$transaction(async (tx) => {
+		const def = await findDef(actor, id, tx);
+		await assertNameFree(actor, data.name, id, tx);
+		if (data.valueType !== def.valueType || data.dictionaryId !== def.dictionaryId) {
+			if (await tx.param.count({ where: { defId: id } })) {
+				throw new ConflictError(
+					'Тип значения и список можно поменять, только пока у параметра нет значений'
+				);
+			}
+			await assertDictionaryVisible(actor, data.dictionaryId, tx);
+		}
+		await tx.paramDef.update({ where: { id }, data });
+	});
+	return (await getParamDef(actor, id)).def;
+}
+
+/** Deletes a definition no type or item has a value of. */
+export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
+	await db.$transaction(async (tx) => {
+		await findDef(actor, id, tx);
+		const used = await tx.param.count({ where: { defId: id } });
+		if (used > 0) {
+			throw new ConflictError(
+				`Параметр задан у типов и вещей (${used}) — сначала удалите значения`
+			);
+		}
+		await tx.paramDef.delete({ where: { id } });
+	});
 }

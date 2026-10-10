@@ -5,9 +5,13 @@
 	import { formatFileSize } from '$lib/domain/params';
 	import type { FileValue } from '$lib/server/services/files';
 	import type { DictionaryView } from '$lib/server/services/dictionaries';
+	import DateInput from './DateInput.svelte';
 	import RefPicker from './RefPicker.svelte';
 
-	/** Value fields of one parameter, depending on its value type. */
+	/**
+	 * Value fields of one parameter, depending on its value type. ENUM values
+	 * come from the definition's drop-down list (`dictionaries` holds the lists).
+	 */
 	let {
 		draft = $bindable(),
 		dictionaries
@@ -70,47 +74,43 @@
 	</div>
 {:else if draft.valueType === 'ENUM'}
 	{#if dictionaries === null}
-		<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка справочников…</p>
-	{:else if dictionaries.length === 0}
+		<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка вариантов…</p>
+	{:else if !dictionary}
+		<p class="text-sm text-gray-500 dark:text-gray-400">Выпадающий список не найден.</p>
+	{:else if dictionary.options.length === 0}
 		<p class="text-sm text-gray-500 dark:text-gray-400">
-			Справочников нет. <a
+			В списке «{dictionary.name}» нет вариантов.
+			<a
 				class="text-primary-700 hover:underline dark:text-primary-400"
-				href="/dictionaries">Создать справочник</a
+				href="/params/lists/{dictionary.id}">Добавить варианты</a
 			>
 		</p>
+	{:else if dictionary.multiple}
+		<div class="flex flex-wrap gap-x-4 gap-y-1">
+			{#each dictionary.options as option (option.id)}
+				<label class="flex min-h-10 items-center gap-2 text-sm text-gray-900 dark:text-white">
+					<input
+						class="h-4 w-4 rounded-sm border-gray-300 bg-gray-100 text-primary-600 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 dark:focus:ring-primary-600"
+						type="checkbox"
+						checked={draft.optionIds.includes(option.id)}
+						onchange={(e) => toggleOption(option.id, e.currentTarget.checked)}
+					/>
+					{option.label}
+				</label>
+			{/each}
+		</div>
 	{:else}
 		<Select
-			value={draft.dictionaryId}
-			onchange={(e) => {
-				draft.dictionaryId = e.currentTarget.value;
-				draft.optionIds = [];
-			}}
-			aria-label="Справочник"
+			value={draft.optionIds[0] ?? ''}
+			onchange={(e) => (draft.optionIds = e.currentTarget.value ? [e.currentTarget.value] : [])}
+			aria-label={draft.key}
 			placeholder=""
 		>
-			<option value="" disabled>Справочник…</option>
-			{#each dictionaries as d (d.id)}
-				<option value={d.id}>{d.name}</option>
+			<option value="" disabled>Выберите…</option>
+			{#each dictionary.options as option (option.id)}
+				<option value={option.id}>{option.label}</option>
 			{/each}
 		</Select>
-		{#if dictionary}
-			<div class="flex flex-wrap gap-x-4 gap-y-1">
-				{#each dictionary.options as option (option.id)}
-					<label class="flex min-h-10 items-center gap-2 text-sm text-gray-900 dark:text-white">
-						<input
-							class="h-4 w-4 border-gray-300 bg-gray-100 text-primary-600 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 dark:focus:ring-primary-600 {dictionary.multiple
-								? 'rounded-sm'
-								: ''}"
-							type={dictionary.multiple ? 'checkbox' : 'radio'}
-							name="enum-{draft.uid}"
-							checked={draft.optionIds.includes(option.id)}
-							onchange={(e) => toggleOption(option.id, e.currentTarget.checked)}
-						/>
-						{option.label}
-					</label>
-				{/each}
-			</div>
-		{/if}
 	{/if}
 {:else if draft.valueType === 'URL'}
 	<Input type="url" bind:value={draft.url} placeholder="https://…" aria-label="Ссылка" />
@@ -131,7 +131,7 @@
 		{#if uploadError}<span class="text-sm text-red-600 dark:text-red-500">{uploadError}</span>{/if}
 	{/if}
 {:else if draft.valueType === 'DATE'}
-	<Input type="date" bind:value={draft.date} aria-label="Дата" />
+	<DateInput bind:value={draft.date} aria-label={draft.key} />
 {:else if draft.valueType === 'REF'}
 	<RefPicker bind:value={draft.ref} />
 {:else if draft.valueType === 'BOOLEAN'}

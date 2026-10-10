@@ -1,7 +1,5 @@
-import { actorOrError } from '$lib/server/api';
-import { listDictionaries } from '$lib/server/services/dictionaries';
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => ({
-	dictionaries: await listDictionaries(actorOrError(event))
-});
+/** «Справочники» became the «Выпадающие списки» section of «Параметры». */
+export const load: PageServerLoad = () => redirect(308, '/params#lists');

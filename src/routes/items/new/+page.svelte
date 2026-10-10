@@ -5,9 +5,10 @@
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { page } from '$app/state';
 	import { Alert, Button, Card, Checkbox, Helper, Input, Label } from 'flowbite-svelte';
-	import { CameraPhotoOutline } from 'flowbite-svelte-icons';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
+	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
+	import type { TypeCard } from '$lib/server/services/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -30,10 +31,31 @@
 	let isContainer = $state(page.url.searchParams.get('container') === '1');
 	let photo = $state<File | null>(null);
 	let photoUrl = $derived(photo ? URL.createObjectURL(photo) : null);
-	let photoInput = $state<HTMLInputElement>();
+	/** Photo the chosen existing type already has (shown until a new one is picked). */
+	// svelte-ignore state_referenced_locally
+	let typePhoto = $state<{ typeId: string; photoKey: string | null } | null>(
+		data.type ? { typeId: data.type.id, photoKey: data.type.photoKey } : null
+	);
 	let picking = $state(false);
 	let busy = $state(false);
 	let error = $state('');
+
+	$effect(() => {
+		const id = typeId;
+		if (!id || typePhoto?.typeId === id) return;
+		let stale = false;
+		api
+			.get<TypeCard>(`/api/types/${id}`)
+			.then((card) => {
+				if (!stale) typePhoto = { typeId: id, photoKey: card.type.photoKey };
+			})
+			.catch(() => {
+				// no preview of the type photo, not critical
+			});
+		return () => {
+			stale = true;
+		};
+	});
 
 	$effect(() => {
 		const url = photoUrl;
@@ -50,7 +72,8 @@
 			const { id } = await api.post<{ id: string }>('/api/items', {
 				...(typeId ? { typeId } : { newTypeName: typeName }),
 				name,
-				quantity,
+				// A container is a single instance: its quantity is always 1.
+				quantity: isContainer ? 1 : quantity,
 				parentId: parent?.id ?? null,
 				isContainer,
 				stickerCode: freeSticker?.code
@@ -59,7 +82,9 @@
 				const body = new FormData();
 				body.set('file', photo);
 				try {
-					await api.put(`/api/items/${id}/photo`, body);
+					// The photo belongs to the type: a picked photo replaces the type photo.
+					const card = await api.get<{ type: { id: string } | null }>(`/api/items/${id}`);
+					if (card.type) await api.put(`/api/types/${card.type.id}/photo`, body);
 				} catch (e) {
 					// The item exists already: show its card, the photo can be added there.
 					alert(`Вещь создана, но фото не сохранилось: ${e instanceof ApiError ? e.message : e}`);
@@ -105,54 +130,44 @@
 		/>
 	</div>
 
-	<div>
-		<Label for="item-quantity">Количество</Label>
-		<Input
-			id="item-quantity"
-			class="mt-1"
-			type="number"
-			min="1"
-			step="1"
-			inputmode="numeric"
-			bind:value={quantity}
-			required
-		/>
-	</div>
+	{#if !isContainer}
+		<div>
+			<Label for="item-quantity">Количество</Label>
+			<Input
+				id="item-quantity"
+				class="mt-1"
+				type="number"
+				min="1"
+				step="1"
+				inputmode="numeric"
+				bind:value={quantity}
+				required
+			/>
+		</div>
+	{/if}
 
 	<div>
 		<Checkbox bind:checked={isContainer}>Это контейнер</Checkbox>
 		<Helper class="mt-1 ps-6">В контейнер можно класть другие вещи: шкаф, ящик, коробка.</Helper>
 	</div>
 
-	<div class="space-y-2">
-		<span class="text-sm font-medium">Фото (необязательно)</span>
-		{#if photoUrl}
-			<img
-				class="max-h-64 rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
-				src={photoUrl}
-				alt="Фото вещи"
-			/>
-		{/if}
-		<div class="flex flex-wrap gap-2">
-			<Button type="button" color="alternative" size="sm" onclick={() => photoInput?.click()}>
-				<CameraPhotoOutline class="me-1.5 h-5 w-5" />
-				{photo ? 'Другое фото' : 'Сфотографировать'}
-			</Button>
-			{#if photo}
-				<Button type="button" color="alternative" size="sm" onclick={() => (photo = null)}>
-					Без фото
-				</Button>
-			{/if}
-		</div>
-		<input
-			bind:this={photoInput}
-			class="hidden"
-			type="file"
-			accept="image/jpeg,image/png,image/webp,image/gif"
-			onchange={(e) => {
-				photo = e.currentTarget.files?.[0] ?? null;
-				e.currentTarget.value = '';
+	<div class="space-y-1">
+		<span class="text-sm font-medium">Фото типа (необязательно)</span>
+		<PhotoField
+			photoKey={typeId && typePhoto?.typeId === typeId ? typePhoto.photoKey : null}
+			previewUrl={photoUrl}
+			alt="Фото типа"
+			caption={photo && typeId && typePhoto?.typeId === typeId && typePhoto.photoKey
+				? 'Новое фото заменит фото типа — оно общее для всех вещей этого типа.'
+				: 'Фото общее для всех вещей этого типа.'}
+			onfile={async (file) => {
+				photo = file;
 			}}
+			onremove={photo
+				? async () => {
+						photo = null;
+					}
+				: undefined}
 		/>
 	</div>
 

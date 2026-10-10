@@ -1,18 +1,16 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
 	import { Button, Checkbox, Helper, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
-	import ParamEditor from '$lib/components/ParamEditor.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
-	import type { ParamInput } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	// The form is filled from the page data once.
 	// svelte-ignore state_referenced_locally
-	const { item, type, itemParams } = data.card;
+	const { item, type } = data.card;
 	let typeId = $state<string | null>(type?.id ?? null);
 	let typeName = $state(type?.name ?? '');
 	let name = $state(item.name ?? '');
@@ -29,7 +27,8 @@
 			await api.patch(`/api/items/${item.id}`, {
 				...(typeId ? { typeId } : { newTypeName: typeName }),
 				name,
-				quantity,
+				// A container is a single instance: its quantity is always 1.
+				quantity: isContainer ? 1 : quantity,
 				isContainer
 			});
 			await goto(`/items/${item.id}`);
@@ -38,11 +37,6 @@
 		} finally {
 			busy = false;
 		}
-	}
-
-	async function saveParams(params: ParamInput[]) {
-		await api.put(`/api/items/${item.id}/params`, { params });
-		await invalidateAll();
 	}
 </script>
 
@@ -63,19 +57,25 @@
 		<Label for="item-name">Своё название (необязательно)</Label>
 		<Input id="item-name" class="mt-1" bind:value={name} placeholder={typeName} />
 	</div>
-	<div>
-		<Label for="item-quantity">Количество</Label>
-		<Input
-			id="item-quantity"
-			class="mt-1"
-			type="number"
-			min="1"
-			step="1"
-			inputmode="numeric"
-			bind:value={quantity}
-			required
-		/>
-	</div>
+	{#if !isContainer}
+		<div>
+			<Label for="item-quantity">Количество</Label>
+			<Input
+				id="item-quantity"
+				class="mt-1"
+				type="number"
+				min="1"
+				step="1"
+				inputmode="numeric"
+				bind:value={quantity}
+				required
+			/>
+		</div>
+	{:else if item.quantity > 1}
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			Сейчас {item.quantity} шт. — у контейнера количество всегда 1, после сохранения будет 1.
+		</p>
+	{/if}
 	<div>
 		<Checkbox bind:checked={isContainer}>Это контейнер</Checkbox>
 		<Helper class="mt-1 ps-6">
@@ -88,11 +88,3 @@
 		<Button href="/items/{item.id}" color="alternative">Отмена</Button>
 	</div>
 </form>
-
-<h2 class="mt-6 mb-2 text-lg font-semibold">Свои параметры</h2>
-<p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
-	Параметры этой вещи (например, серийный номер). Параметр с тем же ключом, что у типа, заменяет
-	значение типа.
-	{#if type}Общие параметры — <a href="/types/{type.id}/edit">в типе «{type.name}»</a>.{/if}
-</p>
-<ParamEditor initial={itemParams} onsave={saveParams} />
