@@ -6,6 +6,8 @@ import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { inheritedParams, paramListSchema, type ParamView } from '$lib/domain/params';
+import { diffFields } from '$lib/domain/history';
+import { itemRef, itemSubject, placeRef, recordEvent } from './history';
 import { getParamsOf, replaceParams } from './params';
 import {
 	assertCanPlace,
@@ -163,7 +165,15 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				parentId: data.parentId ?? null
 			}
 		});
-		if (data.params?.length) await replaceParams(actor, { itemId: item.id }, data.params, tx);
+		await recordEvent(tx, actor, {
+			kind: 'item.created',
+			subject: itemRef({ ...item, type }),
+			data: { quantity: item.quantity, to: await placeRef(tx, item.parentId) },
+			refIds: [type.id]
+		});
+		if (data.params?.length) {
+			await replaceParams(actor, { itemId: item.id }, data.params, tx, { record: false });
+		}
 		if (data.stickerCode) await bindSticker(actor, data.stickerCode, item.id, tx);
 		return { id: item.id };
 	});
@@ -188,6 +198,14 @@ export async function updateItem(actor: Actor, id: string, input: unknown): Prom
 			if (item.sticker?.status === 'BOUND') throw new ValidationError(STICKER_QUANTITY);
 		}
 		await tx.item.update({ where: { id }, data: { name: data.name, quantity: data.quantity } });
+		const changes = diffFields({ name: item.name, quantity: item.quantity }, data);
+		if (changes.length) {
+			await recordEvent(tx, actor, {
+				kind: 'item.updated',
+				subject: itemRef({ ...item, name: data.name === undefined ? item.name : data.name }),
+				data: { changes }
+			});
+		}
 	});
 }
 
@@ -215,7 +233,16 @@ export async function moveItem(
 		}
 		if (parentId) await findPlaceableParent(actor, parentId, tx);
 		await assertCanPlace(itemId, parentId, tx);
-		return { itemId: await placePart(tx, item, count, { parentId, ...notTaken }) };
+		const subject = await itemSubject(tx, item.id);
+		const from = await placeRef(tx, item.parentId);
+		const to = await placeRef(tx, parentId);
+		const resultId = await placePart(tx, item, count, { parentId, ...notTaken });
+		await recordEvent(tx, actor, {
+			kind: 'item.moved',
+			subject,
+			data: { quantity: count, of: item.quantity, from, to, resultId }
+		});
+		return { itemId: resultId };
 	});
 }
 

@@ -41,6 +41,11 @@
 
 <svelte:head><title>Архив — Вещи</title></svelte:head>
 
+<a
+	href="/history"
+	class="mb-1 inline-block text-sm text-primary-700 hover:underline dark:text-primary-400"
+	>← История</a
+>
 <h1 class="mb-3 text-2xl font-bold">Архив</h1>
 <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
 	Выкинутые и использованные вещи. Их можно вернуть в каталог.

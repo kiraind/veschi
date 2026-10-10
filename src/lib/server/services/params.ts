@@ -15,8 +15,10 @@ import {
 	type ParamInput,
 	type ParamView
 } from '$lib/domain/params';
+import { diffFields, type ParamChange } from '$lib/domain/history';
 import { createOptionList, updateOptionList } from './dictionaries';
 import { deleteUnreferencedFiles, isOwnUpload } from './files';
+import { itemSubject, paramDefRef, recordEvent, typeRef } from './history';
 
 /** Body of the PUT …/params endpoints. */
 export const paramsBodySchema = z.object({ params: paramListSchema });
@@ -36,6 +38,64 @@ async function assertTargetVisible(actor: Actor, target: ParamTarget, tx: Tx): P
 			? await tx.itemType.findFirst({ where: { id: target.typeId, ...visibleTo(actor) } })
 			: await tx.item.findFirst({ where: { id: target.itemId, ...visibleTo(actor) } });
 	if (!found) throw new NotFoundError('typeId' in target ? 'Тип не найден' : 'Вещь не найдена');
+}
+
+/** Stored value of a row as a comparable string (to tell changed values in the history). */
+function valueSignature(r: Param & { enumValues: { optionId: string }[] }): string {
+	return JSON.stringify([
+		r.textValue,
+		r.numberValue,
+		r.numberMax,
+		r.dateValue?.toISOString() ?? null,
+		r.boolValue,
+		r.fileKey,
+		r.refItemId,
+		r.refTypeId,
+		r.enumValues.map((v) => v.optionId).sort()
+	]);
+}
+
+type SignedRow = Param & { enumValues: { optionId: string }[]; def: { name: string } };
+
+function signedRows(target: ParamTarget, tx: Tx): Promise<SignedRow[]> {
+	return tx.param.findMany({
+		where: targetWhere(target),
+		include: { enumValues: { select: { optionId: true } }, def: { select: { name: true } } }
+	});
+}
+
+/** Records which parameter values of a type or item were added, changed or removed. */
+async function recordParamChanges(
+	actor: Actor,
+	target: ParamTarget,
+	before: SignedRow[],
+	after: SignedRow[],
+	tx: Tx
+): Promise<void> {
+	const old = new Map(before.map((r) => [r.defId, r]));
+	const now = new Map(after.map((r) => [r.defId, r]));
+	const changes: (ParamChange & { defId: string })[] = [];
+	for (const r of after) {
+		const was = old.get(r.defId);
+		if (!was) changes.push({ defId: r.defId, name: r.def.name, change: 'added' });
+		else if (valueSignature(was) !== valueSignature(r)) {
+			changes.push({ defId: r.defId, name: r.def.name, change: 'changed' });
+		}
+	}
+	for (const r of before) {
+		if (!now.has(r.defId)) changes.push({ defId: r.defId, name: r.def.name, change: 'removed' });
+	}
+	if (changes.length === 0) return;
+	const subject =
+		'typeId' in target
+			? typeRef(await tx.itemType.findUniqueOrThrow({ where: { id: target.typeId } }))
+			: await itemSubject(tx, target.itemId);
+	await recordEvent(tx, actor, {
+		kind: 'params.changed',
+		subject,
+		data: { changes: changes.map(({ name, change }) => ({ name, change })) },
+		refIds: changes.map((c) => c.defId)
+	});
 }
 
 /** Value columns of a Param row for one input. */
@@ -266,7 +326,8 @@ export async function replaceParams(
 	actor: Actor,
 	target: ParamTarget,
 	inputs: unknown,
-	tx: Tx
+	tx: Tx,
+	{ record = true }: { record?: boolean } = {}
 ): Promise<string[]> {
 	const params = paramListSchema.parse(inputs);
 	await assertTargetVisible(actor, target, tx);
@@ -278,13 +339,14 @@ export async function replaceParams(
 	for (const p of params) await assertValueValid(actor, defs.get(p.defId)!, p, tx);
 
 	const where = targetWhere(target);
-	const old = await tx.param.findMany({ where, select: { fileKey: true } });
+	const old = await signedRows(target, tx);
 	await tx.param.deleteMany({ where });
 	for (const [position, p] of params.entries()) {
 		await tx.param.create({
 			data: { ...where, ...rowData(defs.get(p.defId)!, p), position, enumValues: enumValues(p) }
 		});
 	}
+	if (record) await recordParamChanges(actor, target, old, await signedRows(target, tx), tx);
 	const kept = new Set(params.flatMap((p) => (p.valueType === 'FILE' ? [p.fileKey] : [])));
 	return old.flatMap((r) => (r.fileKey && !kept.has(r.fileKey) ? [r.fileKey] : []));
 }
@@ -316,6 +378,7 @@ export async function addParam(
 			throw new ConflictError(`Параметр «${def.name}» уже есть — измените его значение`);
 		}
 		const last = await tx.param.aggregate({ where, _max: { position: true } });
+		const before = await signedRows(target, tx);
 		const row = await tx.param.create({
 			data: {
 				...where,
@@ -324,9 +387,14 @@ export async function addParam(
 				enumValues: enumValues(p)
 			}
 		});
+		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
 		return row.id;
 	});
 	return getParam(actor, id);
+}
+
+function paramTarget(param: Pick<Param, 'typeId' | 'itemId'>): ParamTarget {
+	return param.typeId ? { typeId: param.typeId } : { itemId: param.itemId ?? '' };
 }
 
 /** A stored value the actor can see (through its type or item). */
@@ -354,6 +422,8 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 		const param = await findParam(actor, id, tx);
 		if (p.defId !== param.defId) throw new ValidationError('Параметр значения менять нельзя');
 		await assertValueValid(actor, param.def, p, tx);
+		const target = paramTarget(param);
+		const before = await signedRows(target, tx);
 		await tx.paramEnumValue.deleteMany({ where: { paramId: id } });
 		const cleared = {
 			textValue: null,
@@ -372,6 +442,7 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 			where: { id },
 			data: { ...cleared, ...rowData(param.def, p), enumValues: enumValues(p) }
 		});
+		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
 		const keep = p.valueType === 'FILE' ? p.fileKey : null;
 		return param.fileKey && param.fileKey !== keep ? [param.fileKey] : [];
 	});
@@ -380,8 +451,14 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 }
 
 export async function deleteParam(actor: Actor, id: string): Promise<void> {
-	const param = await findParam(actor, id);
-	await db.param.delete({ where: { id } });
+	const param = await db.$transaction(async (tx) => {
+		const param = await findParam(actor, id, tx);
+		const target = paramTarget(param);
+		const before = await signedRows(target, tx);
+		await tx.param.delete({ where: { id } });
+		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
+		return param;
+	});
 	if (param.fileKey) await deleteUnreferencedFiles([param.fileKey]);
 }
 
@@ -458,6 +535,17 @@ export async function listParamDefs(actor: Actor): Promise<ParamDefView[]> {
 	return defViews(defs, db);
 }
 
+/** What of a definition the history compares. */
+function defSummary(def: Prisma.ParamDefGetPayload<{ include: typeof defInclude }>) {
+	return {
+		name: def.name,
+		unit: def.unit,
+		valueType: PARAM_VALUE_TYPE_LABELS[def.valueType],
+		multiple: def.dictionary?.multiple ?? null,
+		options: def.dictionary?.options.map((o) => o.label).join(', ') ?? null
+	};
+}
+
 async function findDef(actor: Actor, id: string, tx: Tx = db) {
 	const def = await tx.paramDef.findFirst({
 		where: { id, ...visibleTo(actor) },
@@ -526,7 +614,9 @@ export async function createParamDef(actor: Actor, input: unknown): Promise<Para
 			data.valueType === 'ENUM'
 				? await createOptionList(actor, { name: data.name, multiple, options }, tx)
 				: null;
-		return (await tx.paramDef.create({ data: { ...data, dictionaryId, ...ownedBy(actor) } })).id;
+		const def = await tx.paramDef.create({ data: { ...data, dictionaryId, ...ownedBy(actor) } });
+		await recordEvent(tx, actor, { kind: 'paramDef.created', subject: paramDefRef(def), data: {} });
+		return def.id;
 	});
 	return (await getParamDef(actor, id)).def;
 }
@@ -563,6 +653,15 @@ export async function updateParamDef(
 		if (def.dictionaryId && !dictionaryId) {
 			await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
 		}
+		const updated = await findDef(actor, id, tx);
+		const changes = diffFields(defSummary(def), defSummary(updated));
+		if (changes.length) {
+			await recordEvent(tx, actor, {
+				kind: 'paramDef.updated',
+				subject: paramDefRef(updated),
+				data: { changes }
+			});
+		}
 	});
 	return (await getParamDef(actor, id)).def;
 }
@@ -577,6 +676,7 @@ export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 				`Параметр задан у типов и вещей (${used}) — сначала удалите значения`
 			);
 		}
+		await recordEvent(tx, actor, { kind: 'paramDef.deleted', subject: paramDefRef(def), data: {} });
 		await tx.paramDef.delete({ where: { id } });
 		if (def.dictionaryId) await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
 	});

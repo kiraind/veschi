@@ -15,8 +15,8 @@
 		SidebarItem
 	} from 'flowbite-svelte';
 	import {
-		ArchiveOutline,
 		ArrowRightToBracketOutline,
+		ClockOutline,
 		AdjustmentsHorizontalOutline,
 		DesktopPcOutline,
 		DotsHorizontalOutline,
@@ -45,7 +45,7 @@
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
 		{ href: '/types', label: 'Типы вещей', icon: SwatchbookOutline },
 		{ href: '/params', label: 'Параметры', icon: AdjustmentsHorizontalOutline },
-		{ href: '/archive', label: 'Архив', icon: ArchiveOutline }
+		{ href: '/history', label: 'История', icon: ClockOutline }
 	];
 
 	let moreOpen = $state(false);
@@ -55,6 +55,8 @@
 		if (href === '/') return path === '/';
 		// Item cards belong to «Контейнеры».
 		if (href === '/containers' && path.startsWith('/items')) return true;
+		// The archive opens from «История».
+		if (href === '/history' && path.startsWith('/archive')) return true;
 		return path === href || path.startsWith(`${href}/`);
 	}
 

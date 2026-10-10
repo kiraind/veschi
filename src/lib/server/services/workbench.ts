@@ -4,7 +4,9 @@ import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { quantityError } from '$lib/domain/workbench';
 import { isWorkbenchIconKey } from '$lib/domain/workbench-icons';
+import { diffFields, type ChangeValue } from '$lib/domain/history';
 import { discard } from './archive';
+import { itemSubject, placeRef, recordEvent } from './history';
 import {
 	assertCanPlace,
 	assertIsContainer,
@@ -96,12 +98,27 @@ export async function listWorkbenches(
 	};
 }
 
+/** Geofence as one comparable value for the history: «55.75, 37.61, 100 м». */
+function geofence(b: Pick<Workbench, 'geoLat' | 'geoLng' | 'geoRadiusM'>): ChangeValue {
+	return b.geoLat === null || b.geoLng === null || b.geoRadiusM === null
+		? null
+		: `${b.geoLat}, ${b.geoLng}, ${b.geoRadiusM} м`;
+}
+
 export async function createWorkbench(actor: Actor, input: WorkbenchInput): Promise<Workbench> {
-	const bench = await db.item.create({
-		data: { ...ownedBy(actor), isWorkbench: true, ...workbenchData(input) },
-		select: workbenchSelect
+	const data = workbenchData(input);
+	return db.$transaction(async (tx) => {
+		const bench = await tx.item.create({
+			data: { ...ownedBy(actor), isWorkbench: true, ...data },
+			select: workbenchSelect
+		});
+		await recordEvent(tx, actor, {
+			kind: 'workbench.created',
+			subject: await itemSubject(tx, bench.id),
+			data: {}
+		});
+		return { ...bench, name: bench.name ?? '' };
 	});
-	return { ...bench, name: bench.name ?? '' };
 }
 
 export async function updateWorkbench(
@@ -109,13 +126,23 @@ export async function updateWorkbench(
 	id: string,
 	input: WorkbenchInput
 ): Promise<Workbench> {
-	await requireWorkbench(actor, id);
-	const bench = await db.item.update({
-		where: { id },
-		data: workbenchData(input),
-		select: workbenchSelect
+	const data = workbenchData(input);
+	return db.$transaction(async (tx) => {
+		const old = await requireWorkbench(actor, id, tx);
+		const bench = await tx.item.update({ where: { id }, data, select: workbenchSelect });
+		const changes = diffFields(
+			{ name: old.name, icon: old.icon, geofence: geofence(old) },
+			{ name: data.name, icon: data.icon, geofence: geofence(data) }
+		);
+		if (changes.length) {
+			await recordEvent(tx, actor, {
+				kind: 'workbench.updated',
+				subject: await itemSubject(tx, id),
+				data: { changes }
+			});
+		}
+		return { ...bench, name: bench.name ?? '' };
 	});
-	return { ...bench, name: bench.name ?? '' };
 }
 
 /** Deletes an empty workbench; one with items on it is rejected. */
@@ -124,6 +151,11 @@ export async function deleteWorkbench(actor: Actor, id: string): Promise<void> {
 		await requireWorkbench(actor, id, tx);
 		const onIt = await tx.item.count({ where: { parentId: id, status: 'ACTIVE' } });
 		if (onIt > 0) throw new ConflictError('На столе есть вещи — сначала уберите их');
+		await recordEvent(tx, actor, {
+			kind: 'workbench.deleted',
+			subject: await itemSubject(tx, id),
+			data: {}
+		});
 		// Archived items that lay on it lose their parent and are restored to the top level.
 		await tx.item.delete({ where: { id } });
 	});
@@ -166,8 +198,21 @@ export async function take(
 		const count = partCount(item, quantity);
 		const homeId = item.takenById ? item.homeId : item.parentId;
 		const taken = { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId };
+		const subject = await itemSubject(tx, item.id);
+		const from = await placeRef(tx, item.parentId);
 		const result = await placePart(tx, item, count, taken, { rememberSource: true });
 		await tx.user.update({ where: { id: actor.userId }, data: { lastWorkbenchId: bench.id } });
+		await recordEvent(tx, actor, {
+			kind: 'item.taken',
+			subject,
+			data: {
+				quantity: count,
+				of: item.quantity,
+				from,
+				to: await placeRef(tx, bench.id),
+				resultId: result
+			}
+		});
 		return { itemId: result };
 	});
 }
@@ -295,6 +340,15 @@ export async function returnHome(
 			: null;
 		const blocker = returnBlocker(home, home ? await getPath(home.id, tx) : []);
 		if (blocker) throw new ConflictError(`${blocker} — положите вещь в другое место`);
+		const subject = await itemSubject(tx, item.id);
+		const event = {
+			quantity: count,
+			of: item.quantity,
+			from: await placeRef(tx, item.parentId),
+			to: await placeRef(tx, item.homeId)
+		};
+		const returned = (resultId: string) =>
+			recordEvent(tx, actor, { kind: 'item.returned', subject, data: { ...event, resultId } });
 
 		if (item.splitFromId) {
 			const source = await tx.item.findFirst({
@@ -325,10 +379,12 @@ export async function returnHome(
 						data: { quantity: item.quantity - count }
 					});
 				}
+				await returned(source.id);
 				return { itemId: source.id, merged: true };
 			}
 		}
 		const id = await placePart(tx, item, count, { parentId: item.homeId, ...notTaken });
+		await returned(id);
 		return { itemId: id, merged: false };
 	});
 }
@@ -360,9 +416,21 @@ export async function relocate(
 			assertIsContainer(container);
 			await assertCanPlace(item.id, container.id, tx);
 		}
-		return {
-			itemId: await placePart(tx, item, count, { parentId: containerId, ...notTaken })
-		};
+		const subject = await itemSubject(tx, item.id);
+		const from = await placeRef(tx, item.parentId);
+		const resultId = await placePart(tx, item, count, { parentId: containerId, ...notTaken });
+		await recordEvent(tx, actor, {
+			kind: 'item.moved',
+			subject,
+			data: {
+				quantity: count,
+				of: item.quantity,
+				from,
+				to: await placeRef(tx, containerId),
+				resultId
+			}
+		});
+		return { itemId: resultId };
 	});
 }
 
@@ -374,17 +442,23 @@ export async function relocate(
 export async function consume(
 	actor: Actor,
 	itemId: string,
-	quantity: number
+	quantity: number,
+	{ thrownAway = false }: { thrownAway?: boolean } = {}
 ): Promise<{ archived: boolean }> {
 	return db.$transaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		const problem = quantityError(item.quantity, quantity);
 		if (problem) throw new ValidationError(problem);
 		if (quantity === item.quantity) {
-			await discard(actor, item.id, {}, tx);
+			await discard(actor, item.id, { consumed: true }, tx);
 			return { archived: true };
 		}
 		await tx.item.update({ where: { id: item.id }, data: { quantity: item.quantity - quantity } });
+		await recordEvent(tx, actor, {
+			kind: 'item.consumed',
+			subject: await itemSubject(tx, item.id),
+			data: { quantity, left: item.quantity - quantity, ...(thrownAway ? { thrownAway } : {}) }
+		});
 		return { archived: false };
 	});
 }
