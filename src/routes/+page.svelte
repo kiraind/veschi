@@ -20,11 +20,40 @@
 		}, 300);
 		return () => clearTimeout(timer);
 	});
+
+	/**
+	 * How much of the layout viewport the on-screen keyboard covers, px. On phones the
+	 * field sits at the bottom; browsers keep fixed elements under the keyboard (iOS
+	 * Safari, Chrome's default «resizes-visual»), so the field is lifted above it.
+	 */
+	let keyboard = $state(0);
+
+	$effect(() => {
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const update = () => {
+			keyboard = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+		};
+		update();
+		vv.addEventListener('resize', update);
+		vv.addEventListener('scroll', update);
+		return () => {
+			vv.removeEventListener('resize', update);
+			vv.removeEventListener('scroll', update);
+		};
+	});
 </script>
 
 <svelte:head><title>Поиск — Вещи</title></svelte:head>
 
-<form class="mt-2 mb-4" role="search" onsubmit={(e) => e.preventDefault()}>
+<!-- On phones the field is at the bottom, over the tab bar (4rem + its border), or right
+     over the keyboard while it is open; the page leaves room for it. -->
+<form
+	class="mt-2 mb-4 max-md:fixed max-md:inset-x-0 max-md:bottom-[max(var(--keyboard),calc(4rem+1px+env(safe-area-inset-bottom)))] max-md:z-20 max-md:m-0 max-md:border-t max-md:border-gray-200 max-md:bg-gray-50 max-md:px-4 max-md:py-2 max-md:dark:border-gray-700 max-md:dark:bg-gray-900"
+	style:--keyboard="{keyboard}px"
+	role="search"
+	onsubmit={(e) => e.preventDefault()}
+>
 	<Input
 		type="search"
 		size="lg"
@@ -54,3 +83,5 @@
 {:else}
 	<SearchResults groups={data.groups} />
 {/if}
+
+<div class="h-16 md:hidden" aria-hidden="true"></div>
