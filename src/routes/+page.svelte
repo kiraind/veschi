@@ -28,6 +28,8 @@
 	 */
 	let keyboard = $state(0);
 
+	const empty = $derived(!data.q.trim());
+
 	$effect(() => {
 		const vv = window.visualViewport;
 		if (!vv) return;
@@ -46,38 +48,44 @@
 
 <svelte:head><title>Поиск — Вещи</title></svelte:head>
 
+{#snippet actions(cls: string)}
+	<Button href="/scan" class={cls}><QrCodeOutline class="me-2 h-5 w-5" />Сканировать</Button>
+	<Button href="/items/new" color="alternative" class={cls}
+		><PlusOutline class="me-2 h-5 w-5" />Новая вещь</Button
+	>
+{/snippet}
+
 <!-- On phones the field is at the bottom, over the tab bar (4rem + its border), or right
-     over the keyboard while it is open; the page leaves room for it. -->
+     over the keyboard while it is open; the page leaves room for it. With nothing typed,
+     «Сканировать» and «Новая вещь» sit right above it, within reach of the thumb. -->
 <form
-	class="mt-2 mb-4 max-md:fixed max-md:inset-x-0 max-md:bottom-[max(var(--keyboard),calc(4rem+1px+env(safe-area-inset-bottom)))] max-md:z-20 max-md:m-0 max-md:border-t max-md:border-gray-200 max-md:bg-gray-50 max-md:px-4 max-md:py-2 max-md:dark:border-gray-700 max-md:dark:bg-gray-900"
+	class="mt-2 mb-4 max-md:fixed max-md:inset-x-0 max-md:bottom-[max(var(--keyboard),calc(4rem+1px+env(safe-area-inset-bottom)))] max-md:z-20 max-md:m-0 max-md:bg-linear-to-t max-md:from-gray-50 max-md:from-70% max-md:to-transparent max-md:px-4 max-md:pt-4 max-md:pb-3 max-md:dark:from-gray-900"
 	style:--keyboard="{keyboard}px"
 	role="search"
 	onsubmit={(e) => e.preventDefault()}
 >
+	{#if empty && keyboard === 0}
+		<div class="mb-3 grid grid-cols-2 gap-3 md:hidden">
+			{@render actions('h-14 rounded-2xl text-base')}
+		</div>
+	{/if}
 	<Input
 		type="search"
 		size="lg"
-		class="ps-10 text-base"
+		class="ps-11 text-base max-md:h-14 max-md:rounded-full max-md:placeholder:text-gray-400 max-md:border-2 max-md:border-primary-600 max-md:bg-white max-md:shadow-lg max-md:dark:border-primary-500 max-md:dark:bg-gray-800"
 		bind:value={query}
-		placeholder="Что ищем? Например, NE555 или «корпус: DIP-8»"
+		placeholder="Что ищем?"
 		aria-label="Поиск"
 		autocomplete="off"
 	>
-		{#snippet left()}<SearchOutline class="h-5 w-5" />{/snippet}
+		{#snippet left()}<SearchOutline
+				class="h-5 w-5 max-md:text-primary-600 max-md:dark:text-primary-400"
+			/>{/snippet}
 	</Input>
 </form>
 
-{#if !data.q.trim()}
-	<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-		Ищите по названию вещи или типа и по параметрам. Чтобы искать по конкретному параметру, пишите
-		«ключ: значение».
-	</p>
-	<div class="flex flex-wrap gap-2">
-		<Button href="/scan"><QrCodeOutline class="me-2 h-5 w-5" />Сканировать</Button>
-		<Button href="/items/new" color="alternative"
-			><PlusOutline class="me-2 h-5 w-5" />Новая вещь</Button
-		>
-	</div>
+{#if empty}
+	<div class="flex flex-wrap gap-2 max-md:hidden">{@render actions('')}</div>
 {:else if data.groups.length === 0}
 	<p class="text-sm text-gray-500 dark:text-gray-400">Ничего не найдено.</p>
 {:else}
