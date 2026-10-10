@@ -233,7 +233,7 @@ export async function issueBatch(
 				orderIds.includes(o.itemId)
 			);
 			if (orders.length !== orderIds.length) {
-				throw new ConflictError('Список заказанных наклеек изменился, обновите страницу');
+				throw new ConflictError('Список наклеек, ждущих печати, изменился, обновите страницу');
 			}
 			const captions = [...orders.map((o) => o.caption), ...typed];
 			const plan = planSheets(captions, input.blankCount);

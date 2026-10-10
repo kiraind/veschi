@@ -387,13 +387,13 @@ export function describeEvent(e: HistoryEventView): EventText {
 			};
 		}
 		case 'sticker.ordered':
-			return { title: [t('Заказана наклейка для вещи '), subject], details: [] };
+			return { title: [t('Наклейка ждёт печати для вещи '), subject], details: [] };
 		case 'sticker.orderCancelled':
-			return { title: [t('Отменён заказ наклейки для вещи '), subject], details: [] };
+			return { title: [t('Наклейка больше не ждёт печати для вещи '), subject], details: [] };
 		case 'sticker.printed': {
 			const d = e.data as HistoryData<'sticker.printed'>;
 			return {
-				title: [t(`Наклейка ${formatCode(d.code)} напечатана по заказу для вещи `), subject],
+				title: [t(`Наклейка ${formatCode(d.code)} напечатана для вещи `), subject],
 				details: []
 			};
 		}
@@ -448,14 +448,14 @@ export function describeEvent(e: HistoryEventView): EventText {
 						: t('Выпущены наклейки'),
 					t(`: ${d.count} шт.`)
 				],
-				details: d.ordered ? [[t(`По заказу: ${d.ordered}`)]] : []
+				details: d.ordered ? [[t(`Для вещей: ${d.ordered}`)]] : []
 			};
 		}
 		case 'stickers.unprinted': {
 			const d = e.data as HistoryData<'stickers.unprinted'>;
 			return {
 				title: [t(`Наклейки не распечатаны, ID освобождены: ${d.count} шт.`)],
-				details: d.ordered ? [[t(`Снова ждут наклейку: ${d.ordered}`)]] : []
+				details: d.ordered ? [[t(`Снова ждут печати: ${d.ordered}`)]] : []
 			};
 		}
 	}

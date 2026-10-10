@@ -37,7 +37,7 @@
 
 	const captionedText = $derived(
 		`${plan.captioned} с подписью` +
-			(data.orders.length > 0 ? ` (из них ${data.orders.length} по заказу)` : '')
+			(data.orders.length > 0 ? ` (из них ${data.orders.length} для вещей)` : '')
 	);
 	// A leading space: Svelte drops the whitespace between «подписи» and an {#if}.
 	const padText = $derived(` (ещё ${plan.padding} добавлено, чтобы заполнить лист)`);
@@ -45,7 +45,7 @@
 	function batchStats(batch: PageData['batches'][number]): string {
 		return [
 			`${batch.total} шт., с подписью ${batch.captioned}`,
-			batch.ordered > 0 ? `по заказу ${batch.ordered}` : '',
+			batch.ordered > 0 ? `для вещей ${batch.ordered}` : '',
 			`свободно ${batch.free}`,
 			`привязано ${batch.bound}`,
 			batch.writtenOff > 0 ? `списано ${batch.writtenOff}` : ''
@@ -104,7 +104,7 @@
 	}
 
 	const cancelOrder = (itemId: string) =>
-		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось отменить заказ');
+		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось убрать из печати');
 
 	async function unprint(batchId: string, ordered: number) {
 		const ok = await confirmAction({
@@ -112,7 +112,7 @@
 			message:
 				'PDF и ID наклеек этой пачки удалятся, ID снова станут свободными.' +
 				(ordered > 0
-					? ` ${ordered} ${plural(ordered, ['вещь', 'вещи', 'вещей'])} снова будут ждать наклейку.`
+					? ` ${ordered} ${plural(ordered, ['вещь', 'вещи', 'вещей'])} снова будут ждать печати.`
 					: ''),
 			confirmLabel: 'Не распечатано'
 		});
@@ -135,7 +135,7 @@
 		{#if data.orders.length > 0}
 			<div>
 				<p class="mb-1 text-sm font-medium text-gray-900 dark:text-white">
-					Заказаны для вещей — напечатаются и сразу привяжутся
+					Ждут печати — напечатаются и сразу привяжутся к вещам
 				</p>
 				<ul class="flex flex-col">
 					{#each data.orders as order (order.itemId)}
@@ -148,8 +148,8 @@
 								size="sm"
 								color="alternative"
 								type="button"
-								aria-label="Отменить заказ"
-								title="Отменить заказ"
+								aria-label="Не печатать"
+								title="Не печатать"
 								disabled={busy}
 								onclick={() => cancelOrder(order.itemId)}
 							>

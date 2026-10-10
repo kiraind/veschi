@@ -6,7 +6,7 @@
 	import QrScanner from './QrScanner.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 
-	/** The item's sticker with «Привязать» / «Заказать» / «Отвязать» actions. */
+	/** The item's sticker with «Привязать» / «Напечатать» / «Отвязать» actions. */
 	let {
 		itemId,
 		quantity = 1,
@@ -78,7 +78,7 @@
 	{:else}
 		{#if ordered}
 			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
-				>Наклейка заказана</a
+				>Наклейка ждёт печати</a
 			>
 		{:else if sticker?.status === 'WRITTEN_OFF'}
 			<span class="text-sm text-gray-500 dark:text-gray-400"
@@ -106,7 +106,7 @@
 						onclick={ordered ? cancelOrder : order}
 						disabled={busy}
 					>
-						{ordered ? 'Отменить заказ' : 'Заказать'}
+						{ordered ? 'Не печатать' : 'Напечатать'}
 					</Button>
 				{/if}
 			</div>
