@@ -5,12 +5,16 @@ import { createTestActor } from '$lib/server/testing/db';
 import { MIN_CODE_DISTANCE, formatCode, hammingDistance } from '$lib/domain/sticker-code';
 import {
 	bindSticker,
+	cancelStickerOrder,
 	getBatchPdf,
 	issueBatch,
 	listBatches,
+	listStickerOrders,
+	orderSticker,
 	resolveCode,
 	restoreStickerOf,
 	unbindSticker,
+	unprintBatch,
 	writeOffStickerOf
 } from './stickers';
 
@@ -53,6 +57,16 @@ describe('stickers', () => {
 			const batch = await issueBatch(actor, { captions: [], blankCount: 141 });
 			expect(batch.total).toBe(280);
 			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(280);
+		});
+
+		it('fillSheet: false → exactly the requested stickers', async () => {
+			const batch = await issueBatch(actor, {
+				captions: ['Припой'],
+				blankCount: 2,
+				fillSheet: false
+			});
+			expect(batch).toMatchObject({ total: 3, captioned: 1, free: 3 });
+			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(3);
 		});
 
 		it('issues new, unique, free codes far from every code issued before, by anyone', async () => {
@@ -273,4 +287,131 @@ describe('stickers', () => {
 			await expect(unbindSticker(actor, (await item('Без')).id)).rejects.toThrow('нет наклейки');
 		});
 	});
+
+	describe('orders («Заказать наклейку»)', () => {
+		async function events(subjectId: string) {
+			return (
+				await db.historyEvent.findMany({ where: { subjectId }, orderBy: { createdAt: 'asc' } })
+			).map((e) => e.kind);
+		}
+
+		it('orders, lists and cancels; ordering twice changes nothing', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			await orderSticker(actor, box.id);
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ itemId: box.id, caption: 'Коробка', quantity: 1 }
+			]);
+			expect(await listStickerOrders(await createTestActor('other'))).toEqual([]);
+			await cancelStickerOrder(actor, box.id);
+			await cancelStickerOrder(actor, box.id);
+			expect(await listStickerOrders(actor)).toEqual([]);
+			expect(await events(box.id)).toEqual(['sticker.ordered', 'sticker.orderCancelled']);
+		});
+
+		it('refuses items with a sticker, archived items and other users’ items', async () => {
+			const box = await item('Коробка');
+			await bindSticker(actor, (await freeSticker()).code, box.id);
+			await expect(orderSticker(actor, box.id)).rejects.toThrow('уже есть наклейка');
+			const old = await db.item.create({
+				data: { ownerId: actor.userId, typeId, name: 'Старое', status: 'ARCHIVED' }
+			});
+			await expect(orderSticker(actor, old.id)).rejects.toThrow('не найдена');
+			const other = await createTestActor('other');
+			await expect(orderSticker(other, (await item('Чужое')).id)).rejects.toThrow('не найдена');
+		});
+
+		it('binding a sticker by hand fulfils the order', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			await bindSticker(actor, (await freeSticker()).code, box.id);
+			expect(await listStickerOrders(actor)).toEqual([]);
+		});
+
+		it('the next batch prints ordered stickers first, with the name, bound to the item', async () => {
+			const box = await item('Коробка');
+			const solder = await db.item.create({
+				data: { ownerId: actor.userId, typeId, quantity: 3 }
+			});
+			await orderSticker(actor, box.id);
+			await orderSticker(actor, solder.id);
+			const batch = await issueBatch(actor, {
+				captions: ['Полка'],
+				blankCount: 0,
+				orderItemIds: [box.id, solder.id]
+			});
+			expect(batch).toMatchObject({ total: 130, captioned: 3, ordered: 2, bound: 2, free: 128 });
+			const [first, second, third] = await batchStickers(batch.id);
+			expect(first).toMatchObject({ caption: 'Коробка', status: 'BOUND', itemId: box.id });
+			expect(second).toMatchObject({ caption: 'Припой', status: 'BOUND', fromOrder: true });
+			expect(third).toMatchObject({ caption: 'Полка', status: 'FREE', itemId: null });
+			// A sticker marks one thing: one of three solders got its own record.
+			expect(second!.itemId).not.toBe(solder.id);
+			expect(await db.item.findUnique({ where: { id: solder.id } })).toMatchObject({
+				quantity: 2,
+				stickerOrderedAt: null
+			});
+			expect(await listStickerOrders(actor)).toEqual([]);
+			expect(await listBatches(actor)).toMatchObject([{ ordered: 2, bound: 2 }]);
+			expect(await events(box.id)).toEqual(['sticker.ordered', 'sticker.printed']);
+		});
+
+		it('refuses a batch when the orders changed since the page was loaded', async () => {
+			const box = await item('Коробка');
+			await expect(
+				issueBatch(actor, { captions: [], blankCount: 0, orderItemIds: [box.id] })
+			).rejects.toThrow('обновите страницу');
+			expect(await db.stickerBatch.count()).toBe(0);
+		});
+	});
+
+	describe('unprintBatch («Не распечатано»)', () => {
+		it('deletes the batch and its stickers, so the IDs are free again', async () => {
+			const batch = await issueBatch(actor, { captions: ['Припой'], blankCount: 0 });
+			const [first] = await batchStickers(batch.id);
+			await unprintBatch(actor, batch.id);
+			expect(await db.stickerBatch.count()).toBe(0);
+			expect(await db.sticker.count()).toBe(0);
+			expect(await resolveCode(actor, first!.code)).toMatchObject({ status: 'unknown' });
+			expect(await listBatches(actor)).toEqual([]);
+			expect(
+				await db.historyEvent.findFirst({ where: { kind: 'stickers.unprinted' } })
+			).toMatchObject({
+				subjectId: batch.id,
+				data: { count: 130 }
+			});
+		});
+
+		it('ordered items get their orders back', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			const batch = await issueBatch(actor, {
+				captions: [],
+				blankCount: 0,
+				orderItemIds: [box.id]
+			});
+			await unprintBatch(actor, batch.id);
+			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id }]);
+			expect(await getItemSticker(box.id)).toBeNull();
+			const event = await db.historyEvent.findFirst({ where: { kind: 'stickers.unprinted' } });
+			expect(event).toMatchObject({ data: { count: 130, ordered: 1 }, refIds: [box.id] });
+		});
+
+		it('refuses once a sticker of the batch is in use; other users cannot touch it', async () => {
+			const batch = await issueBatch(actor, { captions: [], blankCount: 1 });
+			const [first] = await batchStickers(batch.id);
+			const box = await item('Коробка');
+			await bindSticker(actor, first!.code, box.id);
+			await expect(unprintBatch(actor, batch.id)).rejects.toThrow('уже используются');
+			await unbindSticker(actor, box.id);
+			await expect(unprintBatch(actor, batch.id)).rejects.toThrow('уже используются');
+			const other = await createTestActor('other');
+			await expect(unprintBatch(other, batch.id)).rejects.toThrow('не найдена');
+			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(140);
+		});
+	});
+
+	async function getItemSticker(itemId: string) {
+		return db.sticker.findUnique({ where: { itemId } });
+	}
 });

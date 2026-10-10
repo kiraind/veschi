@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
-	import { Alert, Button, Card, Input, Label, Textarea } from 'flowbite-svelte';
-	import { FilePdfOutline } from 'flowbite-svelte-icons';
+	import { Alert, Button, Card, Checkbox, Input, Label, Textarea } from 'flowbite-svelte';
+	import { CloseOutline, FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
+	import { confirmAction } from '$lib/confirm.svelte';
+	import { plural } from '$lib/domain/plural';
 	import {
 		CAPTION_MAX_LINES,
 		MAX_SHEETS_PER_BATCH,
@@ -17,19 +19,41 @@
 
 	let captionsText = $state('');
 	let blankCount = $state(0);
+	let fillSheet = $state(true);
 	let busy = $state(false);
 	let error = $state('');
 	let issuedId = $state('');
 
-	const captions = $derived(parseCaptions(captionsText));
+	const typed = $derived(parseCaptions(captionsText));
+	// Ordered stickers go first, with the item's name as the caption (see issueBatch).
+	const captions = $derived([...data.orders.map((o) => o.caption), ...typed]);
 	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
-	const plan = $derived(planSheets(captions, blank));
+	const plan = $derived(planSheets(captions, blank, fillSheet));
 	const tooLong = $derived(
 		captions
 			.map((caption) => ({ caption, fitted: wrapCaption(caption) }))
 			.filter(({ fitted }) => fitted.truncated)
 	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
+
+	const captionedText = $derived(
+		`${plan.captioned} с подписью` +
+			(data.orders.length > 0 ? ` (из них ${data.orders.length} для вещей)` : '')
+	);
+	// A leading space: Svelte drops the whitespace between «подписи» and an {#if}.
+	const padText = $derived(` (ещё ${plan.padding} добавлено, чтобы заполнить лист)`);
+
+	function batchStats(batch: PageData['batches'][number]): string {
+		return [
+			`${batch.total} шт., с подписью ${batch.captioned}`,
+			batch.ordered > 0 ? `для вещей ${batch.ordered}` : '',
+			`свободно ${batch.free}`,
+			`привязано ${batch.bound}`,
+			batch.writtenOff > 0 ? `списано ${batch.writtenOff}` : ''
+		]
+			.filter(Boolean)
+			.join(' · ');
+	}
 
 	const pdfUrl = (id: string) => `/api/stickers/batches/${id}/pdf`;
 
@@ -47,8 +71,10 @@
 		error = '';
 		try {
 			const batch = await api.post<{ id: string }>('/api/stickers/batches', {
-				captions,
-				blankCount: blank
+				captions: typed,
+				blankCount: blank,
+				fillSheet,
+				orderItemIds: data.orders.map((o) => o.itemId)
 			});
 			issuedId = batch.id;
 			captionsText = '';
@@ -60,6 +86,46 @@
 			busy = false;
 		}
 	}
+
+	let batchError = $state('');
+
+	async function act(action: () => Promise<unknown>, fallback: string, inList = false) {
+		busy = true;
+		error = '';
+		batchError = '';
+		try {
+			await action();
+			await invalidateAll();
+		} catch (e) {
+			const message = e instanceof ApiError ? e.message : fallback;
+			if (inList) batchError = message;
+			else error = message;
+		} finally {
+			busy = false;
+		}
+	}
+
+	const cancelOrder = (itemId: string) =>
+		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось убрать из печати');
+
+	async function unprint(batchId: string, ordered: number) {
+		const ok = await confirmAction({
+			title: 'Отметить нераспечатанными?',
+			message:
+				'PDF и ID наклеек этой пачки удалятся, ID снова станут свободными.' +
+				(ordered > 0
+					? ` ${ordered} ${plural(ordered, ['вещь', 'вещи', 'вещей'])} снова будут ждать печати.`
+					: ''),
+			confirmLabel: 'Не распечатано'
+		});
+		if (!ok) return;
+		if (issuedId === batchId) issuedId = '';
+		await act(
+			() => api.delete(`/api/stickers/batches/${batchId}`),
+			'Не удалось удалить пачку',
+			true
+		);
+	}
 </script>
 
 <svelte:head><title>Наклейки</title></svelte:head>
@@ -68,8 +134,36 @@
 
 <Card class="max-w-none p-4">
 	<form class="flex flex-col gap-3" onsubmit={issue}>
+		{#if data.orders.length > 0}
+			<div>
+				<p class="mb-1 text-sm font-medium text-gray-900 dark:text-white">
+					Ждут печати — напечатаются и сразу привяжутся к вещам
+				</p>
+				<ul class="flex flex-col">
+					{#each data.orders as order (order.itemId)}
+						<li class="flex items-center justify-between gap-2">
+							<a href="/items/{order.itemId}" class="min-w-0 py-2 break-words hover:underline"
+								>{order.caption}</a
+							>
+							<Button
+								class="shrink-0"
+								size="sm"
+								color="alternative"
+								type="button"
+								aria-label="Не печатать"
+								title="Не печатать"
+								disabled={busy}
+								onclick={() => cancelOrder(order.itemId)}
+							>
+								<CloseOutline class="h-4 w-4" />
+							</Button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 		<Label>
-			Подписи — по одной наклейке на строку
+			{data.orders.length > 0 ? 'Ещё подписи' : 'Подписи'} — по одной наклейке на строку
 			<Textarea
 				class="mt-1 w-full"
 				bind:value={captionsText}
@@ -98,14 +192,15 @@
 				bind:value={blankCount}
 			/>
 		</Label>
+		<Checkbox bind:checked={fillSheet}
+			>Заполнить пустое место на листе наклейками без подписи</Checkbox
+		>
 
 		{#if plan.total > 0}
 			<p class="text-sm">
-				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {plan.captioned} с подписью,
+				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {captionedText},
 				{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
-					<span class="text-gray-500 dark:text-gray-400"
-						>(ещё {plan.padding} добавлено, чтобы заполнить лист)</span
-					>{/if}.
+					<span class="text-gray-500 dark:text-gray-400">{padText}</span>{/if}.
 			</p>
 		{/if}
 		{#if tooMany}
@@ -129,31 +224,42 @@
 </Card>
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Выпущенные пачки</h2>
+{#if batchError}
+	<p class="mb-2 text-sm text-red-600 dark:text-red-500" role="alert">{batchError}</p>
+{/if}
 {#if data.batches.length === 0}
 	<p class="text-sm text-gray-500 dark:text-gray-400">Пока ничего не напечатано.</p>
 {:else}
 	<ul class="flex flex-col gap-2">
 		{#each data.batches as batch (batch.id)}
 			<li>
-				<Card class="max-w-none flex-row items-center justify-between gap-3 p-3">
+				<Card class="max-w-none flex-col gap-2 p-3">
 					<div class="flex min-w-0 flex-col gap-0.5">
 						<span>{formatIsoDateTime(batch.createdAt)}</span>
 						<span class="text-sm text-gray-500 dark:text-gray-400">
-							{batch.total} шт., с подписью {batch.captioned} · свободно {batch.free} · привязано
-							{batch.bound}{#if batch.writtenOff > 0}
-								· списано {batch.writtenOff}{/if}
+							{batchStats(batch)}
 						</span>
 					</div>
-					<Button
-						class="shrink-0"
-						color="alternative"
-						size="sm"
-						href={pdfUrl(batch.id)}
-						target="_blank"
-						rel="noopener"
-					>
-						<FilePdfOutline class="me-1 h-4 w-4" />PDF
-					</Button>
+					<div class="flex flex-wrap gap-2">
+						<Button
+							color="alternative"
+							size="sm"
+							href={pdfUrl(batch.id)}
+							target="_blank"
+							rel="noopener"
+						>
+							<FilePdfOutline class="me-1 h-4 w-4" />PDF
+						</Button>
+						<Button
+							color="alternative"
+							size="sm"
+							type="button"
+							disabled={busy}
+							onclick={() => unprint(batch.id, batch.ordered)}
+						>
+							Не распечатано
+						</Button>
+					</div>
 				</Card>
 			</li>
 		{/each}

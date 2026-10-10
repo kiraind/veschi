@@ -298,6 +298,7 @@
 			itemId={item.id}
 			quantity={item.quantity}
 			sticker={card.sticker}
+			ordered={card.stickerOrdered}
 			editable={active}
 		/>
 	</Card>

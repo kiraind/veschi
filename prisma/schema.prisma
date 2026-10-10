@@ -165,6 +165,9 @@ model Item {
   geoRadiusM  Float?
   // Icon of a workbench: a key from WORKBENCH_ICONS (src/lib/domain/workbench-icons.ts).
   icon        String?
+  // A sticker is ordered for this record («Заказать наклейку»): it is printed
+  // and bound to the record with the next batch (issueBatch).
+  stickerOrderedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -225,6 +228,9 @@ model Sticker {
   batchId     String?
   // Position of the sticker inside its batch (print order).
   position    Int           @default(0)
+  // Printed for an ordered item and bound to it on issue; marking the batch
+  // unprinted gives the item its order back.
+  fromOrder   Boolean       @default(false)
   ownerId     String?
   householdId String?
   createdAt   DateTime      @default(now())
