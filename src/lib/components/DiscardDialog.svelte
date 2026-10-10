@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { Button, Card, Input, Label, Radio, Select } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
 
@@ -21,6 +22,8 @@
 	let contents = $state<Contents>('parent');
 	let benches = $state<{ id: string; name: string }[] | null>(null);
 	let workbenchId = $state<string | null>(null);
+
+	const radioLabel = 'min-h-10 cursor-pointer text-base font-normal text-gray-900 dark:text-white';
 
 	const useProblem = $derived(quantityError(item.quantity, useCount));
 
@@ -73,85 +76,83 @@
 </script>
 
 {#if !open}
-	<button onclick={start}>Использовать / выкинуть</button>
+	<Button color="alternative" onclick={start}>Использовать / выкинуть</Button>
 {:else}
-	<div class="card stack">
-		<strong>{item.name}</strong>
+	<Card class="max-w-none gap-3 p-4">
+		<strong class="wrap-anywhere">{item.name}</strong>
 
 		{#if item.quantity > 1}
-			<div class="row">
-				<label class="count">
+			<div class="flex flex-wrap items-end gap-2">
+				<Label class="min-w-40 flex-1">
 					Использовать (из {item.quantity})
-					<input type="number" min="1" max={item.quantity} step="1" bind:value={useCount} />
-				</label>
-				<button class="primary" onclick={use} disabled={busy || !!useProblem}>Использовать</button>
+					<Input
+						class="mt-1"
+						type="number"
+						min="1"
+						max={item.quantity}
+						step="1"
+						bind:value={useCount}
+					/>
+				</Label>
+				<Button onclick={use} disabled={busy || !!useProblem}>Использовать</Button>
 			</div>
-			{#if useProblem}<p class="error">{useProblem}</p>{/if}
-			<p class="muted">Если использовать всё, вещь уйдёт в архив.</p>
+			{#if useProblem}<p class="text-sm text-red-600 dark:text-red-500">{useProblem}</p>{/if}
+			<p class="text-sm text-gray-500 dark:text-gray-400">
+				Если использовать всё, вещь уйдёт в архив.
+			</p>
 		{/if}
 
 		{#if item.hasChildren}
-			<fieldset class="stack">
-				<legend>Что сделать с содержимым?</legend>
-				<label class="choice">
-					<input type="radio" value="parent" bind:group={contents} />
+			<fieldset
+				class="flex flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+			>
+				<legend class="px-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+					Что сделать с содержимым?
+				</legend>
+				<Radio value="parent" bind:group={contents} classes={{ label: radioLabel }}>
 					Переложить туда, где лежал контейнер
-				</label>
-				<label class="choice">
-					<input type="radio" value="workbench" bind:group={contents} onchange={loadBenches} />
+				</Radio>
+				<Radio
+					value="workbench"
+					bind:group={contents}
+					onchange={loadBenches}
+					classes={{ label: radioLabel }}
+				>
 					Переложить на рабочий стол
-				</label>
+				</Radio>
 				{#if contents === 'workbench'}
 					{#if benches && benches.length === 0}
-						<p class="muted">
+						<p class="text-sm text-gray-500 dark:text-gray-400">
 							Столов пока нет — <a href="/workbench/settings">создать рабочий стол</a>.
 						</p>
 					{:else if benches}
-						<select bind:value={workbenchId} aria-label="Рабочий стол">
+						<Select bind:value={workbenchId} placeholder="" aria-label="Рабочий стол">
 							{#each benches as bench (bench.id)}
 								<option value={bench.id}>{bench.name}</option>
 							{/each}
-						</select>
+						</Select>
 					{/if}
 				{/if}
-				<label class="choice">
-					<input type="radio" value="discard" bind:group={contents} />
+				<Radio value="discard" bind:group={contents} classes={{ label: radioLabel }}>
 					Выкинуть вместе с контейнером
-				</label>
+				</Radio>
 			</fieldset>
 		{/if}
 
-		<p class="muted">Выкинутая вещь попадёт в архив, её наклейка будет списана.</p>
-		<div class="row">
-			<button
-				class="danger"
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			Выкинутая вещь попадёт в архив, её наклейка будет списана.
+		</p>
+		<div class="flex flex-wrap gap-2">
+			<Button
+				color="red"
+				outline
 				onclick={discard}
 				disabled={busy || (contents === 'workbench' && !workbenchId)}
 			>
 				{item.quantity > 1 ? 'Выкинуть всё' : 'Использовано / выкинуть'}
-			</button>
-			<button onclick={() => (open = false)} disabled={busy}>Отмена</button>
+			</Button>
+			<Button color="alternative" onclick={() => (open = false)} disabled={busy}>Отмена</Button>
 		</div>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
-	</div>
+		{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+	</Card>
 {/if}
-
-<style>
-	fieldset {
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-		margin: 0;
-	}
-	.choice {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--text);
-		font-size: 1rem;
-	}
-	.count {
-		flex: 1;
-		min-width: 10rem;
-	}
-</style>

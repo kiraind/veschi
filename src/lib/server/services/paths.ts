@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { db, type Tx } from '$lib/server/db';
 import { ValidationError } from '$lib/server/errors';
+import { itemDisplayName } from '$lib/domain/item';
 
 export interface PathNode {
 	id: string;
@@ -66,5 +67,19 @@ export async function assertCanPlace(
 ): Promise<void> {
 	if (newParentId && (await isSelfOrDescendant(itemId, newParentId, tx))) {
 		throw new ValidationError('Нельзя положить вещь в саму себя или в её содержимое');
+	}
+}
+
+/** Throws unless things can be put into `item`. */
+export function assertIsContainer(item: {
+	isContainer: boolean;
+	isWorkbench: boolean;
+	name: string | null;
+	type?: { name: string } | null;
+}): void {
+	if (!item.isContainer && !item.isWorkbench) {
+		throw new ValidationError(
+			`«${itemDisplayName(item)}» — не контейнер. Отметьте у неё «Это контейнер», чтобы класть внутрь`
+		);
 	}
 }

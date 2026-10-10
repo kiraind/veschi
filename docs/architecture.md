@@ -4,7 +4,7 @@
 
 ## Стек
 
-SvelteKit 2 (Svelte 5, руны) + adapter-node, TypeScript (strict), PostgreSQL + Prisma 6, MinIO (S3) для файлов, Vitest, ESLint + Prettier. Интерфейс только на русском.
+SvelteKit 2 (Svelte 5, руны) + adapter-node, TypeScript (strict), PostgreSQL + Prisma 6, MinIO (S3) для файлов, Vitest, ESLint + Prettier. Интерфейс — Flowbite Svelte на Tailwind CSS 4, только на русском.
 
 ## Слои
 
@@ -43,6 +43,8 @@ prisma/              схема и миграции
 - Несколько изменений, которые должны пройти вместе, — в `db.$transaction(async (tx) => ...)`; хелперы принимают необязательный `tx: Tx = db`.
 - Пути контейнеров считаются одним рекурсивным запросом: `getPaths(ids)` / `getPath(id)` в `services/paths.ts`; защита от циклов — `assertCanPlace(itemId, newParentId)`. Для показа — `formatPath` / `pathNodeName` из `$lib/domain/item` (рабочий стол показывается как «Рабочий стол Гараж»).
 - Имя вещи для показа — `itemDisplayName(item)` (своё имя, иначе имя типа).
+- Положить вещь можно только в контейнер (`isContainer` или рабочий стол): проверка — `assertIsContainer` из `services/paths.ts`.
+- **Интерфейс**: компоненты Flowbite Svelte (`Button`, `Card`, `Input`, `Badge`, `Alert`…) и утилиты Tailwind; `<style>` в компонентах — только если без него никак. Сначала вёрстка под телефон (≈390 px), кнопки не ниже 40 px. Общие приёмы: h1 — `text-2xl font-bold`, вторичный текст — `text-sm text-gray-500 dark:text-gray-400`, ошибка — `text-sm text-red-600 dark:text-red-500` с `role="alert"`.
 - ID наклеек хранятся без дефиса заглавными (`K7M4QX`), показываются через `formatCode` (`K7M-4QX`), ввод нормализуется `normalizeCode`.
 
 ## Тесты

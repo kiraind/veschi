@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button, Card } from 'flowbite-svelte';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import type { PageData } from './$types';
 
@@ -10,28 +11,31 @@
 <svelte:head><title>Наклейка {code}</title></svelte:head>
 
 {#if result.status === 'written_off'}
-	<h1>Наклейка списана</h1>
-	<div class="card stack">
+	<h1 class="mb-3 text-2xl font-bold">Наклейка списана</h1>
+	<Card class="max-w-none gap-3 p-4">
 		<p>
-			Наклейка <span class="mono">{code}</span>{#if result.caption}
+			Наклейка <span class="font-mono">{code}</span>{#if result.caption}
 				«{result.caption}»{/if} больше не используется.
 		</p>
 		{#if result.itemId}
-			<a href="/items/{result.itemId}">Вещь в архиве</a>
+			<p><a href="/items/{result.itemId}">Вещь в архиве</a></p>
 		{/if}
-	</div>
+	</Card>
 {:else}
-	<h1>Такой наклейки нет</h1>
-	<div class="card stack">
-		<p>Наклейки <span class="mono">{code}</span> нет в каталоге.</p>
+	<h1 class="mb-3 text-2xl font-bold">Такой наклейки нет</h1>
+	<Card class="max-w-none gap-3 p-4">
+		<p>Наклейки <span class="font-mono">{code}</span> нет в каталоге.</p>
 		{#if result.status === 'unknown' && result.suggestion}
 			<p>
-				Возможно, <a class="mono" href="/{result.suggestion.replace('-', '')}"
-					>{result.suggestion}</a
+				Возможно, <a
+					class="font-mono text-primary-700 hover:underline dark:text-primary-400"
+					href="/{result.suggestion.replace('-', '')}">{result.suggestion}</a
 				>?
 			</p>
 		{/if}
-	</div>
+	</Card>
 {/if}
 
-<p><a href="/scan">Сканировать другую</a></p>
+<div class="mt-4">
+	<Button href="/scan" color="alternative">Сканировать другую</Button>
+</div>

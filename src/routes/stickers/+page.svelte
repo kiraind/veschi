@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { Alert, Button, Card, Input, Label, Textarea } from 'flowbite-svelte';
+	import { FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import {
 		CAPTION_MAX_LENGTH,
@@ -59,88 +61,98 @@
 
 <svelte:head><title>Наклейки</title></svelte:head>
 
-<h1>Наклейки</h1>
+<h1 class="mb-3 text-2xl font-bold">Наклейки</h1>
 
-<form class="card stack" onsubmit={issue}>
-	<label>
-		Подписи — по одной наклейке на строку
-		<textarea bind:value={captionsText} rows="6" placeholder="Припой&#10;Коробка с NE555"
-		></textarea>
-	</label>
-	{#if tooLong.length > 0}
-		<div class="warning">
-			Подпись длиннее {CAPTION_MAX_LENGTH} символов не влезет и будет обрезана:
-			<ul>
-				{#each tooLong as caption, i (i)}
-					<li>{caption} → <b>{truncateCaption(caption)}</b></li>
-				{/each}
-			</ul>
-		</div>
-	{/if}
-	<label>
-		Без подписи
-		<input type="number" min="0" step="1" inputmode="numeric" bind:value={blankCount} />
-	</label>
-
-	{#if plan.total > 0}
-		<p>
-			{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {plan.captioned} с подписью,
-			{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
-				<span class="muted">(ещё {plan.padding} добавлено, чтобы заполнить лист)</span>{/if}.
-		</p>
-	{/if}
-	{#if tooMany}
-		<p class="error">За раз можно напечатать не больше {MAX_SHEETS_PER_BATCH} листов.</p>
-	{/if}
-	{#if error}<p class="error">{error}</p>{/if}
-
-	<div class="row">
-		<button class="primary" type="submit" disabled={busy || plan.total === 0 || tooMany}>
-			{busy ? 'Выпускаю…' : 'Выпустить и собрать PDF'}
-		</button>
-		{#if issuedId}
-			<a class="button" href={pdfUrl(issuedId)} target="_blank" rel="noopener">Открыть PDF</a>
+<Card class="max-w-none p-4">
+	<form class="flex flex-col gap-3" onsubmit={issue}>
+		<Label>
+			Подписи — по одной наклейке на строку
+			<Textarea
+				class="mt-1 w-full"
+				bind:value={captionsText}
+				rows={6}
+				placeholder="Припой&#10;Коробка с NE555"
+			/>
+		</Label>
+		{#if tooLong.length > 0}
+			<Alert color="yellow" class="text-sm">
+				Подпись длиннее {CAPTION_MAX_LENGTH} символов не влезет и будет обрезана:
+				<ul class="mt-1 list-disc ps-5">
+					{#each tooLong as caption, i (i)}
+						<li class="break-words">{caption} → <b>{truncateCaption(caption)}</b></li>
+					{/each}
+				</ul>
+			</Alert>
 		{/if}
-	</div>
-</form>
+		<Label>
+			Без подписи
+			<Input
+				class="mt-1"
+				type="number"
+				min="0"
+				step="1"
+				inputmode="numeric"
+				bind:value={blankCount}
+			/>
+		</Label>
 
-<h2>Выпущенные пачки</h2>
+		{#if plan.total > 0}
+			<p class="text-sm">
+				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {plan.captioned} с подписью,
+				{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
+					<span class="text-gray-500 dark:text-gray-400"
+						>(ещё {plan.padding} добавлено, чтобы заполнить лист)</span
+					>{/if}.
+			</p>
+		{/if}
+		{#if tooMany}
+			<p class="text-sm text-red-600 dark:text-red-500">
+				За раз можно напечатать не больше {MAX_SHEETS_PER_BATCH} листов.
+			</p>
+		{/if}
+		{#if error}<p class="text-sm text-red-600 dark:text-red-500">{error}</p>{/if}
+
+		<div class="flex flex-wrap gap-2">
+			<Button type="submit" disabled={busy || plan.total === 0 || tooMany}>
+				{busy ? 'Выпускаю…' : 'Выпустить и собрать PDF'}
+			</Button>
+			{#if issuedId}
+				<Button color="alternative" href={pdfUrl(issuedId)} target="_blank" rel="noopener">
+					<FilePdfOutline class="me-1 h-4 w-4" />Открыть PDF
+				</Button>
+			{/if}
+		</div>
+	</form>
+</Card>
+
+<h2 class="mt-6 mb-2 text-lg font-semibold">Выпущенные пачки</h2>
 {#if data.batches.length === 0}
-	<p class="muted">Пока ничего не напечатано.</p>
+	<p class="text-sm text-gray-500 dark:text-gray-400">Пока ничего не напечатано.</p>
 {:else}
-	<ul class="list">
+	<ul class="flex flex-col gap-2">
 		{#each data.batches as batch (batch.id)}
-			<li class="card row batch">
-				<div class="stack info">
-					<span>{dateFormat.format(new Date(batch.createdAt))}</span>
-					<span class="muted">
-						{batch.total} шт., с подписью {batch.captioned} · свободно {batch.free} · привязано
-						{batch.bound}{#if batch.writtenOff > 0}
-							· списано {batch.writtenOff}{/if}
-					</span>
-				</div>
-				<a class="button" href={pdfUrl(batch.id)} target="_blank" rel="noopener">PDF</a>
+			<li>
+				<Card class="max-w-none flex-row items-center justify-between gap-3 p-3">
+					<div class="flex min-w-0 flex-col gap-0.5">
+						<span>{dateFormat.format(new Date(batch.createdAt))}</span>
+						<span class="text-sm text-gray-500 dark:text-gray-400">
+							{batch.total} шт., с подписью {batch.captioned} · свободно {batch.free} · привязано
+							{batch.bound}{#if batch.writtenOff > 0}
+								· списано {batch.writtenOff}{/if}
+						</span>
+					</div>
+					<Button
+						class="shrink-0"
+						color="alternative"
+						size="sm"
+						href={pdfUrl(batch.id)}
+						target="_blank"
+						rel="noopener"
+					>
+						<FilePdfOutline class="me-1 h-4 w-4" />PDF
+					</Button>
+				</Card>
 			</li>
 		{/each}
 	</ul>
 {/if}
-
-<style>
-	.warning {
-		background: var(--highlight);
-		border-radius: var(--radius);
-		padding: 0.5rem 0.75rem;
-		font-size: 0.9rem;
-	}
-	.warning ul {
-		margin: 0.25rem 0 0;
-		padding-left: 1.2rem;
-	}
-	.batch {
-		justify-content: space-between;
-		flex-wrap: nowrap;
-	}
-	.info {
-		gap: 0.15rem;
-	}
-</style>

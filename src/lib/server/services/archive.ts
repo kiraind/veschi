@@ -2,6 +2,7 @@ import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
+import { storage } from '$lib/server/storage';
 import { getPaths, type PathNode } from './paths';
 import { restoreStickerOf, writeOffStickerOf } from './stickers';
 
@@ -114,9 +115,12 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
 	if (item.status !== 'ARCHIVED') throw new ValidationError('Вещь не в архиве');
 
 	const parent = item.parentId
-		? await tx.item.findUnique({ where: { id: item.parentId }, select: { status: true } })
+		? await tx.item.findUnique({
+				where: { id: item.parentId },
+				select: { status: true, isContainer: true, isWorkbench: true }
+			})
 		: null;
-	if (parent?.status !== 'ACTIVE') {
+	if (parent?.status !== 'ACTIVE' || !(parent.isContainer || parent.isWorkbench)) {
 		await tx.item.update({
 			where: { id: item.id },
 			data: { parentId: null, takenById: null, takenAt: null, homeId: null, splitFromId: null }
@@ -155,12 +159,17 @@ export async function purge(actor: Actor, itemId: string, tx?: Tx): Promise<void
 		select: { id: true }
 	});
 	const ids = [item.id, ...inside.map((i) => i.id)];
+	const photos = await tx.item.findMany({
+		where: { id: { in: ids }, photoKey: { not: null } },
+		select: { photoKey: true }
+	});
 	await tx.sticker.updateMany({
 		where: { itemId: { in: ids } },
 		data: { status: 'WRITTEN_OFF', itemId: null }
 	});
 	// Remaining references (parent, home, split source, param refs) are nulled by the FKs.
 	await tx.item.deleteMany({ where: { id: { in: ids } } });
+	for (const { photoKey } of photos) if (photoKey) await storage().delete(photoKey);
 }
 
 export interface ArchivedItem {

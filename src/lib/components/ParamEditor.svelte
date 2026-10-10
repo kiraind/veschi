@@ -1,4 +1,11 @@
 <script lang="ts">
+	import { Button, Card, Input, Select } from 'flowbite-svelte';
+	import {
+		ArrowDownOutline,
+		ArrowUpOutline,
+		PlusOutline,
+		TrashBinOutline
+	} from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import {
 		draftFromView,
@@ -76,68 +83,70 @@
 	}
 </script>
 
-<div class="stack">
+<div class="flex flex-col gap-3">
 	{#each drafts as draft, i (draft.uid)}
-		<div class="card stack param" class:invalid={rowErrors[draft.uid]}>
-			<div class="row nowrap">
-				<input
-					class="key"
-					bind:value={draft.key}
-					placeholder="Ключ, например «корпус»"
-					aria-label="Ключ"
-				/>
-				<select bind:value={draft.valueType} aria-label="Тип значения">
-					{#each PARAM_VALUE_TYPES as type (type)}
-						<option value={type}>{PARAM_VALUE_TYPE_LABELS[type]}</option>
-					{/each}
-				</select>
+		<Card
+			class="max-w-none gap-2 p-3 {rowErrors[draft.uid]
+				? 'border-red-500 dark:border-red-500'
+				: ''}"
+		>
+			<div class="flex flex-col gap-2 sm:flex-row">
+				<div class="min-w-0 flex-1">
+					<Input bind:value={draft.key} placeholder="Ключ, например «корпус»" aria-label="Ключ" />
+				</div>
+				<div class="sm:w-48 sm:shrink-0">
+					<Select bind:value={draft.valueType} aria-label="Тип значения" placeholder="">
+						{#each PARAM_VALUE_TYPES as type (type)}
+							<option value={type}>{PARAM_VALUE_TYPE_LABELS[type]}</option>
+						{/each}
+					</Select>
+				</div>
 			</div>
 			<ParamValueInput bind:draft={drafts[i]!} {dictionaries} />
-			{#if rowErrors[draft.uid]}<p class="error">{rowErrors[draft.uid]}</p>{/if}
-			<div class="row actions">
-				<button type="button" onclick={() => move(i, -1)} disabled={i === 0} title="Выше">↑</button>
-				<button
+			{#if rowErrors[draft.uid]}<p class="text-sm text-red-600 dark:text-red-500">
+					{rowErrors[draft.uid]}
+				</p>{/if}
+			<div class="flex flex-wrap justify-end gap-1.5">
+				<Button
+					color="alternative"
+					class="h-10 w-10 p-0"
+					type="button"
+					onclick={() => move(i, -1)}
+					disabled={i === 0}
+					title="Выше"
+					aria-label="Выше"><ArrowUpOutline class="h-4 w-4" /></Button
+				>
+				<Button
+					color="alternative"
+					class="h-10 w-10 p-0"
 					type="button"
 					onclick={() => move(i, 1)}
 					disabled={i === drafts.length - 1}
-					title="Ниже">↓</button
+					title="Ниже"
+					aria-label="Ниже"><ArrowDownOutline class="h-4 w-4" /></Button
 				>
-				<button type="button" class="danger" onclick={() => drafts.splice(i, 1)}>Удалить</button>
+				<Button
+					color="red"
+					outline
+					class="h-10"
+					size="sm"
+					type="button"
+					onclick={() => drafts.splice(i, 1)}
+				>
+					<TrashBinOutline class="me-1 h-4 w-4" />Удалить
+				</Button>
 			</div>
-		</div>
+		</Card>
 	{/each}
 
-	<div class="row">
-		<button type="button" onclick={() => drafts.push(emptyDraft())}>+ Параметр</button>
-		<button type="button" class="primary" onclick={save} disabled={saving}>
+	<div class="flex flex-wrap items-center gap-2">
+		<Button color="alternative" type="button" onclick={() => drafts.push(emptyDraft())}>
+			<PlusOutline class="me-1 h-4 w-4" />Параметр
+		</Button>
+		<Button type="button" onclick={save} disabled={saving}>
 			{saving ? 'Сохранение…' : 'Сохранить параметры'}
-		</button>
-		{#if saved}<span class="muted">Сохранено</span>{/if}
+		</Button>
+		{#if saved}<span class="text-sm text-gray-500 dark:text-gray-400">Сохранено</span>{/if}
 	</div>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 </div>
-
-<style>
-	.param {
-		padding: 0.75rem;
-	}
-	.invalid {
-		border-color: var(--danger);
-	}
-	.nowrap {
-		flex-wrap: nowrap;
-		gap: 0.4rem;
-	}
-	.key {
-		flex: 1;
-		min-width: 0;
-	}
-	select {
-		width: auto;
-		max-width: 45%;
-	}
-	.actions {
-		justify-content: flex-end;
-		gap: 0.4rem;
-	}
-</style>

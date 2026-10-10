@@ -1,19 +1,26 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
+	import { Button, Card, Input } from 'flowbite-svelte';
+	import { QrCodeOutline } from 'flowbite-svelte-icons';
 	import QrScanner from './QrScanner.svelte';
 	import type { ItemCard } from '$lib/server/services/items';
 	import type { SearchGroup } from '$lib/server/services/search';
 
-	/** Choose a container: search active items or scan the container's sticker. */
+	/**
+	 * Choose a container (or, with `containersOnly = false`, any item): search
+	 * active items or scan a sticker.
+	 */
 	let {
 		onpick,
 		excludeId,
-		title = 'Куда положить?'
+		title = 'Куда положить?',
+		containersOnly = true
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
 		excludeId?: string;
 		title?: string;
+		containersOnly?: boolean;
 	} = $props();
 
 	let query = $state('');
@@ -34,7 +41,7 @@
 			if (id !== request) return;
 			results = groups
 				.flatMap((g) => g.locations)
-				.filter((l) => l.itemId !== excludeId)
+				.filter((l) => l.itemId !== excludeId && (!containersOnly || l.isContainer))
 				.map((l) => ({ id: l.itemId, name: l.name, path: formatPath(l.path) }));
 		}, 250);
 		return () => clearTimeout(timer);
@@ -60,6 +67,10 @@
 				return;
 			}
 			const card = await api.get<ItemCard>(`/api/items/${resolved.itemId}`);
+			if (containersOnly && !card.item.isContainer) {
+				message = `«${card.item.displayName}» — не контейнер`;
+				return;
+			}
 			scanning = false;
 			onpick({ id: card.item.id, name: card.item.displayName });
 		} catch (e) {
@@ -68,50 +79,47 @@
 	}
 </script>
 
-<div class="card stack picker">
-	<strong>{title}</strong>
-	<div class="row">
-		<input
-			class="search"
+<Card class="max-w-none space-y-3 p-4">
+	<p class="font-medium">{title}</p>
+	<div class="flex flex-wrap gap-2">
+		<Input
+			class="min-w-40 flex-1"
 			type="search"
 			bind:value={query}
-			placeholder="Найти контейнер по названию"
-			aria-label="Найти контейнер"
+			placeholder={containersOnly ? 'Найти контейнер по названию' : 'Найти вещь по названию'}
+			aria-label={containersOnly ? 'Найти контейнер' : 'Найти вещь'}
 		/>
-		<button type="button" onclick={() => (scanning = !scanning)}>
+		<Button type="button" color="alternative" onclick={() => (scanning = !scanning)}>
+			<QrCodeOutline class="me-1.5 h-5 w-5" />
 			{scanning ? 'Закрыть камеру' : 'Сканировать'}
-		</button>
+		</Button>
 	</div>
 	{#if scanning}
 		<QrScanner {onscan} active={scanning} />
 	{/if}
-	{#if message}<p class="error" role="alert">{message}</p>{/if}
+	{#if message}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{message}</p>{/if}
 	{#if results.length > 0}
-		<ul class="list">
+		<ul
+			class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+		>
 			{#each results as result (result.id)}
 				<li>
-					<button type="button" class="result" onclick={() => onpick(result)}>
-						<span>{result.name}</span>
-						{#if result.path}<span class="muted">{result.path}</span>{/if}
+					<button
+						type="button"
+						class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+						onclick={() => onpick(result)}
+					>
+						<span class="break-words">{result.name}</span>
+						{#if result.path}
+							<span class="text-sm text-gray-500 dark:text-gray-400">{result.path}</span>
+						{/if}
 					</button>
 				</li>
 			{/each}
 		</ul>
 	{:else if query.trim()}
-		<p class="muted">Ничего не найдено.</p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			{containersOnly ? 'Контейнеров не найдено.' : 'Ничего не найдено.'}
+		</p>
 	{/if}
-</div>
-
-<style>
-	.search {
-		flex: 1;
-		min-width: 10rem;
-	}
-	.result {
-		width: 100%;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0;
-		text-align: left;
-	}
-</style>
+</Card>

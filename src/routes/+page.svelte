@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { Button, Input } from 'flowbite-svelte';
+	import { PlusOutline, QrCodeOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import type { PageData } from './$types';
 
@@ -22,37 +24,33 @@
 
 <svelte:head><title>Поиск — Вещи</title></svelte:head>
 
-<form class="search" role="search" onsubmit={(e) => e.preventDefault()}>
-	<input
+<form class="mt-2 mb-4" role="search" onsubmit={(e) => e.preventDefault()}>
+	<Input
 		type="search"
+		size="lg"
+		class="ps-10 text-base"
 		bind:value={query}
 		placeholder="Что ищем? Например, NE555 или «корпус: DIP-8»"
 		aria-label="Поиск"
 		autocomplete="off"
-	/>
+	>
+		{#snippet left()}<SearchOutline class="h-5 w-5" />{/snippet}
+	</Input>
 </form>
 
 {#if !data.q.trim()}
-	<p class="muted">
+	<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
 		Ищите по названию вещи или типа и по параметрам. Чтобы искать по конкретному параметру, пишите
 		«ключ: значение».
 	</p>
-	<div class="row">
-		<a class="button" href="/scan">Сканировать</a>
-		<a class="button" href="/items/new">Новая вещь</a>
+	<div class="flex flex-wrap gap-2">
+		<Button href="/scan"><QrCodeOutline class="me-2 h-5 w-5" />Сканировать</Button>
+		<Button href="/items/new" color="alternative"
+			><PlusOutline class="me-2 h-5 w-5" />Новая вещь</Button
+		>
 	</div>
 {:else if data.groups.length === 0}
-	<p class="muted">Ничего не найдено.</p>
+	<p class="text-sm text-gray-500 dark:text-gray-400">Ничего не найдено.</p>
 {:else}
 	<SearchResults groups={data.groups} />
 {/if}
-
-<style>
-	.search {
-		margin: 0.5rem 0 1rem;
-	}
-	.search input {
-		font-size: 1.2rem;
-		padding: 0.8rem 1rem;
-	}
-</style>

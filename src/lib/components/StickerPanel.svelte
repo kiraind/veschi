@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { Button } from 'flowbite-svelte';
 	import { api, ApiError } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
@@ -47,38 +48,40 @@
 	}
 </script>
 
-<div class="stack sticker">
+<div class="flex flex-col gap-2">
 	{#if sticker?.status === 'BOUND'}
-		<div class="row">
-			<span>Наклейка <strong class="mono">{formatCode(sticker.code)}</strong></span>
+		<div class="flex flex-wrap items-center gap-2">
+			<span>Наклейка <strong class="font-mono">{formatCode(sticker.code)}</strong></span>
 			{#if editable}
-				<button type="button" onclick={unbind} disabled={busy}>Отвязать наклейку</button>
+				<Button size="sm" color="alternative" type="button" onclick={unbind} disabled={busy}>
+					Отвязать наклейку
+				</Button>
 			{/if}
 		</div>
 	{:else}
-		<div class="row">
+		<div class="flex flex-wrap items-center gap-2">
 			{#if sticker?.status === 'WRITTEN_OFF'}
-				<span class="muted"
-					>Наклейка <span class="mono">{formatCode(sticker.code)}</span> списана</span
+				<span class="text-sm text-gray-500 dark:text-gray-400"
+					>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
 				>
 			{:else}
-				<span class="muted">Без наклейки</span>
+				<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
 			{/if}
 			{#if editable}
-				<button type="button" onclick={() => (binding = !binding)} disabled={busy}>
+				<Button
+					size="sm"
+					color="alternative"
+					type="button"
+					onclick={() => (binding = !binding)}
+					disabled={busy}
+				>
 					{binding ? 'Отмена' : 'Привязать наклейку'}
-				</button>
+				</Button>
 			{/if}
 		</div>
 		{#if binding}
 			<QrScanner onscan={bind} active={binding} />
 		{/if}
 	{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 </div>
-
-<style>
-	.sticker {
-		gap: 0.5rem;
-	}
-</style>

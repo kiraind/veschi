@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button, Input } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
 	import type { ParamDraft } from '$lib/domain/param-draft';
@@ -33,19 +34,24 @@
 	}
 </script>
 
-<div class="stack ref">
+<div class="flex flex-col gap-1.5">
 	{#if value}
-		<div class="row">
-			<span>→ {value.name}</span>
-			<span class="muted">{value.kind === 'item' ? 'вещь' : 'тип'}</span>
-			<button type="button" onclick={() => (value = null)}>Изменить</button>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="min-w-0 break-words">→ {value.name}</span>
+			<span class="text-sm text-gray-500 dark:text-gray-400"
+				>{value.kind === 'item' ? 'вещь' : 'тип'}</span
+			>
+			<Button color="alternative" size="sm" type="button" onclick={() => (value = null)}
+				>Изменить</Button
+			>
 		</div>
 	{:else}
-		<input type="search" bind:value={query} placeholder="Найти вещь или тип" />
+		<Input type="search" bind:value={query} placeholder="Найти вещь или тип" />
 		{#each groups as group (group.typeId)}
-			<div class="stack options">
+			<div class="flex flex-col gap-1">
 				<button
 					type="button"
+					class="min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-medium break-words hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
 					onclick={() => pick({ kind: 'type', id: group.typeId, name: group.typeName })}
 				>
 					Тип «{group.typeName}»
@@ -53,28 +59,16 @@
 				{#each group.locations as location (location.itemId)}
 					<button
 						type="button"
-						class="item"
+						class="ms-4 flex min-h-10 flex-wrap items-baseline gap-x-2 rounded-lg px-3 py-2 text-left text-sm break-words hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
 						onclick={() => pick({ kind: 'item', id: location.itemId, name: location.name })}
 					>
 						{location.name}
-						<span class="muted">{formatPath(location.path) || 'верхний уровень'}</span>
+						<span class="text-gray-500 dark:text-gray-400"
+							>{formatPath(location.path) || 'верхний уровень'}</span
+						>
 					</button>
 				{/each}
 			</div>
 		{/each}
 	{/if}
 </div>
-
-<style>
-	.ref,
-	.options {
-		gap: 0.3rem;
-	}
-	.options button {
-		justify-content: flex-start;
-		text-align: left;
-	}
-	.item {
-		margin-left: 1rem;
-	}
-</style>

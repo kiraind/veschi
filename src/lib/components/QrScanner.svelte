@@ -1,5 +1,6 @@
 <script lang="ts">
 	import jsQR from 'jsqr';
+	import { Alert, Button, Input } from 'flowbite-svelte';
 	import { extractCode } from '$lib/domain/scan';
 	import { normalizeCode } from '$lib/domain/sticker-code';
 
@@ -120,50 +121,43 @@
 	}
 </script>
 
-<div class="stack">
+<div class="flex flex-col gap-3">
 	{#if active && !cameraError}
-		<div class="viewport">
-			<video bind:this={video} playsinline muted></video>
+		<div class="aspect-square w-full max-w-md overflow-hidden rounded-lg bg-black">
+			<video class="h-full w-full object-cover" bind:this={video} playsinline muted></video>
 		</div>
-		{#if hint}<p class="muted">{hint}</p>{/if}
+		{#if hint}<p class="text-sm text-gray-500 dark:text-gray-400">{hint}</p>{/if}
 	{/if}
 	{#if cameraError}
-		<p class="error">{cameraError}</p>
-		<button type="button" onclick={() => (cameraError = '')}>Попробовать снова</button>
+		<Alert color="yellow">
+			<p>{cameraError}</p>
+			<Button
+				class="mt-3"
+				size="sm"
+				color="alternative"
+				type="button"
+				onclick={() => (cameraError = '')}
+			>
+				Попробовать снова
+			</Button>
+		</Alert>
 	{/if}
 
-	<form class="row" onsubmit={submitManual}>
-		<input
-			class="mono manual"
-			bind:value={manual}
-			placeholder="ID с наклейки, например K7M-4QX"
-			autocapitalize="characters"
-			autocomplete="off"
-			spellcheck="false"
-			aria-label="ID наклейки"
-		/>
-		<button type="submit">Открыть</button>
+	<form class="flex flex-wrap gap-2" onsubmit={submitManual}>
+		<div class="min-w-48 flex-1">
+			<Input
+				class="font-mono"
+				bind:value={manual}
+				placeholder="ID с наклейки, например K7M-4QX"
+				autocapitalize="characters"
+				autocomplete="off"
+				spellcheck="false"
+				aria-label="ID наклейки"
+			/>
+		</div>
+		<Button type="submit">Открыть</Button>
 	</form>
-	{#if manualError}<p class="error">{manualError}</p>{/if}
+	{#if manualError}
+		<p class="text-sm text-red-600 dark:text-red-500" role="alert">{manualError}</p>
+	{/if}
 </div>
-
-<style>
-	.viewport {
-		width: 100%;
-		max-width: 28rem;
-		aspect-ratio: 1;
-		overflow: hidden;
-		border-radius: var(--radius);
-		background: #000;
-	}
-	video {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-	.manual {
-		flex: 1;
-		min-width: 12rem;
-		width: auto;
-	}
-</style>

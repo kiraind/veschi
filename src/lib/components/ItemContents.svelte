@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Badge } from 'flowbite-svelte';
+	import { ChevronDownOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { api } from '$lib/api';
 	import Thumb from './Thumb.svelte';
 	import ItemContents from './ItemContents.svelte';
@@ -23,56 +25,45 @@
 	}
 </script>
 
-<ul class="list">
+<ul class="flex flex-col gap-1">
 	{#each entries as entry (entry.id)}
 		{@const state = open[entry.id]}
 		<li>
-			<div class="entry">
-				<Thumb photoKey={entry.photoKey} size={36} />
-				<a class="name" href="/items/{entry.id}">{entry.name}</a>
-				{#if entry.onWorkbench}<span class="badge">на столе</span>{/if}
-				{#if entry.quantity > 1}<span class="badge">{entry.quantity} шт.</span>{/if}
+			<div
+				class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800"
+			>
+				<Thumb photoKey={entry.photoKey} size={40} />
+				<a
+					class="min-w-0 flex-1 font-medium break-words text-gray-900 hover:underline dark:text-white"
+					href="/items/{entry.id}">{entry.name}</a
+				>
+				{#if entry.onWorkbench}<Badge color="yellow">на столе</Badge>{/if}
+				{#if entry.quantity > 1}<Badge color="gray">{entry.quantity} шт.</Badge>{/if}
 				{#if entry.childCount > 0}
 					<button
-						class="expand"
+						class="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
 						aria-expanded={Boolean(state)}
 						onclick={() => toggle(entry.id)}
 						title={state ? 'Свернуть' : 'Показать содержимое'}
 					>
-						{state ? '▾' : '▸'}
+						{#if state}
+							<ChevronDownOutline class="h-4 w-4" />
+						{:else}
+							<ChevronRightOutline class="h-4 w-4" />
+						{/if}
 						{entry.childCount}
 					</button>
 				{/if}
 			</div>
 			{#if state === 'loading'}
-				<p class="muted nested">Загрузка…</p>
+				<p class="mt-1 ml-5 text-sm text-gray-500 dark:text-gray-400">Загрузка…</p>
 			{:else if state && 'error' in state}
-				<p class="error nested">{state.error}</p>
+				<p class="mt-1 ml-5 text-sm text-red-600 dark:text-red-500">{state.error}</p>
 			{:else if state}
-				<div class="nested"><ItemContents entries={state} /></div>
+				<div class="mt-1 ml-5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+					<ItemContents entries={state} />
+				</div>
 			{/if}
 		</li>
 	{/each}
 </ul>
-
-<style>
-	.entry {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	.name {
-		flex: 1;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.expand {
-		min-height: 2.2rem;
-		padding: 0.2rem 0.6rem;
-	}
-	.nested {
-		margin: 0.4rem 0 0 1.1rem;
-		padding-left: 0.6rem;
-		border-left: 2px solid var(--border);
-	}
-</style>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, ApiError } from '$lib/api';
+	import { Button, Checkbox, Helper, Input, Label } from 'flowbite-svelte';
+	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import ParamEditor from '$lib/components/ParamEditor.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
 	import type { ParamInput } from '$lib/domain/params';
@@ -15,6 +17,7 @@
 	let typeName = $state(type?.name ?? '');
 	let name = $state(item.name ?? '');
 	let quantity = $state(item.quantity);
+	let isContainer = $state(item.isContainer);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -26,7 +29,8 @@
 			await api.patch(`/api/items/${item.id}`, {
 				...(typeId ? { typeId } : { newTypeName: typeName }),
 				name,
-				quantity
+				quantity,
+				isContainer
 			});
 			await goto(`/items/${item.id}`);
 		} catch (e) {
@@ -44,28 +48,49 @@
 
 <svelte:head><title>Изменить: {item.displayName} — Вещи</title></svelte:head>
 
-<p><a href="/items/{item.id}">← {item.displayName}</a></p>
-<h1>Изменить вещь</h1>
+<a
+	href="/items/{item.id}"
+	class="mb-2 inline-flex min-h-10 items-center gap-1 text-sm text-primary-700 hover:underline dark:text-primary-400"
+>
+	<ArrowLeftOutline class="h-4 w-4" />
+	<span class="break-words">{item.displayName}</span>
+</a>
+<h1 class="mb-3 text-2xl font-bold">Изменить вещь</h1>
 
-<form class="stack" onsubmit={save}>
+<form class="flex flex-col gap-4" onsubmit={save}>
 	<TypeAutocomplete bind:typeId bind:typeName />
-	<label>
-		Своё название (необязательно)
-		<input bind:value={name} placeholder={typeName} />
-	</label>
-	<label>
-		Количество
-		<input type="number" min="1" step="1" inputmode="numeric" bind:value={quantity} required />
-	</label>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	<div class="row">
-		<button class="primary" type="submit" disabled={busy || !typeName.trim()}>Сохранить</button>
-		<a class="button" href="/items/{item.id}">Отмена</a>
+	<div>
+		<Label for="item-name">Своё название (необязательно)</Label>
+		<Input id="item-name" class="mt-1" bind:value={name} placeholder={typeName} />
+	</div>
+	<div>
+		<Label for="item-quantity">Количество</Label>
+		<Input
+			id="item-quantity"
+			class="mt-1"
+			type="number"
+			min="1"
+			step="1"
+			inputmode="numeric"
+			bind:value={quantity}
+			required
+		/>
+	</div>
+	<div>
+		<Checkbox bind:checked={isContainer}>Это контейнер</Checkbox>
+		<Helper class="mt-1 ps-6">
+			В контейнер можно класть другие вещи. Снять отметку можно, когда внутри пусто.
+		</Helper>
+	</div>
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+	<div class="flex flex-wrap gap-2">
+		<Button type="submit" disabled={busy || !typeName.trim()} loading={busy}>Сохранить</Button>
+		<Button href="/items/{item.id}" color="alternative">Отмена</Button>
 	</div>
 </form>
 
-<h2>Свои параметры</h2>
-<p class="muted">
+<h2 class="mt-6 mb-2 text-lg font-semibold">Свои параметры</h2>
+<p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
 	Параметры этой вещи (например, серийный номер). Параметр с тем же ключом, что у типа, заменяет
 	значение типа.
 	{#if type}Общие параметры — <a href="/types/{type.id}/edit">в типе «{type.name}»</a>.{/if}

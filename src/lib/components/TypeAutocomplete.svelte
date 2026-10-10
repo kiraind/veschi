@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Input, Label } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import Thumb from './Thumb.svelte';
 	import type { TypeSummary } from '$lib/server/services/types';
@@ -39,13 +40,14 @@
 	}
 </script>
 
-<div class="stack autocomplete">
-	<label>
+<div class="flex flex-col gap-1.5">
+	<Label>
 		{label}
-		<input
+		<Input
+			class="mt-1"
 			value={typeName}
 			oninput={(e) => {
-				typeName = e.currentTarget.value;
+				typeName = (e.currentTarget as HTMLInputElement).value;
 				typeId = null;
 			}}
 			onfocus={() => (focused = true)}
@@ -54,35 +56,33 @@
 			placeholder="Например, NE555 или Нож Victorinox"
 			required
 		/>
-	</label>
+	</Label>
 	{#if suggestions.length > 0}
-		<ul class="list suggestions" role="listbox">
+		<ul
+			class="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+			role="listbox"
+		>
 			{#each suggestions as type (type.id)}
 				<li>
-					<button type="button" role="option" aria-selected="false" onclick={() => pick(type)}>
+					<button
+						type="button"
+						role="option"
+						aria-selected="false"
+						class="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700"
+						onclick={() => pick(type)}
+					>
 						<Thumb photoKey={type.photoKey} size={28} />
-						<span>{type.name}</span>
+						<span class="min-w-0 break-words">{type.name}</span>
 					</button>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 	{#if typeId}
-		<span class="muted">Существующий тип</span>
+		<span class="text-sm text-gray-500 dark:text-gray-400">Существующий тип</span>
 	{:else if typeName.trim()}
-		<span class="muted">Будет создан новый тип «{typeName.trim()}», если такого ещё нет</span>
+		<span class="text-sm break-words text-gray-500 dark:text-gray-400"
+			>Будет создан новый тип «{typeName.trim()}», если такого ещё нет</span
+		>
 	{/if}
 </div>
-
-<style>
-	.autocomplete {
-		gap: 0.35rem;
-	}
-	.suggestions {
-		gap: 0.25rem;
-	}
-	.suggestions button {
-		width: 100%;
-		justify-content: flex-start;
-	}
-</style>
