@@ -72,9 +72,9 @@
 	<Input
 		type="search"
 		size="lg"
-		class="ps-11 text-base max-md:h-14 max-md:rounded-full max-md:placeholder:text-gray-400 max-md:border-2 max-md:border-primary-600 max-md:bg-white max-md:shadow-lg max-md:dark:border-primary-500 max-md:dark:bg-gray-800"
+		class="ps-11 text-base max-md:h-14 max-md:rounded-2xl max-md:placeholder:text-gray-400 max-md:border-2 max-md:border-primary-600 max-md:bg-white max-md:shadow-lg max-md:dark:border-primary-500 max-md:dark:bg-gray-800"
 		bind:value={query}
-		placeholder="Что ищем?"
+		placeholder={data.placeholder}
 		aria-label="Поиск"
 		autocomplete="off"
 	>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { likePattern, parseSearchQuery } from './search';
+import { likePattern, parseSearchQuery, searchPlaceholder } from './search';
 
 describe('parseSearchQuery', () => {
 	it('keeps plain text', () => {
@@ -22,5 +22,24 @@ describe('parseSearchQuery', () => {
 describe('likePattern', () => {
 	it('escapes wildcards', () => {
 		expect(likePattern('100%_a\\b')).toBe('%100\\%\\_a\\\\b%');
+	});
+});
+
+describe('searchPlaceholder', () => {
+	it('falls back to built-in examples when the user has none', () => {
+		expect(searchPlaceholder([], [])).toBe('NE555 или «корпус: DIP-8»');
+	});
+
+	it('takes the user’s own short names and parameters', () => {
+		const names = ['Кабель USB-C — USB-C 2 м с поддержкой 100 Вт', 'Паяльник'];
+		const params = [
+			{ key: 'описание', value: 'очень длинное значение параметра' },
+			{ key: 'цвет', value: 'белый' }
+		];
+		expect(searchPlaceholder(names, params, () => 0)).toBe('Паяльник или «цвет: белый»');
+	});
+
+	it('skips keys with a colon: they would not parse back', () => {
+		expect(searchPlaceholder([], [{ key: 'a:b', value: 'c' }])).toContain('«корпус: DIP-8»');
 	});
 });

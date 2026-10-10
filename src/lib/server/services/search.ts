@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { db } from '$lib/server/db';
-import type { Actor } from '$lib/server/scope';
+import { visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
 import { likePattern, parseSearchQuery } from '$lib/domain/search';
 import { getPaths, type PathNode } from './paths';
@@ -155,4 +155,39 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 		);
 	}
 	return result;
+}
+
+/** How many recent names and parameters the placeholder picks its examples from. */
+const EXAMPLE_POOL = 50;
+
+/** Names of types in use and text parameter values, for examples in the search field. */
+export async function searchExamples(
+	actor: Actor
+): Promise<{ names: string[]; params: { key: string; value: string }[] }> {
+	const [types, params] = await Promise.all([
+		db.itemType.findMany({
+			where: { ...visibleTo(actor), items: { some: { status: 'ACTIVE' } } },
+			select: { name: true },
+			orderBy: { updatedAt: 'desc' },
+			take: EXAMPLE_POOL
+		}),
+		db.param.findMany({
+			where: {
+				valueType: 'STRING',
+				textValue: { not: null },
+				def: visibleTo(actor),
+				OR: [
+					{ type: { is: visibleTo(actor) } },
+					{ item: { is: { ...visibleTo(actor), status: 'ACTIVE' } } }
+				]
+			},
+			select: { textValue: true, def: { select: { name: true } } },
+			orderBy: { updatedAt: 'desc' },
+			take: EXAMPLE_POOL
+		})
+	]);
+	return {
+		names: types.map((t) => t.name),
+		params: params.flatMap((p) => (p.textValue ? [{ key: p.def.name, value: p.textValue }] : []))
+	};
 }
