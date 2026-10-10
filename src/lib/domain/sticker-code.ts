@@ -21,6 +21,7 @@ const TOP_LEVEL_ROUTES = [
 	'dictionaries',
 	'files',
 	'healthz',
+	'history',
 	'items',
 	'login',
 	'logout',
