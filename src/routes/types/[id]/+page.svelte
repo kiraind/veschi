@@ -10,6 +10,7 @@
 	import { plural } from '$lib/domain/plural';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
+	import TypeCategories from '$lib/components/TypeCategories.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
 
@@ -112,8 +113,20 @@
 		</p>{/if}
 </div>
 
+<h2 class="mt-6 mb-2 text-lg font-semibold">Категории</h2>
+<TypeCategories
+	typeId={type.id}
+	categories={data.card.categories}
+	itemRequired={data.card.itemRequired}
+/>
+
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
-<ParamSection params={data.card.params} target={{ kind: 'type', id: type.id }} />
+<ParamSection
+	params={data.card.params}
+	target={{ kind: 'type', id: type.id }}
+	required={data.card.typeRequired}
+	missing={data.card.missing}
+/>
 
 {#if data.card.items.length === 0}
 	<p class="mt-6 mb-3 text-sm text-gray-500 dark:text-gray-400">Вещей этого типа нет.</p>

@@ -16,6 +16,7 @@ import {
 	type ParamView
 } from '$lib/domain/params';
 import { diffFields, type ParamChange } from '$lib/domain/history';
+import { inCategories, type CategoryRef, type ParamLevel } from '$lib/domain/categories';
 import { createOptionList, updateOptionList } from './dictionaries';
 import { deleteUnreferencedFiles, isOwnUpload } from './files';
 import { itemSubject, paramDefRef, recordEvent, typeRef } from './history';
@@ -96,6 +97,52 @@ async function recordParamChanges(
 		data: { changes: changes.map(({ name, change }) => ({ name, change })) },
 		refIds: changes.map((c) => c.defId)
 	});
+}
+
+/**
+ * Parameters the categories of the target's type require on it: on a type,
+ * those required «у типа»; on an item, those required «у каждой вещи». Keyed
+ * by definition id, with the requiring categories.
+ */
+export async function requiredDefsOf(
+	target: ParamTarget,
+	tx: Tx = db
+): Promise<Map<string, CategoryRef[]>> {
+	const [typeId, level]: [string | null, ParamLevel] =
+		'typeId' in target
+			? [target.typeId, 'TYPE']
+			: [
+					(await tx.item.findUnique({ where: { id: target.itemId }, select: { typeId: true } }))
+						?.typeId ?? null,
+					'ITEM'
+				];
+	const result = new Map<string, CategoryRef[]>();
+	if (!typeId) return result;
+	const rows = await tx.categoryParam.findMany({
+		where: { level, category: { types: { some: { typeId } } } },
+		include: { category: { select: { id: true, name: true } } },
+		orderBy: [{ category: { name: 'asc' } }, { position: 'asc' }]
+	});
+	for (const r of rows) result.set(r.defId, [...(result.get(r.defId) ?? []), r.category]);
+	return result;
+}
+
+/** A required value cannot be removed (it can be changed); gaps left from before may stay. */
+async function assertNotRequired(
+	target: ParamTarget,
+	removed: { defId: string; def: { name: string } }[],
+	tx: Tx
+): Promise<void> {
+	if (removed.length === 0) return;
+	const required = await requiredDefsOf(target, tx);
+	for (const r of removed) {
+		const categories = required.get(r.defId);
+		if (categories) {
+			throw new ConflictError(
+				`«${r.def.name}» нельзя удалить: он обязателен ${inCategories(categories)}`
+			);
+		}
+	}
 }
 
 /** Value columns of a Param row for one input. */
@@ -340,6 +387,12 @@ export async function replaceParams(
 
 	const where = targetWhere(target);
 	const old = await signedRows(target, tx);
+	const kept = new Set(params.map((p) => p.defId));
+	await assertNotRequired(
+		target,
+		old.filter((r) => !kept.has(r.defId)),
+		tx
+	);
 	await tx.param.deleteMany({ where });
 	for (const [position, p] of params.entries()) {
 		await tx.param.create({
@@ -347,8 +400,8 @@ export async function replaceParams(
 		});
 	}
 	if (record) await recordParamChanges(actor, target, old, await signedRows(target, tx), tx);
-	const kept = new Set(params.flatMap((p) => (p.valueType === 'FILE' ? [p.fileKey] : [])));
-	return old.flatMap((r) => (r.fileKey && !kept.has(r.fileKey) ? [r.fileKey] : []));
+	const keptFiles = new Set(params.flatMap((p) => (p.valueType === 'FILE' ? [p.fileKey] : [])));
+	return old.flatMap((r) => (r.fileKey && !keptFiles.has(r.fileKey) ? [r.fileKey] : []));
 }
 
 /** Replaces the whole parameter list of a type or an item in one call. */
@@ -454,6 +507,7 @@ export async function deleteParam(actor: Actor, id: string): Promise<void> {
 	const param = await db.$transaction(async (tx) => {
 		const param = await findParam(actor, id, tx);
 		const target = paramTarget(param);
+		await assertNotRequired(target, [param], tx);
 		const before = await signedRows(target, tx);
 		await tx.param.delete({ where: { id } });
 		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
@@ -486,7 +540,7 @@ export async function moveParam(actor: Actor, id: string, delta: -1 | 1): Promis
 // Definitions («Параметры»)
 // ---------------------------------------------------------------------------
 
-const defInclude = {
+export const defInclude = {
 	dictionary: {
 		include: {
 			options: {
@@ -497,7 +551,7 @@ const defInclude = {
 	}
 } satisfies Prisma.ParamDefInclude;
 
-async function defViews(
+export async function defViews(
 	defs: Prisma.ParamDefGetPayload<{ include: typeof defInclude }>[],
 	tx: Tx
 ): Promise<ParamDefView[]> {
@@ -674,6 +728,16 @@ export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 		if (used > 0) {
 			throw new ConflictError(
 				`Параметр задан у типов и вещей (${used}) — сначала удалите значения`
+			);
+		}
+		const categories = await tx.category.findMany({
+			where: { params: { some: { defId: id } } },
+			select: { name: true },
+			orderBy: { name: 'asc' }
+		});
+		if (categories.length > 0) {
+			throw new ConflictError(
+				`Параметр обязателен в категориях: ${categories.map((c) => `«${c.name}»`).join(', ')} — сначала уберите его оттуда`
 			);
 		}
 		await recordEvent(tx, actor, { kind: 'paramDef.deleted', subject: paramDefRef(def), data: {} });

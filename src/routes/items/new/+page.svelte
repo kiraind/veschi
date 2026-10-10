@@ -9,7 +9,11 @@
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
-	import type { TypeInfo } from '$lib/server/services/types';
+	import ParamValueInput from '$lib/components/ParamValueInput.svelte';
+	import type { TypeCard, TypeInfo } from '$lib/server/services/types';
+	import { inCategories, type RequiredParam } from '$lib/domain/categories';
+	import { draftToInput, emptyDraft, type ParamDraft } from '$lib/domain/param-draft';
+	import { paramInputSchema, type ParamInput } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -42,6 +46,35 @@
 	let busy = $state(false);
 	let error = $state('');
 
+	/** Parameters the type's categories require on each item, with their values being typed. */
+	let required = $state<{ r: RequiredParam; draft: ParamDraft }[]>([]);
+	$effect(() => {
+		const id = typeId;
+		required = [];
+		if (!id) return;
+		api
+			.get<TypeCard>(`/api/types/${id}`)
+			.then((card) => {
+				if (typeId === id) {
+					required = card.itemRequired.map((r) => ({ r, draft: emptyDraft(r.def) }));
+				}
+			})
+			.catch((e) => (error = e instanceof ApiError ? e.message : String(e)));
+	});
+
+	/** Values of the required parameters, or an error message. */
+	function requiredParams(): ParamInput[] | string {
+		const result: ParamInput[] = [];
+		for (const { r, draft } of required) {
+			const parsed = paramInputSchema.safeParse(draftToInput(draft));
+			if (!parsed.success) {
+				return `«${r.def.name}»: ${parsed.error.issues[0]?.message ?? 'проверьте значение'}`;
+			}
+			result.push(parsed.data);
+		}
+		return result;
+	}
+
 	$effect(() => {
 		const url = photoUrl;
 		return () => {
@@ -51,10 +84,16 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
+		const params = requiredParams();
+		if (typeof params === 'string') {
+			error = params;
+			return;
+		}
 		busy = true;
 		error = '';
 		try {
 			const { id } = await api.post<{ id: string }>('/api/items', {
+				params,
 				...(typeId ? { typeId } : { newTypeName: typeName, newTypeIsContainer }),
 				name,
 				// A container is a single instance: its quantity is always 1.
@@ -153,6 +192,14 @@
 			{/if}
 		</div>
 	{/if}
+
+	{#each required as entry (entry.r.def.id)}
+		<div class="space-y-1">
+			<span class="text-sm font-medium">{entry.r.def.name}</span>
+			<ParamValueInput bind:draft={entry.draft} def={entry.r.def} />
+			<Helper>Обязателен {inCategories(entry.r.categories)}</Helper>
+		</div>
+	{/each}
 
 	{#if askPhoto}
 		<div class="space-y-1">

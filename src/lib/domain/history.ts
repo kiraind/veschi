@@ -7,7 +7,7 @@
 import { formatCode } from './sticker-code';
 import { pathNodeName } from './item';
 
-export type SubjectKind = 'item' | 'workbench' | 'type' | 'paramDef' | 'batch';
+export type SubjectKind = 'item' | 'workbench' | 'type' | 'paramDef' | 'category' | 'batch';
 
 /** A place or another entity as it was at the moment of the event. */
 export interface EntityRef {
@@ -45,6 +45,15 @@ export interface ParamChange {
 	change: 'added' | 'changed' | 'removed';
 }
 
+/** A required parameter of a category: added, removed or moved to the other level. */
+export interface CategoryParamChange {
+	/** Parameter name. */
+	name: string;
+	change: 'added' | 'removed' | 'level';
+	/** The level after the change (before it, for a removed one). */
+	level: 'TYPE' | 'ITEM';
+}
+
 /** Data of each event kind (the `data` column). `backfilled` marks events carried over from the database. */
 export interface HistoryDataMap {
 	'item.created': { quantity?: number; to?: Place };
@@ -73,6 +82,13 @@ export interface HistoryDataMap {
 	'paramDef.created': Record<string, never>;
 	'paramDef.updated': { changes: Change[] };
 	'paramDef.deleted': Record<string, never>;
+	'category.created': Record<string, never>;
+	'category.updated': { changes: Change[] };
+	/** `types`: how many types lost the category. */
+	'category.deleted': { types?: number };
+	'category.params': { changes: CategoryParamChange[] };
+	/** The type was put into (or taken out of) a category. */
+	'type.category': { category: EntityRef; removed: boolean };
 	'workbench.created': Record<string, never>;
 	'workbench.updated': { changes: Change[] };
 	'workbench.deleted': Record<string, never>;
@@ -120,6 +136,11 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'paramDef.created': 'changes',
 	'paramDef.updated': 'changes',
 	'paramDef.deleted': 'changes',
+	'category.created': 'changes',
+	'category.updated': 'changes',
+	'category.deleted': 'changes',
+	'category.params': 'changes',
+	'type.category': 'changes',
 	'workbench.created': 'changes',
 	'workbench.updated': 'changes',
 	'workbench.deleted': 'changes',
@@ -138,6 +159,7 @@ export const SUBJECT_LABELS: Record<SubjectKind, string> = {
 	workbench: 'Рабочие столы',
 	type: 'Типы',
 	paramDef: 'Параметры',
+	category: 'Категории',
 	batch: 'Листы наклеек'
 };
 
@@ -149,7 +171,7 @@ export const SUBJECT_LABELS: Record<SubjectKind, string> = {
  * Filters of the history list. In the URL: `?entity=<id>` (events of one
  * item, type, parameter… including where it is only involved, e.g. things put
  * into a container), `?actor=<user id>`, `?group=moves|changes|archive|stickers`,
- * `?subject=item|workbench|type|paramDef|batch`.
+ * `?subject=item|workbench|type|paramDef|category|batch`.
  */
 export interface HistoryFilters {
 	entity: string | null;
@@ -238,6 +260,8 @@ export function entityHref(kind: SubjectKind, id: string): string {
 			return `/types/${id}`;
 		case 'paramDef':
 			return `/params/${id}`;
+		case 'category':
+			return `/categories/${id}`;
 		case 'batch':
 			return '/stickers';
 	}
@@ -272,6 +296,22 @@ function changeLine({ field, before, after }: Change): Segment[] {
 			? `«${formatChangeValue(v)}»`
 			: formatChangeValue(v);
 	return [{ text: `${FIELD_LABELS[field]}: ${quote(before)} → ${quote(after)}` }];
+}
+
+const LEVEL_TEXT: Record<CategoryParamChange['level'], string> = {
+	TYPE: 'у типа',
+	ITEM: 'у каждой вещи'
+};
+
+function categoryParamLine(c: CategoryParamChange): string {
+	switch (c.change) {
+		case 'added':
+			return `«${c.name}» обязателен ${LEVEL_TEXT[c.level]}`;
+		case 'removed':
+			return `«${c.name}» больше не обязателен`;
+		case 'level':
+			return `«${c.name}» теперь обязателен ${LEVEL_TEXT[c.level]}`;
+	}
 }
 
 const PARAM_CHANGE: Record<ParamChange['change'], string> = {
@@ -430,6 +470,36 @@ export function describeEvent(e: HistoryEventView): EventText {
 			};
 		case 'paramDef.deleted':
 			return { title: [t('Параметр '), subject, t(' удалён')], details: [] };
+		case 'category.created':
+			return { title: [t('Категория '), subject, t(' создана')], details: [] };
+		case 'category.updated':
+			return {
+				title: [t('Категория '), subject, t(' изменена')],
+				details: changes((e.data as HistoryData<'category.updated'>).changes)
+			};
+		case 'category.deleted': {
+			const d = e.data as HistoryData<'category.deleted'>;
+			return {
+				title: [t('Категория '), subject, t(' удалена')],
+				details: d.types ? [[t(`Типов в ней было: ${d.types}`)]] : []
+			};
+		}
+		case 'category.params':
+			return {
+				title: [t('Обязательные параметры категории '), subject, t(' изменены')],
+				details: (e.data as HistoryData<'category.params'>).changes.map((c) => [
+					t(categoryParamLine(c))
+				])
+			};
+		case 'type.category': {
+			const d = e.data as HistoryData<'type.category'>;
+			return {
+				title: d.removed
+					? [t('Тип '), subject, t(' убран из категории '), link(d.category)]
+					: [t('Тип '), subject, t(' добавлен в категорию '), link(d.category)],
+				details: []
+			};
+		}
 		case 'workbench.created':
 			return { title: [subject, t(' создан')], details: [] };
 		case 'workbench.updated':

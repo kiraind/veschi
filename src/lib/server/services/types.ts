@@ -12,6 +12,8 @@ import { deleteStored, deleteUnreferencedFiles, thumbKeyOf } from './files';
 import { diffFields } from '$lib/domain/history';
 import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
+import { categoryInfoOf, type CategoryInfo } from './categories';
+import { missingParams, type RequiredParam } from '$lib/domain/categories';
 import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
 
 /** Side of a stored photo (square), px: full size and thumbnail. */
@@ -57,9 +59,11 @@ export interface TypeInfo {
 	photoKey: string | null;
 }
 
-export interface TypeCard {
+export interface TypeCard extends CategoryInfo {
 	type: TypeInfo;
 	params: ParamView[];
+	/** Required «у типа» parameters it has no value of. */
+	missing: RequiredParam[];
 	items: { id: string; name: string; quantity: number; path: PathNode[] }[];
 	/** A container type whose items hold something (or have things taken out to a bench). */
 	hasContents: boolean;
@@ -114,13 +118,14 @@ export async function listTypes(
 /** A type with its parameters and every active item of it with its location. */
 export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 	const type = await findType(actor, id);
-	const [params, items] = await Promise.all([
+	const [params, items, categories] = await Promise.all([
 		getParamsOf(actor, 'typeId', [id]),
 		db.item.findMany({
 			where: { typeId: id, status: 'ACTIVE', ...visibleTo(actor) },
 			include: { type: { select: { name: true } } },
 			orderBy: { createdAt: 'asc' }
-		})
+		}),
+		categoryInfoOf(id)
 	]);
 	const [paths, contents] = await Promise.all([
 		getPaths(items.map((i) => i.id)),
@@ -130,6 +135,8 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 		type: typeInfo(type),
 		hasContents: contents.inside + contents.taken > 0,
 		params: params.get(id) ?? [],
+		...categories,
+		missing: missingParams(categories.typeRequired, params.get(id) ?? []),
 		items: items.map((i) => ({
 			id: i.id,
 			name: itemDisplayName(i),

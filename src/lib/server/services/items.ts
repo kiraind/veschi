@@ -20,6 +20,8 @@ import {
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
+import { assertItemComplete, categoryInfoOf } from './categories';
+import { missingParams, type CategoryRef, type RequiredParam } from '$lib/domain/categories';
 
 const ownName = z
 	.string()
@@ -112,6 +114,14 @@ export interface ItemCard {
 	itemParams: ParamView[];
 	/** The type's parameters an own value does not override («Параметры»). */
 	typeParams: ParamView[];
+	/** Categories of the type. */
+	categories: CategoryRef[];
+	/** Required «у каждой вещи» / «у типа» by the type's categories. */
+	itemRequired: RequiredParam[];
+	typeRequired: RequiredParam[];
+	/** Required values not filled: the item's own and its type's. */
+	missingItemParams: RequiredParam[];
+	missingTypeParams: RequiredParam[];
 	children: ContentEntry[];
 }
 
@@ -158,6 +168,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
+		await assertItemComplete(type.id, data.params ?? [], tx);
 		const item = await tx.item.create({
 			data: {
 				...ownedBy(actor),
@@ -298,13 +309,15 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		include: { type: true, sticker: true }
 	});
 	if (!item) throw new NotFoundError('Вещь не найдена');
-	const [path, typeParams, itemParams, children] = await Promise.all([
+	const [path, typeParams, itemParams, children, categories] = await Promise.all([
 		getPath(id),
 		item.typeId ? getParamsOf(actor, 'typeId', [item.typeId]) : null,
 		getParamsOf(actor, 'itemId', [id]),
-		isContainerItem(item) ? listContents(actor, id) : []
+		isContainerItem(item) ? listContents(actor, id) : [],
+		item.typeId ? categoryInfoOf(item.typeId) : null
 	]);
 	const own = itemParams.get(id) ?? [];
+	const ofType = typeParams?.get(item.typeId ?? '') ?? [];
 	return {
 		item: {
 			id: item.id,
@@ -334,7 +347,12 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		stickerOrdered: item.stickerOrderedAt !== null,
 		path,
 		itemParams: own,
-		typeParams: inheritedParams(typeParams?.get(item.typeId ?? '') ?? [], own),
+		typeParams: inheritedParams(ofType, own),
+		categories: categories?.categories ?? [],
+		itemRequired: categories?.itemRequired ?? [],
+		typeRequired: categories?.typeRequired ?? [],
+		missingItemParams: missingParams(categories?.itemRequired ?? [], own),
+		missingTypeParams: missingParams(categories?.typeRequired ?? [], ofType),
 		children
 	};
 }

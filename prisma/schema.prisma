@@ -41,6 +41,7 @@ model User {
   ownedBatches      StickerBatch[]   @relation("StickerBatchOwner")
   ownedDictionaries EnumDictionary[] @relation("EnumDictionaryOwner")
   ownedParamDefs    ParamDef[]       @relation("ParamDefOwner")
+  ownedCategories   Category[]       @relation("CategoryOwner")
   ownedEvents       HistoryEvent[]   @relation("HistoryEventOwner")
   actedEvents       HistoryEvent[]   @relation("HistoryEventActor")
 }
@@ -71,6 +72,7 @@ model Household {
   batches      StickerBatch[]
   dictionaries EnumDictionary[]
   paramDefs    ParamDef[]
+  categories   Category[]
   events       HistoryEvent[]
 }
 
@@ -124,8 +126,9 @@ model ItemType {
   owner     User?      @relation("ItemTypeOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
   items     Item[]
-  params    Param[]    @relation("TypeParams")
-  refParams Param[]    @relation("ParamRefType")
+  params     Param[]        @relation("TypeParams")
+  refParams  Param[]        @relation("ParamRefType")
+  categories TypeCategory[]
 
   @@index([ownerId])
   @@index([householdId])
@@ -314,6 +317,7 @@ model ParamDef {
   household  Household?      @relation(fields: [householdId], references: [id], onDelete: Cascade)
   dictionary EnumDictionary? @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
   values     Param[]
+  categories CategoryParam[]
 
   @@index([ownerId])
   @@index([householdId])
@@ -370,6 +374,65 @@ model ParamEnumValue {
   @@id([paramId, optionId])
 }
 
+// ---------------------------------------------------------------------------
+// Categories («Категории»)
+// ---------------------------------------------------------------------------
+
+// A category («Еда», «Электроника») lists parameters a type in it must have
+// filled: some once for the whole type (КБЖУ), some on every item (срок
+// годности). A type may be in several categories; categories do not inherit
+// from each other. See docs/decisions.md, «Категории».
+model Category {
+  id          String   @id @default(cuid())
+  ownerId     String?
+  householdId String?
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User?           @relation("CategoryOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household?      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  params    CategoryParam[]
+  types     TypeCategory[]
+
+  @@index([ownerId])
+  @@index([householdId])
+}
+
+// Where a required parameter must have its value.
+enum ParamLevel {
+  // Once on the type, shared by all its items.
+  TYPE
+  // On each item itself (an own value; the type's does not count).
+  ITEM
+}
+
+// A parameter a category requires, and where.
+model CategoryParam {
+  categoryId String
+  defId      String
+  level      ParamLevel
+  position   Int        @default(0)
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  def      ParamDef @relation(fields: [defId], references: [id], onDelete: Restrict)
+
+  @@id([categoryId, defId])
+  @@index([defId])
+}
+
+model TypeCategory {
+  typeId     String
+  categoryId String
+  createdAt  DateTime @default(now())
+
+  type     ItemType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([typeId, categoryId])
+  @@index([categoryId])
+}
 
 // ---------------------------------------------------------------------------
 // History («История»)

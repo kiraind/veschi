@@ -22,6 +22,7 @@
 		type ParamView
 	} from '$lib/domain/params';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import { inCategories, type RequiredParam } from '$lib/domain/categories';
 	import ParamDefPicker from './ParamDefPicker.svelte';
 	import ParamValueInput from './ParamValueInput.svelte';
 	import ParamValueView from './ParamValueView.svelte';
@@ -30,14 +31,17 @@
 	 * The parameter list of a type or an item, edited in place: a pen on each
 	 * row edits its value, «Параметр» adds one. An item card shows two of
 	 * these: the item's own values and its type's (changing those changes the
-	 * type, so every item of it).
+	 * type, so every item of it). Values the type's categories require cannot
+	 * be removed; required values not filled yet are listed as «не заполнено».
 	 */
 	let {
 		params,
 		target,
 		editable = true,
 		exclude = [],
-		emptyText = 'Параметров нет.'
+		emptyText = 'Параметров нет.',
+		required = [],
+		missing = []
 	}: {
 		params: ParamView[];
 		target: { kind: 'type' | 'item'; id: string };
@@ -46,7 +50,13 @@
 		exclude?: string[];
 		/** Shown when there are no parameters; empty → nothing (just «Параметр»). */
 		emptyText?: string;
+		/** Required by categories here: such values cannot be removed. */
+		required?: RequiredParam[];
+		/** Required values not filled yet (shown at the top of the list). */
+		missing?: RequiredParam[];
 	} = $props();
+
+	const requiredBy = $derived(new Map(required.map((r) => [r.def.id, r.categories])));
 
 	let editingId = $state<string | null>(null);
 	let adding = $state(false);
@@ -83,6 +93,13 @@
 	function startAdding() {
 		close();
 		adding = true;
+	}
+
+	/** Opens the editor of a required value not filled yet, in place of its row. */
+	function fill(r: RequiredParam) {
+		close();
+		adding = true;
+		pickDef(r.def);
 	}
 
 	function pickDef(picked: ParamDefView) {
@@ -187,7 +204,11 @@
 						aria-label="Ниже"><ArrowDownOutline class="h-4 w-4" /></Button
 					>
 				{/if}
-				{#if ondelete}
+				{#if ondelete && requiredBy.has(draft.defId)}
+					<span class="ms-auto text-sm text-gray-500 dark:text-gray-400">
+						Обязателен {inCategories(requiredBy.get(draft.defId) ?? [])}
+					</span>
+				{:else if ondelete}
 					<Button
 						type="button"
 						color="red"
@@ -205,7 +226,33 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-	{#if params.length === 0 && !adding && emptyText}
+	{#each missing as r (r.def.id)}
+		{#if adding && draft?.defId === r.def.id}
+			{@render editor(saveNew, null, null)}
+		{:else}
+			<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
+				<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{r.def.name}</div>
+				<div class="min-w-0 text-amber-700 dark:text-amber-400">
+					не заполнено
+					<span class="block text-xs text-gray-500 dark:text-gray-400">
+						обязателен {inCategories(r.categories)}
+					</span>
+				</div>
+				{#if editable}
+					<div class="flex">
+						<button
+							type="button"
+							class="flex h-10 w-10 items-center justify-center rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-gray-700"
+							onclick={() => fill(r)}
+							title="Заполнить"
+							aria-label="Заполнить «{r.def.name}»"><PenOutline class="h-5 w-5" /></button
+						>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	{/each}
+	{#if params.length === 0 && missing.length === 0 && !adding && emptyText}
 		<p class="text-sm text-gray-500 dark:text-gray-400">{emptyText}</p>
 	{/if}
 	{#each params as param, i (param.id)}
@@ -237,13 +284,15 @@
 	{/each}
 
 	{#if adding}
-		{#if draft}
+		{#if missing.some((r) => r.def.id === draft?.defId)}
+			<!-- Filled in place of its «не заполнено» row above. -->
+		{:else if draft}
 			{@render editor(saveNew, null, null)}
 		{:else}
 			<ParamDefPicker
 				onpick={pickDef}
 				oncancel={close}
-				exclude={[...params.map((p) => p.defId), ...exclude]}
+				exclude={[...params.map((p) => p.defId), ...missing.map((r) => r.def.id), ...exclude]}
 			/>
 		{/if}
 	{:else if editable}

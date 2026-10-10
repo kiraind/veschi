@@ -184,4 +184,39 @@ describe('describeEvent', () => {
 			)
 		).toBe('Рабочий стол Гараж создан');
 	});
+
+	it('describes categories', () => {
+		const params = describeEvent(
+			event({
+				kind: 'category.params',
+				subjectKind: 'category',
+				subjectName: 'Еда',
+				data: {
+					changes: [
+						{ name: 'Срок годности', change: 'added', level: 'ITEM' },
+						{ name: 'Калорийность', change: 'level', level: 'TYPE' },
+						{ name: 'Состав', change: 'removed', level: 'TYPE' }
+					]
+				}
+			})
+		);
+		expect(plain(params.title)).toBe('Обязательные параметры категории Еда изменены');
+		expect(params.details.map(plain)).toEqual([
+			'«Срок годности» обязателен у каждой вещи',
+			'«Калорийность» теперь обязателен у типа',
+			'«Состав» больше не обязателен'
+		]);
+		const added = describeEvent(
+			event({
+				kind: 'type.category',
+				subjectKind: 'type',
+				subjectName: 'Гречка',
+				subjectId: 't1',
+				data: { category: { id: 'c1', name: 'Еда', kind: 'category' }, removed: false },
+				live: ['t1', 'c1']
+			})
+		);
+		expect(plain(added.title)).toBe('Тип Гречка добавлен в категорию Еда');
+		expect(added.title.at(-1)).toEqual({ text: 'Еда', href: '/categories/c1' });
+	});
 });
