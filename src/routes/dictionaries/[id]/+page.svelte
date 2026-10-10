@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { Button, Checkbox, Input, Label } from 'flowbite-svelte';
+	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import OptionListEditor from '$lib/components/OptionListEditor.svelte';
 	import type { PageData } from './$types';
@@ -42,45 +44,37 @@
 
 <svelte:head><title>{dictionary.name} — Справочники</title></svelte:head>
 
-<p><a href="/dictionaries">← Справочники</a></p>
-<h1>{dictionary.name}</h1>
+<p class="mb-2">
+	<a
+		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
+		href="/dictionaries"><ArrowLeftOutline class="h-4 w-4" />Справочники</a
+	>
+</p>
+<h1 class="mb-3 text-2xl font-bold break-words">{dictionary.name}</h1>
 
-<form class="stack" onsubmit={save}>
-	<label>
+<form class="flex flex-col gap-3" onsubmit={save}>
+	<Label>
 		Название
-		<input bind:value={name} required />
-	</label>
-	<label class="check">
-		<input type="checkbox" bind:checked={multiple} />
-		Можно выбрать несколько вариантов
-	</label>
-	<span class="muted">
+		<Input class="mt-1" bind:value={name} required />
+	</Label>
+	<Checkbox bind:checked={multiple}>Можно выбрать несколько вариантов</Checkbox>
+	<span class="text-sm text-gray-500 dark:text-gray-400">
 		Варианты. Переименование видно сразу во всех параметрах; используемый вариант удалить нельзя.
 	</span>
 	<OptionListEditor bind:options />
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	<div class="row">
-		<button class="primary" type="submit" disabled={busy}>Сохранить</button>
-		<a class="button" href="/dictionaries">Отмена</a>
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+	<div class="flex flex-wrap gap-2">
+		<Button type="submit" disabled={busy}>Сохранить</Button>
+		<Button color="alternative" href="/dictionaries">Отмена</Button>
 	</div>
 </form>
 
-<div class="danger-zone">
+<div class="mt-8">
 	{#if dictionary.usage > 0}
-		<p class="muted">Используется в параметрах: {dictionary.usage}. Удалить нельзя.</p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			Используется в параметрах: {dictionary.usage}. Удалить нельзя.
+		</p>
 	{:else}
-		<button class="danger" onclick={remove} disabled={busy}>Удалить справочник</button>
+		<Button color="red" outline onclick={remove} disabled={busy}>Удалить справочник</Button>
 	{/if}
 </div>
-
-<style>
-	.check {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--text);
-	}
-	.danger-zone {
-		margin-top: 2rem;
-	}
-</style>

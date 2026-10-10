@@ -8,7 +8,9 @@
 	import PathTrail from '$lib/components/PathTrail.svelte';
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
-	import Thumb from '$lib/components/Thumb.svelte';
+	import ItemPhoto from '$lib/components/ItemPhoto.svelte';
+	import { Alert, Badge, Button, Card } from 'flowbite-svelte';
+	import { ArrowsRepeatOutline, PenOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -16,6 +18,7 @@
 	const card = $derived(data.card);
 	const item = $derived(card.item);
 	const active = $derived(item.status === 'ACTIVE');
+	const container = $derived(item.isContainer || item.isWorkbench);
 
 	let moving = $state(false);
 	let adding = $state(false);
@@ -55,88 +58,113 @@
 			// gone: fall through
 		}
 		const parent = card.path.at(-1);
-		await goto(parent && !parent.isWorkbench ? `/items/${parent.id}` : '/');
+		await goto(parent && !parent.isWorkbench ? `/items/${parent.id}` : '/containers');
 	}
 </script>
 
 <svelte:head><title>{item.displayName} — Вещи</title></svelte:head>
 
 {#if !active}
-	<div class="card banner stack">
-		<strong>В архиве</strong>
-		<span class="muted">Вещь выкинута или использована. Её можно вернуть в каталог.</span>
-		<div><button class="primary" onclick={restore} disabled={busy}>Восстановить</button></div>
-	</div>
+	<Alert color="red" class="mb-4">
+		<p class="font-semibold">В архиве</p>
+		<p class="mb-2">Вещь выкинута или использована. Её можно вернуть в каталог.</p>
+		<Button size="sm" onclick={restore} disabled={busy}>Восстановить</Button>
+	</Alert>
 {/if}
 
-<p class="muted path"><PathTrail path={card.path} /></p>
+<p class="text-sm text-gray-500 dark:text-gray-400"><PathTrail path={card.path} /></p>
 
-<div class="row head">
-	{#if card.type}<Thumb photoKey={card.type.photoKey} size={72} />{/if}
-	<div class="title">
-		<h1>{item.displayName}</h1>
+<div class="mt-1 mb-3">
+	<h1 class="text-2xl font-bold wrap-anywhere">{item.displayName}</h1>
+	<div class="mt-1 flex flex-wrap items-center gap-2">
 		{#if card.type}
 			<a href="/types/{card.type.id}">{card.type.name}</a>
 		{:else if item.isWorkbench}
-			<span class="muted">Рабочий стол</span>
+			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
-		{#if item.quantity > 1}<span class="badge">{item.quantity} шт.</span>{/if}
-		{#if item.takenById}<span class="badge">на столе</span>{/if}
+		{#if item.isContainer && !item.isWorkbench}<Badge color="indigo">контейнер</Badge>{/if}
+		{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
 </div>
 
+{#if !item.isWorkbench}
+	<ItemPhoto
+		itemId={item.id}
+		photoKey={item.photoKey}
+		typePhotoKey={card.type?.photoKey ?? null}
+		editable={active}
+	/>
+{/if}
+
 {#if active && !item.isWorkbench}
-	<div class="row actions">
+	<div class="my-3 flex flex-wrap gap-2">
 		<TakeToWorkbench item={{ id: item.id, quantity: item.quantity, name: item.displayName }} />
-		<button onclick={() => (moving = !moving)}>Переложить</button>
-		<a class="button" href="/items/{item.id}/edit">Изменить</a>
+		<Button color="alternative" onclick={() => (moving = !moving)}>
+			<ArrowsRepeatOutline class="me-1.5 h-5 w-5" />
+			Переложить
+		</Button>
+		<Button color="alternative" href="/items/{item.id}/edit">
+			<PenOutline class="me-1.5 h-5 w-5" />
+			Изменить
+		</Button>
 	</div>
 	{#if moving}
-		<ContainerPicker
-			title="Куда переложить «{item.displayName}»?"
-			excludeId={item.id}
-			onpick={(c) => moveTo(c.id)}
-		/>
-		{#if card.path.length > 0}
-			<button onclick={() => moveTo(null)} disabled={busy}>На верхний уровень</button>
-		{/if}
+		<div class="mb-3 space-y-2">
+			<ContainerPicker
+				title="Куда переложить «{item.displayName}»?"
+				excludeId={item.id}
+				onpick={(c) => moveTo(c.id)}
+			/>
+			{#if card.path.length > 0}
+				<Button color="alternative" onclick={() => moveTo(null)} disabled={busy}>
+					На верхний уровень
+				</Button>
+			{/if}
+		</div>
 	{/if}
 {/if}
-{#if error}<p class="error" role="alert">{error}</p>{/if}
+{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 
 {#if !item.isWorkbench}
-	<section class="card">
+	<Card class="mt-3 max-w-none p-4">
 		<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
-	</section>
+	</Card>
 
-	<h2>Параметры</h2>
+	<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 	<ParamList params={card.params} showSource />
 {/if}
 
-<h2>Содержимое</h2>
-{#if card.children.length > 0}
-	<ItemContents entries={card.children} />
-{:else}
-	<p class="muted">Пусто.</p>
-{/if}
-{#if active}
-	<div class="row actions">
-		<a class="button" href="/items/new?parent={item.id}">+ Новая вещь сюда</a>
-		<button onclick={() => (adding = !adding)}>
-			{adding ? 'Отмена' : 'Положить сюда существующую'}
-		</button>
-	</div>
-	{#if adding}
-		<ContainerPicker
-			title="Что положить в «{item.displayName}»? Найдите вещь или отсканируйте её наклейку"
-			excludeId={item.id}
-			onpick={(c) => moveHere(c.id)}
-		/>
+{#if container}
+	<h2 class="mt-6 mb-2 text-lg font-semibold">Содержимое</h2>
+	{#if card.children.length > 0}
+		<ItemContents entries={card.children} />
+	{:else}
+		<p class="text-sm text-gray-500 dark:text-gray-400">Пусто.</p>
+	{/if}
+	{#if active}
+		<div class="my-3 flex flex-wrap gap-2">
+			<Button color="alternative" href="/items/new?parent={item.id}">
+				<PlusOutline class="me-1.5 h-5 w-5" />
+				Новая вещь сюда
+			</Button>
+			<Button color="alternative" onclick={() => (adding = !adding)}>
+				{adding ? 'Отмена' : 'Положить сюда существующую'}
+			</Button>
+		</div>
+		{#if adding}
+			<ContainerPicker
+				title="Что положить в «{item.displayName}»? Найдите вещь или отсканируйте её наклейку"
+				excludeId={item.id}
+				containersOnly={false}
+				onpick={(c) => moveHere(c.id)}
+			/>
+		{/if}
 	{/if}
 {/if}
 
 {#if active && !item.isWorkbench}
-	<div class="discard">
+	<div class="mt-8">
 		<DiscardDialog
 			item={{
 				id: item.id,
@@ -148,36 +176,3 @@
 		/>
 	</div>
 {/if}
-
-<style>
-	.banner {
-		border-color: var(--danger);
-		margin-bottom: 1rem;
-	}
-	.path {
-		margin: 0;
-	}
-	.head {
-		flex-wrap: nowrap;
-		align-items: flex-start;
-	}
-	.title h1 {
-		margin: 0 0 0.25rem;
-		overflow-wrap: anywhere;
-	}
-	.title {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem 0.5rem;
-		align-items: center;
-	}
-	.title h1 {
-		flex-basis: 100%;
-	}
-	.actions {
-		margin: 0.75rem 0;
-	}
-	.discard {
-		margin-top: 2rem;
-	}
-</style>

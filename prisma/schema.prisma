@@ -136,6 +136,10 @@ model Item {
   // Own name of this instance; when empty the type name is shown.
   name        String?
   quantity    Int        @default(1)
+  // Other items can be put inside (workbenches are always containers).
+  isContainer Boolean    @default(false)
+  // Object key of the item's own photo in S3/MinIO, stored as uploaded.
+  photoKey    String?
   // Where the item lies; null = top level.
   parentId    String?    @db.Uuid
   // Container the item was taken from (set while the item is on a workbench).

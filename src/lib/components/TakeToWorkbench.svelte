@@ -19,6 +19,7 @@
 
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { Button, Card, Input, Label, Radio } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import { pickWorkbench, quantityError } from '$lib/domain/workbench';
 
@@ -80,63 +81,63 @@
 </script>
 
 {#if !open}
-	<button class="primary" onclick={start}>На стол</button>
+	<Button onclick={start}>На стол</Button>
 {:else}
-	<div class="card stack">
+	<Card class="max-w-none gap-3 p-4">
 		{#if loading}
-			<p class="muted">Выбираю стол…</p>
+			<p class="text-sm text-gray-500 dark:text-gray-400">Выбираю стол…</p>
 		{:else if benches.length === 0}
 			<p>Рабочих столов пока нет.</p>
-			<div class="row">
-				<a class="button primary" href="/workbench/settings">Создать рабочий стол</a>
-				<button onclick={() => (open = false)}>Отмена</button>
+			<div class="flex flex-wrap gap-2">
+				<Button href="/workbench/settings">Создать рабочий стол</Button>
+				<Button color="alternative" onclick={() => (open = false)}>Отмена</Button>
 			</div>
 		{:else}
-			<p class="target">
-				{item.name} → <span class="highlight">{selected?.name ?? '?'}</span>
+			<p class="text-lg wrap-anywhere">
+				{item.name} →
+				<span class="rounded bg-yellow-100 px-1 dark:bg-yellow-900/50">{selected?.name ?? '?'}</span
+				>
 			</p>
 			{#if benches.length > 1}
-				<div class="row" role="radiogroup" aria-label="Рабочий стол">
+				<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Рабочий стол">
 					{#each benches as bench (bench.id)}
-						<label class="choice">
-							<input type="radio" name="bench-{item.id}" value={bench.id} bind:group={selectedId} />
+						<Radio
+							name="bench-{item.id}"
+							value={bench.id}
+							bind:group={selectedId}
+							classes={{
+								label:
+									'min-h-10 cursor-pointer rounded-lg border border-gray-200 px-3 text-base font-normal text-gray-900 dark:border-gray-700 dark:text-white'
+							}}
+						>
 							{bench.name}
-						</label>
+						</Radio>
 					{/each}
 				</div>
 			{/if}
 			{#if item.quantity > 1}
-				<label>
+				<Label>
 					Сколько достать (из {item.quantity})
-					<input type="number" min="1" max={item.quantity} step="1" bind:value={quantity} />
-				</label>
-				{#if quantityProblem}<p class="error">{quantityProblem}</p>{/if}
+					<Input
+						class="mt-1 max-w-40"
+						type="number"
+						min="1"
+						max={item.quantity}
+						step="1"
+						bind:value={quantity}
+					/>
+				</Label>
+				{#if quantityProblem}
+					<p class="text-sm text-red-600 dark:text-red-500">{quantityProblem}</p>
+				{/if}
 			{/if}
-			<div class="row">
-				<button
-					class="primary"
-					onclick={confirm}
-					disabled={busy || !selectedId || !!quantityProblem}
+			<div class="flex flex-wrap gap-2">
+				<Button onclick={confirm} disabled={busy || !selectedId || !!quantityProblem}
+					>Достать</Button
 				>
-					Достать
-				</button>
-				<button onclick={() => (open = false)} disabled={busy}>Отмена</button>
+				<Button color="alternative" onclick={() => (open = false)} disabled={busy}>Отмена</Button>
 			</div>
 		{/if}
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
-	</div>
+		{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+	</Card>
 {/if}
-
-<style>
-	.target {
-		margin: 0;
-		font-size: 1.1rem;
-	}
-	.choice {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.35rem;
-		color: var(--text);
-		font-size: 1rem;
-	}
-</style>

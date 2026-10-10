@@ -8,21 +8,11 @@
 	}: { path: { id: string; name: string; isWorkbench: boolean }[]; emptyText?: string } = $props();
 </script>
 
-<span class="trail">
+<span class="wrap-anywhere">
 	{#each path as node, i (node.id)}
-		{#if i > 0}<span class="sep" aria-hidden="true">→</span>{/if}
+		{#if i > 0}<span class="mx-1 text-gray-400 dark:text-gray-500" aria-hidden="true">→</span>{/if}
 		<a href={node.isWorkbench ? '/workbench' : `/items/${node.id}`}>{pathNodeName(node)}</a>
 	{:else}
-		<span class="muted">{emptyText}</span>
+		<span class="text-gray-500 dark:text-gray-400">{emptyText}</span>
 	{/each}
 </span>
-
-<style>
-	.trail {
-		overflow-wrap: anywhere;
-	}
-	.sep {
-		color: var(--muted);
-		margin: 0 0.25rem;
-	}
-</style>

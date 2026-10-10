@@ -19,7 +19,7 @@ describe('search', () => {
 	let solderingBox: string;
 
 	async function item(input: Record<string, unknown>) {
-		return (await createItem(actor, input)).id;
+		return (await createItem(actor, { isContainer: true, ...input })).id;
 	}
 
 	beforeEach(async () => {

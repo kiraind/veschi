@@ -1,12 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import type { StickerStatus } from '@prisma/client';
 import { z } from 'zod';
 import { db, type Tx } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
+import { storage } from '$lib/server/storage';
 import { itemDisplayName } from '$lib/domain/item';
 import { mergeParams, paramListSchema, type MergedParam, type ParamView } from '$lib/domain/params';
 import { getParamsOf, replaceParams } from './params';
-import { assertCanPlace, getPath, type PathNode } from './paths';
+import { assertCanPlace, assertIsContainer, getPath, type PathNode } from './paths';
 import { bindSticker } from './stickers';
 import { findOrCreateType } from './types';
 
@@ -32,6 +34,7 @@ export const createItemSchema = z
 		name: ownName,
 		quantity: quantity.default(1),
 		parentId: z.uuid().nullish(),
+		isContainer: z.boolean().default(false),
 		stickerCode: z.string().trim().min(1).optional(),
 		params: paramListSchema.optional()
 	})
@@ -41,7 +44,12 @@ export const createItemSchema = z
 	});
 
 export const updateItemSchema = z
-	.object({ ...typeChoice, name: ownName.optional(), quantity: quantity.optional() })
+	.object({
+		...typeChoice,
+		name: ownName.optional(),
+		quantity: quantity.optional(),
+		isContainer: z.boolean().optional()
+	})
 	.refine((v) => !(v.typeId && v.newTypeName), {
 		message: 'Либо существующий тип, либо новый',
 		path: ['typeId']
@@ -54,8 +62,10 @@ export interface ContentEntry {
 	id: string;
 	name: string;
 	typeName: string | null;
+	/** The item's own photo, else its type's. */
 	photoKey: string | null;
 	quantity: number;
+	isContainer: boolean;
 	/** Active items directly inside; > 0 means it can be expanded. */
 	childCount: number;
 	stickerCode: string | null;
@@ -72,6 +82,9 @@ export interface ItemCard {
 		status: 'ACTIVE' | 'ARCHIVED';
 		archivedAt: Date | null;
 		isWorkbench: boolean;
+		isContainer: boolean;
+		/** The item's own photo (the type photo is in `type`). */
+		photoKey: string | null;
 		parentId: string | null;
 		homeId: string | null;
 		takenById: string | null;
@@ -98,14 +111,18 @@ async function findVisibleType(actor: Actor, id: string, tx: Tx) {
 	return type;
 }
 
-/** A container new or moved items may go into: an active ordinary item. */
+/** A container new or moved items may go into: an active ordinary item marked as a container. */
 async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
-	const parent = await tx.item.findFirst({ where: { id: parentId, ...visibleTo(actor) } });
+	const parent = await tx.item.findFirst({
+		where: { id: parentId, ...visibleTo(actor) },
+		include: { type: { select: { name: true } } }
+	});
 	if (!parent) throw new NotFoundError('Контейнер не найден');
 	if (parent.status !== 'ACTIVE') throw new ValidationError('Контейнер в архиве');
 	if (parent.isWorkbench) {
 		throw new ValidationError('На рабочий стол вещи попадают кнопкой «На стол»');
 	}
+	assertIsContainer(parent);
 	return parent;
 }
 
@@ -126,6 +143,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				typeId: type.id,
 				name: data.name,
 				quantity: data.quantity,
+				isContainer: data.isContainer,
 				parentId: data.parentId ?? null
 			}
 		});
@@ -147,9 +165,21 @@ export async function updateItem(actor: Actor, id: string, input: unknown): Prom
 			: data.newTypeName
 				? (await findOrCreateType(actor, data.newTypeName, tx)).id
 				: undefined;
+		if (data.isContainer === false && item.isContainer) {
+			const [inside, taken] = await Promise.all([
+				tx.item.count({ where: { parentId: id, status: 'ACTIVE' } }),
+				tx.item.count({ where: { homeId: id, status: 'ACTIVE', takenById: { not: null } } })
+			]);
+			if (inside > 0) {
+				throw new ValidationError('Внутри лежат вещи — сначала переложите их');
+			}
+			if (taken > 0) {
+				throw new ValidationError('Вещи из него лежат на рабочем столе — сначала верните их');
+			}
+		}
 		await tx.item.update({
 			where: { id },
-			data: { typeId, name: data.name, quantity: data.quantity }
+			data: { typeId, name: data.name, quantity: data.quantity, isContainer: data.isContainer }
 		});
 	});
 }
@@ -208,13 +238,16 @@ export async function listContents(
 			id: i.id,
 			name: itemDisplayName(i),
 			typeName: i.type?.name ?? null,
-			photoKey: i.type?.photoKey ?? null,
+			photoKey: i.photoKey ?? i.type?.photoKey ?? null,
 			quantity: i.quantity,
+			isContainer: i.isContainer,
 			childCount: childCount.get(i.id) ?? 0,
 			stickerCode: i.sticker?.status === 'BOUND' ? i.sticker.code : null,
 			onWorkbench: i.takenById !== null
 		}))
-		.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+		.sort(
+			(a, b) => Number(b.isContainer) - Number(a.isContainer) || a.name.localeCompare(b.name, 'ru')
+		);
 }
 
 /** Everything the item card shows. Archived items and workbenches have cards too. */
@@ -228,7 +261,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		getPath(id),
 		item.typeId ? getParamsOf(actor, 'typeId', [item.typeId]) : null,
 		getParamsOf(actor, 'itemId', [id]),
-		listContents(actor, id)
+		item.isContainer || item.isWorkbench ? listContents(actor, id) : []
 	]);
 	const own = itemParams.get(id) ?? [];
 	return {
@@ -240,6 +273,8 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 			status: item.status,
 			archivedAt: item.archivedAt,
 			isWorkbench: item.isWorkbench,
+			isContainer: item.isContainer || item.isWorkbench,
+			photoKey: item.photoKey,
 			parentId: item.parentId,
 			homeId: item.homeId,
 			takenById: item.takenById
@@ -255,4 +290,52 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		itemParams: own,
 		children
 	};
+}
+
+/** Most an item photo may weigh; it is stored as uploaded. */
+export const MAX_ITEM_PHOTO_SIZE = 20 * 1024 * 1024;
+
+/** Detects a browser-displayable image by its first bytes. */
+export function detectImageType(data: Buffer): string | null {
+	if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+		return 'image/jpeg';
+	}
+	if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+		return 'image/png';
+	}
+	if (
+		data.subarray(0, 4).toString('latin1') === 'RIFF' &&
+		data.subarray(8, 12).toString('latin1') === 'WEBP'
+	) {
+		return 'image/webp';
+	}
+	if (data.subarray(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
+	return null;
+}
+
+/**
+ * Sets the item's own photo, stored as uploaded (JPEG, PNG, WebP or GIF);
+ * the previous photo is deleted. Returns the new key.
+ */
+export async function setItemPhoto(actor: Actor, id: string, data: Buffer): Promise<string> {
+	const item = await findItem(actor, id);
+	if (item.isWorkbench) throw new ValidationError('У рабочего стола нет фото');
+	if (data.length === 0) throw new ValidationError('Файл пустой');
+	if (data.length > MAX_ITEM_PHOTO_SIZE) {
+		throw new ValidationError(`Фото больше ${MAX_ITEM_PHOTO_SIZE / 1024 / 1024} МБ`);
+	}
+	const mime = detectImageType(data);
+	if (!mime) throw new ValidationError('Нужна картинка в формате JPEG, PNG, WebP или GIF');
+	const photoKey = `items/${id}/${randomUUID()}.${mime.slice('image/'.length)}`;
+	await storage().put(photoKey, data, mime);
+	await db.item.update({ where: { id }, data: { photoKey } });
+	if (item.photoKey) await storage().delete(item.photoKey);
+	return photoKey;
+}
+
+export async function removeItemPhoto(actor: Actor, id: string): Promise<void> {
+	const item = await findItem(actor, id);
+	if (!item.photoKey) return;
+	await db.item.update({ where: { id }, data: { photoKey: null } });
+	await storage().delete(item.photoKey);
 }

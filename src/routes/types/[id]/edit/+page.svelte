@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { Button, Input, Label } from 'flowbite-svelte';
+	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import ParamEditor from '$lib/components/ParamEditor.svelte';
 	import type { ParamInput } from '$lib/domain/params';
@@ -36,20 +38,25 @@
 
 <svelte:head><title>Изменить тип: {type.name} — Вещи</title></svelte:head>
 
-<p><a href="/types/{type.id}">← {type.name}</a></p>
-<h1>Изменить тип</h1>
+<p class="mb-2">
+	<a
+		class="inline-flex max-w-full items-center gap-1 py-2 text-sm break-words text-primary-700 hover:underline dark:text-primary-400"
+		href="/types/{type.id}"><ArrowLeftOutline class="h-4 w-4 shrink-0" />{type.name}</a
+	>
+</p>
+<h1 class="mb-3 text-2xl font-bold">Изменить тип</h1>
 
-<form class="stack" onsubmit={rename}>
-	<label>
+<form class="flex flex-col gap-3" onsubmit={rename}>
+	<Label>
 		Название
-		<input bind:value={name} required />
-	</label>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	<div class="row">
-		<button class="primary" type="submit" disabled={busy}>Сохранить название</button>
+		<Input class="mt-1" bind:value={name} required />
+	</Label>
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+	<div class="flex flex-wrap gap-2">
+		<Button type="submit" disabled={busy}>Сохранить название</Button>
 	</div>
 </form>
 
-<h2>Параметры типа</h2>
-<p class="muted">Видны у всех вещей этого типа.</p>
+<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры типа</h2>
+<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">Видны у всех вещей этого типа.</p>
 <ParamEditor initial={params} onsave={saveParams} />

@@ -23,7 +23,7 @@ describe('workbench service', () => {
 
 	async function item(name: string, parentId: string | null = null, quantity = 1) {
 		return db.item.create({
-			data: { ownerId: actor.userId, typeId, name, parentId, quantity }
+			data: { ownerId: actor.userId, typeId, name, parentId, quantity, isContainer: true }
 		});
 	}
 

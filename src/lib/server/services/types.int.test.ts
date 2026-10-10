@@ -56,7 +56,11 @@ describe('types', () => {
 
 	it('shows its parameters and items with locations on the type card', async () => {
 		const type = await createType(actor, { name: 'NE555' });
-		const box = await createItem(actor, { newTypeName: 'Коробка', name: 'Коробка с микросхемами' });
+		const box = await createItem(actor, {
+			newTypeName: 'Коробка',
+			name: 'Коробка с микросхемами',
+			isContainer: true
+		});
 		await createItem(actor, { typeId: type.id, quantity: 10, parentId: box.id });
 		await setParams(actor, { typeId: type.id }, [
 			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' }

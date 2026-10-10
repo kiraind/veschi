@@ -12,7 +12,9 @@ describe('archive service', () => {
 	let codeCounter = 0;
 
 	async function item(name: string, parentId: string | null = null) {
-		return db.item.create({ data: { ownerId: actor.userId, typeId, name, parentId } });
+		return db.item.create({
+			data: { ownerId: actor.userId, typeId, name, parentId, isContainer: true }
+		});
 	}
 
 	async function stickerFor(itemId: string) {

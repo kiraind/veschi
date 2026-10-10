@@ -13,6 +13,7 @@ export interface SearchLocation {
 	/** Display name of the item record (own name or type name). */
 	name: string;
 	quantity: number;
+	isContainer: boolean;
 	path: PathNode[];
 }
 
@@ -97,12 +98,13 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			id: string;
 			name: string | null;
 			quantity: number;
+			is_container: boolean;
 			type_id: string;
 			type_name: string;
 			photo_key: string | null;
 		}[]
 	>`
-		SELECT i.id::text, i.name, i.quantity, t.id::text AS type_id, t.name AS type_name,
+		SELECT i.id::text, i.name, i.quantity, i."isContainer" AS is_container, t.id::text AS type_id, t.name AS type_name,
 			t."photoKey" AS photo_key
 		FROM "Item" i
 		JOIN "ItemType" t ON t.id = i."typeId"
@@ -131,6 +133,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			itemId: row.id,
 			name: row.name?.trim() || row.type_name,
 			quantity: row.quantity,
+			isContainer: row.is_container,
 			path: paths.get(row.id) ?? []
 		});
 	}

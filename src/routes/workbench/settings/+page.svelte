@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '$lib/api';
+	import { Button, Card, Input, Label } from 'flowbite-svelte';
+	import { ArrowLeftOutline, MapPinOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -107,80 +109,111 @@
 
 <svelte:head><title>Рабочие столы — Вещи</title></svelte:head>
 
-<p><a href="/workbench">← Рабочий стол</a></p>
-<h1>Рабочие столы</h1>
-<p class="muted">
+<p class="mb-3">
+	<a
+		href="/workbench"
+		class="inline-flex min-h-10 items-center text-sm font-medium text-primary-700 hover:underline dark:text-primary-500"
+	>
+		<ArrowLeftOutline class="me-1 h-4 w-4" />Рабочий стол
+	</a>
+</p>
+<h1 class="mb-3 text-2xl font-bold">Рабочие столы</h1>
+<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
 	Если у стола есть зона, при «На стол» выберется стол, в зоне которого вы сейчас. Вне зон —
 	последний использованный.
 </p>
 
-<ul class="list">
+<ul class="flex flex-col gap-3">
 	{#each data.workbenches as bench (bench.id)}
-		<li class="card row bench">
-			<div class="grow">
-				<strong>{bench.name}</strong>
-				<div class="muted">
-					{zoneText(bench)}{#if bench.itemCount > 0}&nbsp;· на столе: {bench.itemCount}{/if}
+		<li>
+			<Card class="max-w-none flex-row flex-wrap items-center gap-3 p-4">
+				<div class="min-w-40 flex-1">
+					<strong class="font-semibold break-words">{bench.name}</strong>
+					<div class="text-sm break-words text-gray-500 dark:text-gray-400">
+						{zoneText(bench)}{#if bench.itemCount > 0}&nbsp;· на столе: {bench.itemCount}{/if}
+					</div>
 				</div>
-			</div>
-			<button onclick={() => edit(bench)} disabled={busy}>Изменить</button>
-			<button
-				class="danger"
-				onclick={() => remove(bench)}
-				disabled={busy || bench.itemCount > 0}
-				title={bench.itemCount > 0 ? 'Сначала уберите вещи со стола' : undefined}
-			>
-				Удалить
-			</button>
+				<div class="flex flex-wrap gap-2">
+					<Button color="alternative" size="sm" onclick={() => edit(bench)} disabled={busy}>
+						Изменить
+					</Button>
+					<Button
+						color="red"
+						outline
+						size="sm"
+						onclick={() => remove(bench)}
+						disabled={busy || bench.itemCount > 0}
+						title={bench.itemCount > 0 ? 'Сначала уберите вещи со стола' : undefined}
+					>
+						Удалить
+					</Button>
+				</div>
+			</Card>
 		</li>
 	{/each}
 </ul>
 
 {#if draft}
-	<form class="card stack form" onsubmit={save}>
-		<h2>{draft.id ? 'Изменить стол' : 'Новый стол'}</h2>
-		<label>
-			Название
-			<input bind:value={draft.name} required maxlength="200" placeholder="Гараж" />
-		</label>
-		<div class="stack">
-			<span class="muted">Зона (необязательно)</span>
-			{#if draft.geoLat !== null && draft.geoLng !== null}
-				<span class="mono">{draft.geoLat.toFixed(5)}, {draft.geoLng.toFixed(5)}</span>
-				<label>
-					Радиус, м
-					<input type="number" min="1" step="1" bind:value={draft.geoRadiusM} required />
-				</label>
-			{/if}
-			<div class="row">
-				<button type="button" onclick={useCurrentPlace} disabled={locating}>
-					{locating ? 'Определяю…' : 'Взять текущее место'}
-				</button>
-				{#if draft.geoLat !== null}
-					<button type="button" onclick={clearZone}>Убрать зону</button>
+	<Card class="mt-4 max-w-none p-4">
+		<form class="flex flex-col gap-4" onsubmit={save}>
+			<h2 class="text-lg font-semibold">{draft.id ? 'Изменить стол' : 'Новый стол'}</h2>
+			<Label>
+				Название
+				<Input class="mt-1" bind:value={draft.name} required maxlength={200} placeholder="Гараж" />
+			</Label>
+			<div class="flex flex-col gap-2">
+				<span class="text-sm text-gray-500 dark:text-gray-400">Зона (необязательно)</span>
+				{#if draft.geoLat !== null && draft.geoLng !== null}
+					<span class="font-mono text-sm">{draft.geoLat.toFixed(5)}, {draft.geoLng.toFixed(5)}</span
+					>
+					<Label>
+						Радиус, м
+						<Input
+							class="mt-1"
+							type="number"
+							min="1"
+							step="1"
+							bind:value={
+								() => draft?.geoRadiusM ?? undefined,
+								(v: number | undefined) => {
+									if (draft) draft.geoRadiusM = v ?? null;
+								}
+							}
+							required
+						/>
+					</Label>
 				{/if}
+				<div class="flex flex-wrap gap-2">
+					<Button
+						type="button"
+						color="alternative"
+						size="sm"
+						onclick={useCurrentPlace}
+						disabled={locating}
+						loading={locating}
+					>
+						{#if !locating}<MapPinOutline class="me-1.5 h-4 w-4" />{/if}
+						{locating ? 'Определяю…' : 'Взять текущее место'}
+					</Button>
+					{#if draft.geoLat !== null}
+						<Button type="button" color="alternative" size="sm" onclick={clearZone}>
+							Убрать зону
+						</Button>
+					{/if}
+				</div>
 			</div>
-		</div>
-		<div class="row">
-			<button class="primary" type="submit" disabled={busy}>Сохранить</button>
-			<button type="button" onclick={() => (draft = null)} disabled={busy}>Отмена</button>
-		</div>
-	</form>
+			<div class="flex flex-wrap gap-2">
+				<Button type="submit" disabled={busy}>Сохранить</Button>
+				<Button type="button" color="alternative" onclick={() => (draft = null)} disabled={busy}>
+					Отмена
+				</Button>
+			</div>
+		</form>
+	</Card>
 {:else}
-	<p><button class="primary" onclick={() => edit()}>Добавить стол</button></p>
+	<p class="mt-4">
+		<Button onclick={() => edit()}><PlusOutline class="me-1.5 h-4 w-4" />Добавить стол</Button>
+	</p>
 {/if}
 
-{#if error}<p class="error" role="alert">{error}</p>{/if}
-
-<style>
-	.grow {
-		flex: 1;
-		min-width: 10rem;
-	}
-	.form {
-		margin-top: var(--gap);
-	}
-	.form h2 {
-		margin: 0;
-	}
-</style>
+{#if error}<p class="mt-3 text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}

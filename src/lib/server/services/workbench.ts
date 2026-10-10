@@ -4,7 +4,7 @@ import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { quantityError } from '$lib/domain/workbench';
 import { discard } from './archive';
-import { assertCanPlace, getPath, getPaths, type PathNode } from './paths';
+import { assertCanPlace, assertIsContainer, getPath, getPaths, type PathNode } from './paths';
 
 // ---------------------------------------------------------------------------
 // Workbenches
@@ -191,7 +191,13 @@ export interface WorkbenchItem {
 	returnBlockedReason: string | null;
 }
 
-type HomeState = { id: string; status: string; takenById: string | null; isWorkbench: boolean };
+type HomeState = {
+	id: string;
+	status: string;
+	takenById: string | null;
+	isWorkbench: boolean;
+	isContainer: boolean;
+};
 
 /** Why the item cannot go back to `home` (null = it can). */
 function returnBlocker(home: HomeState | null, homePath: PathNode[]): string | null {
@@ -200,6 +206,7 @@ function returnBlocker(home: HomeState | null, homePath: PathNode[]): string | n
 	if (home.takenById || home.isWorkbench || homePath.some((n) => n.isWorkbench)) {
 		return 'Исходное место само сейчас на рабочем столе';
 	}
+	if (!home.isContainer) return 'Исходное место больше не контейнер';
 	return null;
 }
 
@@ -216,7 +223,9 @@ export async function listWorkbench(actor: Actor, workbenchId?: string): Promise
 		include: {
 			type: { select: { name: true } },
 			takenBy: { select: { name: true } },
-			home: { select: { id: true, status: true, takenById: true, isWorkbench: true } },
+			home: {
+				select: { id: true, status: true, takenById: true, isWorkbench: true, isContainer: true }
+			},
 			_count: { select: { children: { where: { status: 'ACTIVE' } } } }
 		},
 		orderBy: [{ takenAt: 'desc' }, { id: 'asc' }]
@@ -315,13 +324,15 @@ export async function relocate(
 		const item = await requireActiveItem(actor, itemId, tx);
 		if (containerId) {
 			const container = await tx.item.findFirst({
-				where: { id: containerId, ...visibleTo(actor) }
+				where: { id: containerId, ...visibleTo(actor) },
+				include: { type: { select: { name: true } } }
 			});
 			if (!container) throw new NotFoundError('Контейнер не найден');
 			if (container.isWorkbench) {
 				throw new ValidationError('Чтобы положить вещь на стол, используйте «На стол»');
 			}
 			if (container.status !== 'ACTIVE') throw new ValidationError('Контейнер в архиве');
+			assertIsContainer(container);
 			await assertCanPlace(item.id, container.id, tx);
 		}
 		await tx.item.update({ where: { id: item.id }, data: { parentId: containerId, ...notTaken } });

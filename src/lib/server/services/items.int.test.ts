@@ -2,7 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
-import { createItem, getItemCard, listContents, moveItem, updateItem } from './items';
+import { storage } from '$lib/server/storage';
+import { discard, purge, restore } from './archive';
+import { openFile } from './files';
+import {
+	createItem,
+	getItemCard,
+	listContents,
+	moveItem,
+	removeItemPhoto,
+	setItemPhoto,
+	updateItem
+} from './items';
 import { setParams } from './params';
 import { search } from './search';
 
@@ -11,7 +22,7 @@ describe('items', () => {
 	let boxType: string;
 
 	async function box(name: string, parentId: string | null = null) {
-		return (await createItem(actor, { typeId: boxType, name, parentId })).id;
+		return (await createItem(actor, { typeId: boxType, name, parentId, isContainer: true })).id;
 	}
 
 	beforeEach(async () => {
@@ -255,6 +266,93 @@ describe('items', () => {
 			});
 			const other = await createTestActor('other');
 			await expect(getItemCard(other, id)).rejects.toThrow('Вещь не найдена');
+		});
+	});
+
+	describe('containers', () => {
+		it('puts things only into items marked as containers', async () => {
+			const plain = (await createItem(actor, { typeId: boxType, name: 'Нож' })).id;
+			const knife = (await createItem(actor, { typeId: boxType, name: 'Ложка' })).id;
+			await expect(createItem(actor, { typeId: boxType, parentId: plain })).rejects.toThrow(
+				'«Нож» — не контейнер'
+			);
+			await expect(moveItem(actor, knife, plain)).rejects.toThrow('не контейнер');
+
+			await updateItem(actor, plain, { isContainer: true });
+			await moveItem(actor, knife, plain);
+			expect((await db.item.findUniqueOrThrow({ where: { id: knife } })).parentId).toBe(plain);
+		});
+
+		it('cannot stop being a container while something lies inside', async () => {
+			const shelf = await box('Полка');
+			const inside = (await createItem(actor, { typeId: boxType, parentId: shelf })).id;
+			await expect(updateItem(actor, shelf, { isContainer: false })).rejects.toThrow(
+				'Внутри лежат вещи'
+			);
+			await moveItem(actor, inside, null);
+			await updateItem(actor, shelf, { isContainer: false });
+			const card = await getItemCard(actor, shelf);
+			expect(card.item.isContainer).toBe(false);
+			expect(card.children).toEqual([]);
+		});
+
+		it('restores an item to the top level when its place is no longer a container', async () => {
+			const shelf = await box('Полка');
+			const inside = (await createItem(actor, { typeId: boxType, parentId: shelf })).id;
+			await discard(actor, inside, {});
+			await updateItem(actor, shelf, { isContainer: false });
+			await restore(actor, inside);
+			expect((await db.item.findUniqueOrThrow({ where: { id: inside } })).parentId).toBeNull();
+		});
+
+		it('lists containers before other things', async () => {
+			await createItem(actor, { typeId: boxType, name: 'А-вещь' });
+			await box('Я-коробка');
+			const names = (await listContents(actor, null)).map((e) => [e.name, e.isContainer]);
+			expect(names).toEqual([
+				['Я-коробка', true],
+				['А-вещь', false]
+			]);
+		});
+	});
+
+	describe('photo', () => {
+		const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+
+		it('stores the photo as uploaded and shows it instead of the type photo', async () => {
+			await db.itemType.update({ where: { id: boxType }, data: { photoKey: 'types/x.webp' } });
+			const id = await box('Коробка');
+			const key = await setItemPhoto(actor, id, png);
+			expect(key).toMatch(new RegExp(`^items/${id}/.+\\.png$`));
+			const stored = await storage().get(key);
+			expect(stored?.contentType).toBe('image/png');
+			expect((await openFile(actor, key)).size).toBe(png.length);
+			await expect(openFile(await createTestActor('other'), key)).rejects.toThrow();
+
+			const card = await getItemCard(actor, id);
+			expect(card.item.photoKey).toBe(key);
+			expect((await listContents(actor, null))[0]?.photoKey).toBe(key);
+
+			const second = await setItemPhoto(actor, id, png);
+			expect(await storage().get(key)).toBeNull();
+			await removeItemPhoto(actor, id);
+			expect(await storage().get(second)).toBeNull();
+			expect((await listContents(actor, null))[0]?.photoKey).toBe('types/x.webp');
+		});
+
+		it('rejects files that are not images', async () => {
+			const id = await box('Коробка');
+			await expect(setItemPhoto(actor, id, Buffer.from('<svg></svg>'))).rejects.toThrow(
+				'JPEG, PNG, WebP или GIF'
+			);
+		});
+
+		it('deletes the photo when the item is purged', async () => {
+			const id = await box('Коробка');
+			const key = await setItemPhoto(actor, id, png);
+			await discard(actor, id, {});
+			await purge(actor, id);
+			expect(await storage().get(key)).toBeNull();
 		});
 	});
 });

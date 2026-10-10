@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import { api, ApiError } from '$lib/api';
 	import type { PageData } from './$types';
 
@@ -35,72 +36,70 @@
 
 <svelte:head><title>Профиль — Вещи</title></svelte:head>
 
-<h1>Профиль</h1>
+<h1 class="mb-3 text-2xl font-bold">Профиль</h1>
 
-<div class="stack">
-	<section class="card">
-		<div class="name">{data.profile.name}</div>
-		<div class="muted">Логин: <span class="mono">{data.profile.login}</span></div>
-	</section>
+<div class="flex flex-col gap-4">
+	<Card class="max-w-none p-4">
+		<div class="text-lg font-semibold wrap-anywhere">{data.profile.name}</div>
+		<div class="text-sm text-gray-500 dark:text-gray-400">
+			Логин: <span class="font-mono break-all">{data.profile.login}</span>
+		</div>
+	</Card>
 
-	<section class="card">
-		<h2>Смена пароля</h2>
-		<form class="stack" onsubmit={changePassword}>
+	<Card class="max-w-none p-4">
+		<h2 class="mb-3 text-lg font-semibold">Смена пароля</h2>
+		<form class="flex flex-col gap-4" onsubmit={changePassword}>
 			<!-- Lets password managers attach the new password to the right account. -->
 			<input type="hidden" name="username" autocomplete="username" value={data.profile.login} />
-			<label>
+			<Label>
 				Текущий пароль
-				<input
+				<Input
+					class="mt-1"
 					type="password"
 					autocomplete="current-password"
 					required
 					bind:value={currentPassword}
 				/>
-			</label>
-			<label>
+			</Label>
+			<Label>
 				Новый пароль (не короче 8 символов)
-				<input
+				<Input
+					class="mt-1"
 					type="password"
 					autocomplete="new-password"
 					required
-					minlength="8"
+					minlength={8}
 					bind:value={newPassword}
 				/>
-			</label>
-			<label>
+			</Label>
+			<Label>
 				Повторите новый пароль
-				<input
+				<Input
+					class="mt-1"
 					type="password"
 					autocomplete="new-password"
 					required
-					minlength="8"
+					minlength={8}
 					bind:value={repeatPassword}
 				/>
-			</label>
+			</Label>
 			{#if message}
-				<p class:error={!message.ok} class:success={message.ok} role="status">{message.text}</p>
+				<p
+					class="text-sm {message.ok
+						? 'text-green-700 dark:text-green-500'
+						: 'text-red-600 dark:text-red-500'}"
+					role="status"
+				>
+					{message.text}
+				</p>
 			{/if}
-			<button class="primary" type="submit" disabled={saving}>Сменить пароль</button>
+			<div>
+				<Button type="submit" disabled={saving}>Сменить пароль</Button>
+			</div>
 		</form>
-	</section>
+	</Card>
 
 	<form method="POST" action="/logout">
-		<button class="danger" type="submit">Выйти</button>
+		<Button type="submit" color="red" outline>Выйти</Button>
 	</form>
 </div>
-
-<style>
-	.name {
-		font-size: 1.2rem;
-		font-weight: 600;
-	}
-	h2 {
-		margin-top: 0;
-	}
-	p {
-		margin: 0;
-	}
-	.success {
-		color: var(--success);
-	}
-</style>

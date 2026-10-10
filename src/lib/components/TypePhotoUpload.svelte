@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { Button } from 'flowbite-svelte';
+	import { ImageOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 
 	/** Uploads (or removes) the single photo of a type; a new photo replaces the old one. */
@@ -30,12 +32,17 @@
 	}
 </script>
 
-<div class="stack photo">
+<div class="flex flex-col gap-2">
 	{#if photoKey}
-		<img src="/files/{photoKey}" alt="Фото типа" />
+		<img
+			class="max-h-[60vh] w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
+			src="/files/{photoKey}"
+			alt="Фото типа"
+		/>
 	{/if}
-	<div class="row">
-		<label class="button">
+	<div class="flex flex-wrap gap-2">
+		<Button tag="label" color="alternative" disabled={busy} class="cursor-pointer">
+			<ImageOutline class="me-1 h-4 w-4" />
 			{busy ? 'Загрузка…' : photoKey ? 'Заменить фото' : 'Добавить фото'}
 			<input
 				class="hidden"
@@ -44,36 +51,19 @@
 				disabled={busy}
 				onchange={(e) => upload(e.currentTarget)}
 			/>
-		</label>
+		</Button>
 		{#if photoKey}
-			<button
+			<Button
 				type="button"
-				class="danger"
+				color="red"
+				outline
 				disabled={busy}
 				onclick={() =>
 					confirm('Удалить фото?') && run(() => api.delete(`/api/types/${typeId}/photo`))}
 			>
-				Удалить фото
-			</button>
+				<TrashBinOutline class="me-1 h-4 w-4" />Удалить фото
+			</Button>
 		{/if}
 	</div>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 </div>
-
-<style>
-	img {
-		width: 100%;
-		max-height: 60vh;
-		object-fit: contain;
-		border-radius: var(--radius);
-		background: var(--surface);
-	}
-	label.button {
-		flex-direction: row;
-		color: var(--text);
-		font-size: 1rem;
-	}
-	.hidden {
-		display: none;
-	}
-</style>

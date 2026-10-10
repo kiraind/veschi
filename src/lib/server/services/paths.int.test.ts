@@ -9,7 +9,9 @@ describe('paths', () => {
 	let typeId: string;
 
 	async function item(name: string, parentId: string | null = null) {
-		return db.item.create({ data: { ownerId: actor.userId, typeId, name, parentId } });
+		return db.item.create({
+			data: { ownerId: actor.userId, typeId, name, parentId, isContainer: true }
+		});
 	}
 
 	beforeEach(async () => {

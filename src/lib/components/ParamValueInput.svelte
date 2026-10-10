@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button, Fileupload, Input, Radio, Select } from 'flowbite-svelte';
 	import { api, ApiError } from '$lib/api';
 	import type { ParamDraft } from '$lib/domain/param-draft';
 	import { formatFileSize } from '$lib/domain/params';
@@ -44,43 +45,62 @@
 </script>
 
 {#if draft.valueType === 'STRING'}
-	<input bind:value={draft.text} placeholder="Значение" aria-label="Значение" />
+	<Input bind:value={draft.text} placeholder="Значение" aria-label="Значение" />
 {:else if draft.valueType === 'NUMBER'}
-	<div class="row nowrap">
-		<input bind:value={draft.number} inputmode="decimal" placeholder="85" aria-label="Число" />
-		<input class="unit" bind:value={draft.unit} placeholder="мм" aria-label="Единица" />
+	<div class="flex items-center gap-1.5">
+		<div class="min-w-0 flex-1">
+			<Input bind:value={draft.number} inputmode="decimal" placeholder="85" aria-label="Число" />
+		</div>
+		<div class="w-20 shrink-0">
+			<Input bind:value={draft.unit} placeholder="мм" aria-label="Единица" />
+		</div>
 	</div>
 {:else if draft.valueType === 'RANGE'}
-	<div class="row nowrap">
-		<input bind:value={draft.min} inputmode="decimal" placeholder="от" aria-label="Минимум" />
+	<div class="flex items-center gap-1.5">
+		<div class="min-w-0 flex-1">
+			<Input bind:value={draft.min} inputmode="decimal" placeholder="от" aria-label="Минимум" />
+		</div>
 		<span>–</span>
-		<input bind:value={draft.max} inputmode="decimal" placeholder="до" aria-label="Максимум" />
-		<input class="unit" bind:value={draft.unit} placeholder="В" aria-label="Единица" />
+		<div class="min-w-0 flex-1">
+			<Input bind:value={draft.max} inputmode="decimal" placeholder="до" aria-label="Максимум" />
+		</div>
+		<div class="w-16 shrink-0">
+			<Input bind:value={draft.unit} placeholder="В" aria-label="Единица" />
+		</div>
 	</div>
 {:else if draft.valueType === 'ENUM'}
 	{#if dictionaries === null}
-		<p class="muted">Загрузка справочников…</p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка справочников…</p>
 	{:else if dictionaries.length === 0}
-		<p class="muted">Справочников нет. <a href="/dictionaries">Создать справочник</a></p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			Справочников нет. <a
+				class="text-primary-700 hover:underline dark:text-primary-400"
+				href="/dictionaries">Создать справочник</a
+			>
+		</p>
 	{:else}
-		<select
+		<Select
 			value={draft.dictionaryId}
 			onchange={(e) => {
 				draft.dictionaryId = e.currentTarget.value;
 				draft.optionIds = [];
 			}}
 			aria-label="Справочник"
+			placeholder=""
 		>
 			<option value="" disabled>Справочник…</option>
 			{#each dictionaries as d (d.id)}
 				<option value={d.id}>{d.name}</option>
 			{/each}
-		</select>
+		</Select>
 		{#if dictionary}
-			<div class="row options">
+			<div class="flex flex-wrap gap-x-4 gap-y-1">
 				{#each dictionary.options as option (option.id)}
-					<label class="option">
+					<label class="flex min-h-10 items-center gap-2 text-sm text-gray-900 dark:text-white">
 						<input
+							class="h-4 w-4 border-gray-300 bg-gray-100 text-primary-600 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:ring-offset-gray-800 dark:focus:ring-primary-600 {dictionary.multiple
+								? 'rounded-sm'
+								: ''}"
 							type={dictionary.multiple ? 'checkbox' : 'radio'}
 							name="enum-{draft.uid}"
 							checked={draft.optionIds.includes(option.id)}
@@ -93,51 +113,30 @@
 		{/if}
 	{/if}
 {:else if draft.valueType === 'URL'}
-	<input type="url" bind:value={draft.url} placeholder="https://…" aria-label="Ссылка" />
+	<Input type="url" bind:value={draft.url} placeholder="https://…" aria-label="Ссылка" />
 {:else if draft.valueType === 'FILE'}
 	{#if draft.file}
-		<div class="row">
-			<span>{draft.file.fileName}</span>
-			<span class="muted">{formatFileSize(draft.file.fileSize)}</span>
-			<button type="button" onclick={() => (draft.file = null)}>Заменить</button>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="min-w-0 break-words">{draft.file.fileName}</span>
+			<span class="text-sm text-gray-500 dark:text-gray-400"
+				>{formatFileSize(draft.file.fileSize)}</span
+			>
+			<Button color="alternative" size="sm" type="button" onclick={() => (draft.file = null)}
+				>Заменить</Button
+			>
 		</div>
 	{:else}
-		<input
-			type="file"
-			disabled={uploading}
-			onchange={(e) => upload(e.currentTarget)}
-			aria-label="Файл"
-		/>
-		{#if uploading}<span class="muted">Загрузка…</span>{/if}
-		{#if uploadError}<span class="error">{uploadError}</span>{/if}
+		<Fileupload disabled={uploading} onchange={(e) => upload(e.currentTarget)} aria-label="Файл" />
+		{#if uploading}<span class="text-sm text-gray-500 dark:text-gray-400">Загрузка…</span>{/if}
+		{#if uploadError}<span class="text-sm text-red-600 dark:text-red-500">{uploadError}</span>{/if}
 	{/if}
 {:else if draft.valueType === 'DATE'}
-	<input type="date" bind:value={draft.date} aria-label="Дата" />
+	<Input type="date" bind:value={draft.date} aria-label="Дата" />
 {:else if draft.valueType === 'REF'}
 	<RefPicker bind:value={draft.ref} />
 {:else if draft.valueType === 'BOOLEAN'}
-	<div class="row">
-		<label class="option"><input type="radio" bind:group={draft.bool} value={true} /> да</label>
-		<label class="option"><input type="radio" bind:group={draft.bool} value={false} /> нет</label>
+	<div class="flex flex-wrap gap-x-4">
+		<Radio classes={{ label: 'min-h-10' }} bind:group={draft.bool} value={true}>да</Radio>
+		<Radio classes={{ label: 'min-h-10' }} bind:group={draft.bool} value={false}>нет</Radio>
 	</div>
 {/if}
-
-<style>
-	.nowrap {
-		flex-wrap: nowrap;
-		gap: 0.4rem;
-	}
-	.unit {
-		max-width: 5rem;
-	}
-	.options {
-		gap: 0.4rem 1rem;
-	}
-	.option {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.35rem;
-		color: var(--text);
-		font-size: 1rem;
-	}
-</style>
