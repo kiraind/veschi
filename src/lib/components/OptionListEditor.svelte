@@ -1,12 +1,25 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { Button, Input } from 'flowbite-svelte';
-	import { ArrowDownOutline, ArrowUpOutline, CloseOutline } from 'flowbite-svelte-icons';
+	import {
+		ArrowDownOutline,
+		ArrowUpOutline,
+		CloseOutline,
+		PlusOutline
+	} from 'flowbite-svelte-icons';
 
-	/** Ordered option list of a dictionary: rename, reorder, add, remove. */
+	/**
+	 * Ordered option list of a dictionary: rename, reorder, add, remove. «Вариант» adds
+	 * an empty option and puts the cursor in it; Enter in the last one adds the next.
+	 */
 	let { options = $bindable() }: { options: { id?: string; label: string; usage?: number }[] } =
 		$props();
 
-	let fresh = $state('');
+	let list: HTMLUListElement | undefined = $state();
+
+	function inputs(): HTMLInputElement[] {
+		return [...(list?.querySelectorAll('input') ?? [])];
+	}
 
 	function move(index: number, delta: number) {
 		const target = index + delta;
@@ -14,19 +27,31 @@
 		[options[index], options[target]] = [options[target]!, options[index]!];
 	}
 
-	function add() {
-		const label = fresh.trim();
-		if (!label) return;
-		options.push({ label });
-		fresh = '';
+	async function add() {
+		options.push({ label: '' });
+		await tick();
+		inputs().at(-1)?.focus();
+	}
+
+	/** Enter goes to the next option (adding one after the last) instead of submitting. */
+	function onkeydown(event: KeyboardEvent, index: number) {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		if (index === options.length - 1) add();
+		else inputs()[index + 1]?.focus();
 	}
 </script>
 
-<ul class="flex flex-col gap-2">
+<ul class="flex flex-col gap-2" bind:this={list}>
 	{#each options as option, i (option.id ?? `new-${i}`)}
 		<li class="flex items-center gap-1.5">
 			<div class="min-w-0 flex-1">
-				<Input bind:value={option.label} aria-label="Вариант {i + 1}" required />
+				<Input
+					bind:value={option.label}
+					aria-label="Вариант {i + 1}"
+					required
+					onkeydown={(e) => onkeydown(e, i)}
+				/>
 			</div>
 			<Button
 				color="alternative"
@@ -59,19 +84,8 @@
 		</li>
 	{/each}
 </ul>
-<div class="flex items-center gap-1.5">
-	<div class="min-w-0 flex-1">
-		<Input
-			bind:value={fresh}
-			placeholder="Новый вариант"
-			aria-label="Новый вариант"
-			onkeydown={(e) => {
-				if (e.key === 'Enter') {
-					e.preventDefault();
-					add();
-				}
-			}}
-		/>
-	</div>
-	<Button color="alternative" class="shrink-0" type="button" onclick={add}>Добавить</Button>
+<div>
+	<Button color="alternative" type="button" onclick={add}>
+		<PlusOutline class="me-1 h-4 w-4" />Вариант
+	</Button>
 </div>
