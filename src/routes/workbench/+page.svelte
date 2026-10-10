@@ -111,7 +111,10 @@
 										class="min-w-0 font-semibold break-words text-primary-700 hover:underline dark:text-primary-500"
 										>{item.name}</a
 									>
-									{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+									{#if item.quantity > 1}<Badge
+											color="gray"
+											class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
+										>{/if}
 								</div>
 								<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
 									Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}

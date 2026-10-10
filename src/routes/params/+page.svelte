@@ -54,7 +54,8 @@
 			>
 				<span class="min-w-0 font-medium break-words">{d.name}</span>
 				<span class="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-					<Badge color="gray">{paramKindLabel(d)}</Badge>
+					<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200">{paramKindLabel(d)}</Badge
+					>
 					{usage(d)}
 				</span>
 				{#if d.valueType === 'ENUM'}

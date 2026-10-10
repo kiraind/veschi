@@ -60,7 +60,9 @@
 								class="text-primary-700 wrap-anywhere hover:underline dark:text-primary-400"
 								><strong>{item.name}</strong></a
 							>
-							{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+							{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
+									>{item.quantity} шт.</Badge
+								>{/if}
 							{#if item.stickerCode}<span class="font-mono text-sm text-gray-500 dark:text-gray-400"
 									>{formatCode(item.stickerCode)}</span
 								>{/if}

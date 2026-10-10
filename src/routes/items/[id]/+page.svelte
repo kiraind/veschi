@@ -167,7 +167,9 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
 		{#if card.type?.isContainer}<Badge color="indigo">контейнер</Badge>{/if}
-		{#if item.quantity > 1}<Badge color="gray">{item.quantity} шт.</Badge>{/if}
+		{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
+				>{item.quantity} шт.</Badge
+			>{/if}
 		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
 </div>

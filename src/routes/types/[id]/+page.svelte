@@ -131,7 +131,9 @@
 					class="font-semibold wrap-anywhere text-primary-700 hover:underline dark:text-primary-500"
 					>{item.name}</a
 				>
-				{#if item.quantity > 1}<Badge color="gray" class="ms-1">{item.quantity} шт.</Badge>{/if}
+				{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
+						>{item.quantity} шт.</Badge
+					>{/if}
 				<p class="text-sm text-gray-500 dark:text-gray-400">
 					<PathTrail path={item.path} emptyText="верхний уровень" muted />
 				</p>
