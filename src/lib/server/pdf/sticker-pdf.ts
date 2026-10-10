@@ -2,25 +2,23 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import {
-	CAPTION_SIDE_PADDING_MM,
+	CAPTION_FONT_PT,
+	CAPTION_GAP_MM,
+	CAPTION_LINE_MM,
 	CAPTION_WIDTH_MM,
-	CELL_HEIGHT_MM,
 	CELL_WIDTH_MM,
 	COLUMNS,
 	MARGIN_X_MM,
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
 	PAGE_WIDTH_MM,
-	ROWS,
-	STICKERS_PER_SHEET,
-	cellPosition,
-	fitCaption
+	QR_SIZE_MM,
+	STICKER_PADDING_MM,
+	layoutSheets,
+	stickerHeights,
+	wrapCaption
 } from '$lib/domain/sticker-sheet';
 
-/** Cell content, top to bottom (mm from the top of the cell). */
-export const QR_SIZE_MM = 25;
-const QR_TOP_MM = 1.5;
-const CAPTION_TOP_MM = 27.3;
 /**
  * The ID is printed inside the QR, in a blank square in its centre. Level H
  * restores up to 30 % of the code; a square of ~31 % of the side (~10 % of the
@@ -89,15 +87,15 @@ export function qrLayout(text: string): QrLayout {
 	return { size, box: { start, side }, runs };
 }
 
-function drawCutLines(doc: PDFKit.PDFDocument) {
+/** Cut lines: the column edges across the page and the bottom edge of every row. */
+function drawCutLines(doc: PDFKit.PDFDocument, rowEdges: number[]) {
 	doc.save().lineWidth(CUT_LINE_PT).strokeColor(CUT_LINE_COLOR);
 	for (let c = 0; c <= COLUMNS; c++) {
 		const x = mm(MARGIN_X_MM + c * CELL_WIDTH_MM);
 		doc.moveTo(x, 0).lineTo(x, mm(PAGE_HEIGHT_MM));
 	}
-	for (let r = 0; r <= ROWS; r++) {
-		const y = mm(MARGIN_Y_MM + r * CELL_HEIGHT_MM);
-		doc.moveTo(0, y).lineTo(mm(PAGE_WIDTH_MM), y);
+	for (const edge of [MARGIN_Y_MM, ...rowEdges]) {
+		doc.moveTo(0, mm(edge)).lineTo(mm(PAGE_WIDTH_MM), mm(edge));
 	}
 	doc.stroke().restore();
 }
@@ -129,13 +127,14 @@ function drawQr(doc: PDFKit.PDFDocument, baseUrl: string, code: string, x: numbe
 	});
 }
 
-function drawCaption(doc: PDFKit.PDFDocument, caption: string, cellX: number, y: number) {
-	const { text, fontSize } = fitCaption(caption);
-	doc.font(CAPTION_FONT).fontSize(fontSize).fillColor('black');
-	doc.text(text, cellX + mm(CAPTION_SIDE_PADDING_MM), y, {
-		width: mm(CAPTION_WIDTH_MM),
-		align: 'center',
-		lineBreak: false
+function drawCaption(doc: PDFKit.PDFDocument, caption: string, x: number, y: number) {
+	doc.font(CAPTION_FONT).fontSize(CAPTION_FONT_PT).fillColor('black');
+	wrapCaption(caption).lines.forEach((line, i) => {
+		doc.text(line, x, y + i * mm(CAPTION_LINE_MM), {
+			width: mm(CAPTION_WIDTH_MM),
+			align: 'center',
+			lineBreak: false
+		});
 	});
 }
 
@@ -155,22 +154,22 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 		doc.on('error', reject);
 	});
 
+	const { cells, rowEdges } = layoutSheets(stickerHeights(stickers.map((s) => s.caption)));
+	let page = -1;
 	stickers.forEach((sticker, index) => {
-		if (index % STICKERS_PER_SHEET === 0) {
+		const cell = cells[index];
+		if (!cell) return;
+		if (cell.page !== page) {
+			page = cell.page;
 			doc.addPage();
-			drawCutLines(doc);
+			drawCutLines(doc, rowEdges[page] ?? []);
 		}
-		const cell = cellPosition(index);
-		const x = mm(cell.x);
-		const y = mm(cell.y);
-		drawQr(
-			doc,
-			qrBaseUrl,
-			sticker.code,
-			x + mm((CELL_WIDTH_MM - QR_SIZE_MM) / 2),
-			y + mm(QR_TOP_MM)
-		);
-		if (sticker.caption) drawCaption(doc, sticker.caption, x, y + mm(CAPTION_TOP_MM));
+		const x = mm(cell.x + STICKER_PADDING_MM);
+		const y = mm(cell.y + STICKER_PADDING_MM);
+		drawQr(doc, qrBaseUrl, sticker.code, x, y);
+		if (sticker.caption) {
+			drawCaption(doc, sticker.caption, x, y + mm(QR_SIZE_MM + CAPTION_GAP_MM));
+		}
 	});
 
 	doc.end();

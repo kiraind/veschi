@@ -7,7 +7,7 @@ import { extractCode } from '$lib/domain/scan';
 import { itemSubject, recordEvent } from './history';
 import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
-import { MAX_SHEETS_PER_BATCH, STICKERS_PER_SHEET, planSheets } from '$lib/domain/sticker-sheet';
+import { MAX_SHEETS_PER_BATCH, planSheets } from '$lib/domain/sticker-sheet';
 
 /** Serializes code generation so concurrent batches cannot issue codes close to each other. */
 const ISSUE_LOCK_KEY = 0x5711c0de;
@@ -125,7 +125,7 @@ export interface BatchSummary {
 
 /**
  * Issues a batch of new stickers: the captions plus `blankCount` blank ones,
- * rounded up to whole A4 sheets with extra blank stickers (FR-9). Every new
+ * with extra blank stickers to fill the last A4 sheet (FR-9). Every new
  * code differs from every code ever issued in at least 3 positions (FR-11).
  */
 export async function issueBatch(
@@ -136,12 +136,10 @@ export async function issueBatch(
 	if (!Number.isInteger(input.blankCount) || input.blankCount < 0) {
 		throw new ValidationError('Число наклеек без подписи должно быть целым и не меньше 0');
 	}
-	const plan = planSheets(captions.length, input.blankCount);
+	const plan = planSheets(captions, input.blankCount);
 	if (plan.total === 0) throw new ValidationError('Нужна хотя бы одна наклейка');
 	if (plan.sheets > MAX_SHEETS_PER_BATCH) {
-		throw new ValidationError(
-			`За раз можно напечатать не больше ${MAX_SHEETS_PER_BATCH} листов (${MAX_SHEETS_PER_BATCH * STICKERS_PER_SHEET} наклеек)`
-		);
+		throw new ValidationError(`За раз можно напечатать не больше ${MAX_SHEETS_PER_BATCH} листов`);
 	}
 
 	const batch = await db.$transaction(

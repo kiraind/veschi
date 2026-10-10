@@ -39,29 +39,29 @@ describe('stickers', () => {
 	});
 
 	describe('issueBatch (FR-9, FR-11)', () => {
-		it('7 captions + 10 blank → one sheet of 54 stickers, 7 captioned', async () => {
+		it('7 captions + 10 blank → one sheet of 130 stickers, 7 captioned', async () => {
 			const captions = ['Припой', 'Шкаф', 'Полка 1', 'Полка 2', 'Коробка', 'Ящик', 'Пакет'];
 			const batch = await issueBatch(actor, { captions, blankCount: 10 });
-			expect(batch).toMatchObject({ total: 54, captioned: 7, free: 54 });
+			expect(batch).toMatchObject({ total: 130, captioned: 7, free: 130 });
 			const stickers = await batchStickers(batch.id);
-			expect(stickers).toHaveLength(54);
+			expect(stickers).toHaveLength(130);
 			expect(stickers.slice(0, 7).map((s) => s.caption)).toEqual(captions);
 			expect(stickers.slice(7).every((s) => s.caption === null)).toBe(true);
 		});
 
-		it('0 captions + 60 blank → two sheets, 108 stickers', async () => {
-			const batch = await issueBatch(actor, { captions: [], blankCount: 60 });
-			expect(batch.total).toBe(108);
-			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(108);
+		it('0 captions + 141 blank → two sheets, 280 stickers', async () => {
+			const batch = await issueBatch(actor, { captions: [], blankCount: 141 });
+			expect(batch.total).toBe(280);
+			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(280);
 		});
 
 		it('issues new, unique, free codes far from every code issued before, by anyone', async () => {
 			const other = await createTestActor('other');
-			await issueBatch(other, { captions: [], blankCount: 54 });
-			await issueBatch(actor, { captions: [], blankCount: 54 });
-			await issueBatch(actor, { captions: [' ', ''], blankCount: 100 });
+			await issueBatch(other, { captions: [], blankCount: 140 });
+			await issueBatch(actor, { captions: [], blankCount: 140 });
+			await issueBatch(actor, { captions: [' ', ''], blankCount: 200 });
 			const all = await db.sticker.findMany();
-			expect(all).toHaveLength(54 * 4);
+			expect(all).toHaveLength(140 * 4);
 			expect(all.every((s) => s.status === 'FREE' && /^[2-9A-HJKMNP-Z]{6}$/.test(s.code))).toBe(
 				true
 			);
@@ -77,7 +77,7 @@ describe('stickers', () => {
 				'хотя бы одна'
 			);
 			await expect(issueBatch(actor, { captions: [], blankCount: -1 })).rejects.toThrow();
-			await expect(issueBatch(actor, { captions: [], blankCount: 54 * 20 + 1 })).rejects.toThrow(
+			await expect(issueBatch(actor, { captions: [], blankCount: 140 * 20 + 1 })).rejects.toThrow(
 				'не больше'
 			);
 		});
@@ -98,16 +98,16 @@ describe('stickers', () => {
 		expect(list).toHaveLength(1);
 		expect(list[0]).toMatchObject({
 			id: batch.id,
-			total: 54,
+			total: 130,
 			captioned: 1,
-			free: 52,
+			free: 128,
 			bound: 1,
 			writtenOff: 1
 		});
 	});
 
 	it('renders the batch PDF with one page per sheet; other users cannot get it', async () => {
-		const batch = await issueBatch(actor, { captions: ['Припой'], blankCount: 60 });
+		const batch = await issueBatch(actor, { captions: ['Припой'], blankCount: 140 });
 		const { filename, pdf } = await getBatchPdf(actor, batch.id, 'https://v.ex.io');
 		expect(filename).toMatch(/^stickers-\d{4}-\d{2}-\d{2}-[0-9a-z]{8}\.pdf$/);
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');

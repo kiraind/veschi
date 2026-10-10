@@ -5,8 +5,9 @@
 	import { FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import {
+		CAPTION_MAX_LINES,
 		MAX_SHEETS_PER_BATCH,
-		fitCaption,
+		wrapCaption,
 		parseCaptions,
 		planSheets
 	} from '$lib/domain/sticker-sheet';
@@ -22,10 +23,10 @@
 
 	const captions = $derived(parseCaptions(captionsText));
 	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
-	const plan = $derived(planSheets(captions.length, blank));
+	const plan = $derived(planSheets(captions, blank));
 	const tooLong = $derived(
 		captions
-			.map((caption) => ({ caption, fitted: fitCaption(caption) }))
+			.map((caption) => ({ caption, fitted: wrapCaption(caption) }))
 			.filter(({ fitted }) => fitted.truncated)
 	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
@@ -78,10 +79,10 @@
 		</Label>
 		{#if tooLong.length > 0}
 			<Alert color="yellow" class="text-sm">
-				Не влезет в строку и будет обрезано:
+				Не влезет в {CAPTION_MAX_LINES} строки и будет обрезано:
 				<ul class="mt-1 list-disc ps-5">
 					{#each tooLong as { caption, fitted }, i (i)}
-						<li class="break-words">{caption} → <b>{fitted.text}</b></li>
+						<li class="break-words">{caption} → <b>{fitted.lines.join(' ')}</b></li>
 					{/each}
 				</ul>
 			</Alert>

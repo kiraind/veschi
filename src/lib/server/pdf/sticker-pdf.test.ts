@@ -84,8 +84,8 @@ describe('sticker PDF', () => {
 		}
 	});
 
-	it('renders one A4 page per 54 stickers as a valid PDF', async () => {
-		const codes = generateCodes([], 108);
+	it('renders the sheets as a valid PDF, starting a page when a row does not fit', async () => {
+		const codes = generateCodes([], 140);
 		const stickers = codes.map((code, i) => ({
 			code,
 			caption: i < 7 ? `Коробка с микросхемами ${i}` : null
@@ -93,7 +93,11 @@ describe('sticker PDF', () => {
 		const pdf = await renderStickerPdf(stickers, 'https://v.ex.io');
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 		expect(pdf.subarray(-6).toString('latin1')).toContain('%%EOF');
+		// The captioned row is taller, so the last blank row moves to page 2.
 		expect(pageCount(pdf)).toBe(2);
-		expect(pageCount(await renderStickerPdf(stickers.slice(0, 54), 'https://v.ex.io'))).toBe(1);
+		const blank = stickers
+			.slice(10)
+			.concat(stickers.slice(0, 10).map((s) => ({ ...s, caption: null })));
+		expect(pageCount(await renderStickerPdf(blank, 'https://v.ex.io'))).toBe(1);
 	});
 });
