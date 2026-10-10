@@ -59,6 +59,16 @@ describe('stickers', () => {
 			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(280);
 		});
 
+		it('fillSheet: false → exactly the requested stickers', async () => {
+			const batch = await issueBatch(actor, {
+				captions: ['Припой'],
+				blankCount: 2,
+				fillSheet: false
+			});
+			expect(batch).toMatchObject({ total: 3, captioned: 1, free: 3 });
+			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(3);
+		});
+
 		it('issues new, unique, free codes far from every code issued before, by anyone', async () => {
 			const other = await createTestActor('other');
 			await issueBatch(other, { captions: [], blankCount: 140 });

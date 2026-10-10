@@ -186,10 +186,11 @@ export interface SheetPlan {
 }
 
 /**
- * Lays out the captions and the blank stickers and fills the rest of the last
- * sheet with blank ones: 7 captions + 10 blank → 1 sheet with 7 + 133 stickers.
+ * Lays out the captions and the blank stickers and, with `fill`, fills the
+ * rest of the last sheet with blank ones: 7 captions + 10 blank → 1 sheet
+ * with 7 + 133 stickers (without `fill` — 7 + 10).
  */
-export function planSheets(captions: string[], blankCount: number): SheetPlan {
+export function planSheets(captions: string[], blankCount: number, fill = true): SheetPlan {
 	const requested = captions.length + blankCount;
 	if (requested > MAX_SHEETS_PER_BATCH * BLANKS_PER_SHEET) {
 		// Too many for a batch whatever the captions; skip laying out a huge list.
@@ -197,7 +198,7 @@ export function planSheets(captions: string[], blankCount: number): SheetPlan {
 		return { sheets, total: requested, captioned: captions.length, padding: 0 };
 	}
 	const heights = [...stickerHeights(captions), ...Array<number>(blankCount).fill(BLANK_HEIGHT_MM)];
-	const { cells, pages } = layoutSheets(heights, true);
+	const { cells, pages } = layoutSheets(heights, fill);
 	return {
 		sheets: pages,
 		total: cells.length,

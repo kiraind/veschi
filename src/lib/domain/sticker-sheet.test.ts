@@ -65,6 +65,15 @@ describe('sticker sheet', () => {
 		expect(planSheets([], 141)).toEqual({ sheets: 2, total: 280, captioned: 0, padding: 139 });
 	});
 
+	it('without filling the sheet, prints only what was asked', () => {
+		expect(planSheets(['Припой'], 141, false)).toEqual({
+			sheets: 2,
+			total: 142,
+			captioned: 1,
+			padding: 0
+		});
+	});
+
 	it('exactly one sheet needs no padding; nothing requested → no sheets', () => {
 		expect(planSheets([], 140)).toMatchObject({ sheets: 1, padding: 0 });
 		expect(planSheets([], 0)).toMatchObject({ sheets: 0, total: 0 });

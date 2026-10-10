@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
-	import { Alert, Button, Card, Input, Label, Textarea } from 'flowbite-svelte';
+	import { Alert, Button, Card, Checkbox, Input, Label, Textarea } from 'flowbite-svelte';
 	import { CloseOutline, FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -19,6 +19,7 @@
 
 	let captionsText = $state('');
 	let blankCount = $state(0);
+	let fillSheet = $state(true);
 	let busy = $state(false);
 	let error = $state('');
 	let issuedId = $state('');
@@ -27,7 +28,7 @@
 	// Ordered stickers go first, with the item's name as the caption (see issueBatch).
 	const captions = $derived([...data.orders.map((o) => o.caption), ...typed]);
 	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
-	const plan = $derived(planSheets(captions, blank));
+	const plan = $derived(planSheets(captions, blank, fillSheet));
 	const tooLong = $derived(
 		captions
 			.map((caption) => ({ caption, fitted: wrapCaption(caption) }))
@@ -72,6 +73,7 @@
 			const batch = await api.post<{ id: string }>('/api/stickers/batches', {
 				captions: typed,
 				blankCount: blank,
+				fillSheet,
 				orderItemIds: data.orders.map((o) => o.itemId)
 			});
 			issuedId = batch.id;
@@ -190,6 +192,9 @@
 				bind:value={blankCount}
 			/>
 		</Label>
+		<Checkbox bind:checked={fillSheet}
+			>Заполнить пустое место на листе наклейками без подписи</Checkbox
+		>
 
 		{#if plan.total > 0}
 			<p class="text-sm">

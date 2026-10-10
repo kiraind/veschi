@@ -210,7 +210,8 @@ export interface BatchSummary {
 /**
  * Issues a batch of new stickers: one per ordered item (in `orderItemIds`,
  * the orders the person saw), the captions, and `blankCount` blank ones,
- * with extra blank stickers to fill the last A4 sheet (FR-9). Every new
+ * with extra blank stickers to fill the last A4 sheet unless `fillSheet` is
+ * false (FR-9). Every new
  * code differs from every code ever issued in at least 3 positions (FR-11).
  * Ordered stickers carry the item's name and are bound to the item right
  * away (one thing is split off a record holding several); their orders are
@@ -218,7 +219,7 @@ export interface BatchSummary {
  */
 export async function issueBatch(
 	actor: Actor,
-	input: { captions: string[]; blankCount: number; orderItemIds?: string[] }
+	input: { captions: string[]; blankCount: number; orderItemIds?: string[]; fillSheet?: boolean }
 ): Promise<BatchSummary> {
 	const typed = input.captions.map((c) => c.trim()).filter((c) => c.length > 0);
 	if (!Number.isInteger(input.blankCount) || input.blankCount < 0) {
@@ -236,7 +237,7 @@ export async function issueBatch(
 				throw new ConflictError('Список наклеек, ждущих печати, изменился, обновите страницу');
 			}
 			const captions = [...orders.map((o) => o.caption), ...typed];
-			const plan = planSheets(captions, input.blankCount);
+			const plan = planSheets(captions, input.blankCount, input.fillSheet ?? true);
 			if (plan.total === 0) throw new ValidationError('Нужна хотя бы одна наклейка');
 			if (plan.sheets > MAX_SHEETS_PER_BATCH) {
 				throw new ValidationError(
