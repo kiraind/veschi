@@ -36,10 +36,7 @@
 
 <svelte:head><title>Типы вещей — Вещи</title></svelte:head>
 
-<h1 class="mb-3 text-2xl font-bold">Типы вещей</h1>
-<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-	Тип описывает, что это за вещь: название, описание, фото и общие параметры всех её экземпляров.
-</p>
+<h1 class="mb-4 text-2xl font-bold">Типы вещей</h1>
 
 <form class="flex gap-2" onsubmit={create}>
 	<div class="min-w-0 flex-1">
