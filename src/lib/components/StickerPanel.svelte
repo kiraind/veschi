@@ -76,15 +76,19 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="flex flex-wrap items-center gap-2">
-			{#if sticker?.status === 'WRITTEN_OFF'}
-				<span class="text-sm text-gray-500 dark:text-gray-400"
-					>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
-				>
-			{:else if !ordered}
-				<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
-			{/if}
-			{#if editable}
+		{#if ordered}
+			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
+				>Наклейка заказана</a
+			>
+		{:else if sticker?.status === 'WRITTEN_OFF'}
+			<span class="text-sm text-gray-500 dark:text-gray-400"
+				>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
+			>
+		{:else}
+			<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
+		{/if}
+		{#if editable}
+			<div class="flex flex-wrap gap-2">
 				<Button
 					size="sm"
 					color="alternative"
@@ -92,25 +96,17 @@
 					onclick={() => (binding = !binding)}
 					disabled={busy}
 				>
-					{binding ? 'Отмена' : 'Привязать наклейку'}
+					{binding ? 'Отмена' : 'Привязать'}
 				</Button>
-				{#if !ordered && !binding}
-					<Button size="sm" color="alternative" type="button" onclick={order} disabled={busy}>
-						Заказать наклейку
-					</Button>
-				{/if}
-			{/if}
-		</div>
-		{#if ordered}
-			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-sm text-gray-500 dark:text-gray-400">
-					Наклейка заказана, она напечатается со следующими
-					<a href="/stickers" class="text-primary-700 underline dark:text-primary-500">наклейками</a
-					>{#if quantity > 1}; одна вещь из {quantity} шт. станет отдельной записью с наклейкой{/if}.
-				</span>
-				{#if editable}
-					<Button size="sm" color="alternative" type="button" onclick={cancelOrder} disabled={busy}>
-						Отменить заказ
+				{#if !binding}
+					<Button
+						size="sm"
+						color="alternative"
+						type="button"
+						onclick={ordered ? cancelOrder : order}
+						disabled={busy}
+					>
+						{ordered ? 'Отменить заказ' : 'Заказать'}
 					</Button>
 				{/if}
 			</div>
