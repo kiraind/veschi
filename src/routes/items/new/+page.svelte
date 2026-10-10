@@ -122,6 +122,15 @@
 		/>
 	</div>
 
+	{#if !selectedType}
+		<div>
+			<Checkbox bind:checked={newTypeIsContainer}>Это контейнер</Checkbox>
+			<Helper class="mt-1 ps-6">
+				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
+			</Helper>
+		</div>
+	{/if}
+
 	{#if !isContainer}
 		<div>
 			<Label for="item-quantity">Количество</Label>
@@ -142,15 +151,6 @@
 					required
 				/>
 			{/if}
-		</div>
-	{/if}
-
-	{#if !selectedType}
-		<div>
-			<Checkbox bind:checked={newTypeIsContainer}>Это контейнер</Checkbox>
-			<Helper class="mt-1 ps-6">
-				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
-			</Helper>
 		</div>
 	{/if}
 
