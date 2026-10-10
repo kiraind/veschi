@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
+import type { ItemType } from '@prisma/client';
 import { z } from 'zod';
 import { db, type Tx } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
@@ -8,6 +9,8 @@ import { storage } from '$lib/server/storage';
 import { itemDisplayName } from '$lib/domain/item';
 import type { ParamView } from '$lib/domain/params';
 import { deleteStored, deleteUnreferencedFiles, thumbKeyOf } from './files';
+import { diffFields } from '$lib/domain/history';
+import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
 import { assertNothingInside, getPaths, type PathNode } from './paths';
 
@@ -130,9 +133,14 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 	};
 }
 
-export async function createType(actor: Actor, input: unknown, tx: Tx = db) {
+export async function createType(actor: Actor, input: unknown, tx?: Tx): Promise<ItemType> {
+	if (!tx) return db.$transaction((t) => createType(actor, input, t));
 	const { name, description, isContainer } = typeInputSchema.parse(input);
-	return tx.itemType.create({ data: { name, description, isContainer, ...ownedBy(actor) } });
+	const type = await tx.itemType.create({
+		data: { name, description, isContainer, ...ownedBy(actor) }
+	});
+	await recordEvent(tx, actor, { kind: 'type.created', subject: typeRef(type), data: {} });
+	return type;
 }
 
 /**
@@ -180,7 +188,22 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 				tx
 			);
 		}
-		return tx.itemType.update({ where: { id }, data: { name, description, isContainer } });
+		const updated = await tx.itemType.update({
+			where: { id },
+			data: { name, description, isContainer }
+		});
+		const changes = diffFields(
+			{ name: type.name, description: type.description, isContainer: type.isContainer },
+			{ name, description, isContainer }
+		);
+		if (changes.length) {
+			await recordEvent(tx, actor, {
+				kind: 'type.updated',
+				subject: typeRef(updated),
+				data: { changes }
+			});
+		}
+		return updated;
 	});
 }
 
@@ -197,7 +220,10 @@ export async function deleteType(actor: Actor, id: string): Promise<void> {
 	const fileKeys = (
 		await db.param.findMany({ where: { typeId: id }, select: { fileKey: true } })
 	).flatMap((p) => (p.fileKey ? [p.fileKey] : []));
-	await db.itemType.delete({ where: { id } });
+	await db.$transaction(async (tx) => {
+		await recordEvent(tx, actor, { kind: 'type.deleted', subject: typeRef(type), data: {} });
+		await tx.itemType.delete({ where: { id } });
+	});
 	await deleteUnreferencedFiles([...fileKeys, ...(type.photoKey ? [type.photoKey] : [])]);
 }
 
@@ -248,7 +274,14 @@ export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Prom
 	const photoKey = `types/${id}/${randomUUID()}.webp`;
 	await storage().put(photoKey, full, 'image/webp');
 	await storage().put(thumbKeyOf(photoKey), thumb, 'image/webp');
-	await db.itemType.update({ where: { id }, data: { photoKey } });
+	await db.$transaction(async (tx) => {
+		await tx.itemType.update({ where: { id }, data: { photoKey } });
+		await recordEvent(tx, actor, {
+			kind: 'type.photo',
+			subject: typeRef(type),
+			data: { removed: false }
+		});
+	});
 	if (type.photoKey) await deleteStored(type.photoKey);
 	return photoKey;
 }
@@ -256,6 +289,13 @@ export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Prom
 export async function removeTypePhoto(actor: Actor, id: string): Promise<void> {
 	const type = await findType(actor, id);
 	if (!type.photoKey) return;
-	await db.itemType.update({ where: { id }, data: { photoKey: null } });
+	await db.$transaction(async (tx) => {
+		await tx.itemType.update({ where: { id }, data: { photoKey: null } });
+		await recordEvent(tx, actor, {
+			kind: 'type.photo',
+			subject: typeRef(type),
+			data: { removed: true }
+		});
+	});
 	await deleteStored(type.photoKey);
 }

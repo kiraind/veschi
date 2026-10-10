@@ -41,6 +41,8 @@ model User {
   ownedBatches      StickerBatch[]   @relation("StickerBatchOwner")
   ownedDictionaries EnumDictionary[] @relation("EnumDictionaryOwner")
   ownedParamDefs    ParamDef[]       @relation("ParamDefOwner")
+  ownedEvents       HistoryEvent[]   @relation("HistoryEventOwner")
+  actedEvents       HistoryEvent[]   @relation("HistoryEventActor")
 }
 
 model Session {
@@ -69,6 +71,7 @@ model Household {
   batches      StickerBatch[]
   dictionaries EnumDictionary[]
   paramDefs    ParamDef[]
+  events       HistoryEvent[]
 }
 
 enum HouseholdRole {
@@ -361,3 +364,40 @@ model ParamEnumValue {
   @@id([paramId, optionId])
 }
 
+
+// ---------------------------------------------------------------------------
+// History («История»)
+// ---------------------------------------------------------------------------
+
+// One change or movement, written by the service that made it in the same
+// transaction. Entities are referenced by id without foreign keys and with
+// their names at the moment of the event, so the history outlives deleted
+// records. `kind` and `data` are described in src/lib/domain/history.ts.
+model HistoryEvent {
+  id          String   @id @default(cuid())
+  // Scope of the subject: personal (ownerId) or shared (householdId).
+  ownerId     String?
+  householdId String?
+  // Who did it; null for events carried over from before the history existed
+  // without a known author, or when the user is gone.
+  actorId     String?
+  // E.g. "item.moved"; see HISTORY_KINDS.
+  kind        String
+  // "item" | "workbench" | "type" | "paramDef" | "batch"
+  subjectKind String
+  subjectId   String
+  subjectName String
+  // Every other entity involved (containers, parts, contents), for the entity filter.
+  refIds      String[]
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  owner     User?      @relation("HistoryEventOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  actor     User?      @relation("HistoryEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([householdId, createdAt])
+  @@index([subjectId])
+  @@index([refIds], type: Gin)
+}

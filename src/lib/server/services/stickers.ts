@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError, ValidationError } from '$lib/server/error
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { renderStickerPdf } from '$lib/server/pdf/sticker-pdf';
 import { extractCode } from '$lib/domain/scan';
+import { itemSubject, recordEvent } from './history';
 import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
 import { MAX_SHEETS_PER_BATCH, STICKERS_PER_SHEET, planSheets } from '$lib/domain/sticker-sheet';
@@ -55,6 +56,11 @@ export async function bindSticker(
 				)
 			: item.id;
 	await tx.sticker.update({ where: { id: sticker.id }, data: { status: 'BOUND', itemId: target } });
+	await recordEvent(tx, actor, {
+		kind: 'sticker.bound',
+		subject: await itemSubject(tx, item.id),
+		data: { code, resultId: target }
+	});
 	return { itemId: target };
 }
 
@@ -64,13 +70,20 @@ export async function bindSticker(
  * it), and the item can get a new sticker.
  */
 export async function unbindSticker(actor: Actor, itemId: string): Promise<void> {
-	const sticker = await db.sticker.findFirst({
-		where: { itemId, status: 'BOUND', ...visibleTo(actor) }
-	});
-	if (!sticker) throw new NotFoundError('У вещи нет наклейки');
-	await db.sticker.update({
-		where: { id: sticker.id },
-		data: { status: 'WRITTEN_OFF', itemId: null }
+	await db.$transaction(async (tx) => {
+		const sticker = await tx.sticker.findFirst({
+			where: { itemId, status: 'BOUND', ...visibleTo(actor) }
+		});
+		if (!sticker) throw new NotFoundError('У вещи нет наклейки');
+		await tx.sticker.update({
+			where: { id: sticker.id },
+			data: { status: 'WRITTEN_OFF', itemId: null }
+		});
+		await recordEvent(tx, actor, {
+			kind: 'sticker.unbound',
+			subject: await itemSubject(tx, itemId),
+			data: { code: sticker.code }
+		});
 	});
 }
 
@@ -149,6 +162,11 @@ export async function issueBatch(
 					batchId: batch.id,
 					...ownedBy(actor)
 				}))
+			});
+			await recordEvent(tx, actor, {
+				kind: 'stickers.issued',
+				subject: { id: batch.id, name: 'Наклейки', kind: 'batch', ...ownedBy(actor) },
+				data: { count: plan.total }
 			});
 			return batch;
 		},

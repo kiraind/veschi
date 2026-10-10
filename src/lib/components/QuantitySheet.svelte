@@ -66,7 +66,8 @@
 	const save = () => run(() => api.patch(`/api/items/${item.id}`, { quantity: value }));
 
 	/** Fewer things: N were used or thrown away. */
-	const takeAway = () => run(() => api.post(`/api/items/${item.id}/consume`, { quantity: taken }));
+	const takeAway = (thrownAway: boolean) =>
+		run(() => api.post(`/api/items/${item.id}/consume`, { quantity: taken, thrownAway }));
 
 	async function useAll() {
 		const ok = await confirmAction({
@@ -162,8 +163,10 @@
 			</div>
 		{:else if taken > 0}
 			<div class="flex flex-wrap gap-2">
-				<Button onclick={takeAway} disabled={busy}>Использовать {taken} шт.</Button>
-				<Button color="red" outline onclick={takeAway} disabled={busy}>Выкинуть {taken} шт.</Button>
+				<Button onclick={() => takeAway(false)} disabled={busy}>Использовать {taken} шт.</Button>
+				<Button color="red" outline onclick={() => takeAway(true)} disabled={busy}
+					>Выкинуть {taken} шт.</Button
+				>
 			</div>
 		{:else if valid}
 			{#if askContents}

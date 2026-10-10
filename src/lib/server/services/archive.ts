@@ -3,6 +3,7 @@ import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { getPaths, isContainerItem, type PathNode } from './paths';
+import { itemRef, itemSubject, placeRef, recordEvent } from './history';
 import { restoreStickerOf, writeOffStickerOf } from './stickers';
 
 /** Where the active contents of a discarded container go. */
@@ -13,6 +14,8 @@ export interface DiscardOptions {
 	contents?: DiscardContents;
 	/** Required for contents = 'workbench'. */
 	workbenchId?: string;
+	/** «Использовать» took all of it (for the history). */
+	consumed?: boolean;
 }
 
 /** Ids of every item (any status) lying at any depth inside `itemId`. */
@@ -55,6 +58,8 @@ export async function discard(
 	if (item.status === 'ARCHIVED') throw new ValidationError('Вещь уже в архиве');
 	const now = new Date();
 	let archivedIds = [item.id];
+	const subject = await itemSubject(tx, item.id);
+	const from = await placeRef(tx, item.parentId);
 
 	if (contents === 'discard') {
 		const active = await tx.item.findMany({
@@ -101,6 +106,18 @@ export async function discard(
 		data: { status: 'ARCHIVED', archivedAt: now }
 	});
 	await writeOffStickerOf(archivedIds, tx);
+	const together = archivedIds.slice(1);
+	await recordEvent(tx, actor, {
+		kind: 'item.discarded',
+		subject,
+		data: {
+			quantity: item.quantity,
+			from,
+			together: together.length,
+			...(options.consumed ? { consumed: true } : {})
+		},
+		refIds: together
+	});
 }
 
 /**
@@ -140,6 +157,16 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
 		data: { status: 'ACTIVE', archivedAt: null }
 	});
 	await restoreStickerOf(ids, tx);
+	const restored = await tx.item.findUniqueOrThrow({
+		where: { id: item.id },
+		include: { type: { select: { name: true } } }
+	});
+	await recordEvent(tx, actor, {
+		kind: 'item.restored',
+		subject: itemRef(restored),
+		data: { to: await placeRef(tx, restored.parentId), together: ids.length - 1 },
+		refIds: ids
+	});
 }
 
 /**
@@ -158,6 +185,12 @@ export async function purge(actor: Actor, itemId: string, tx?: Tx): Promise<void
 		select: { id: true }
 	});
 	const ids = [item.id, ...inside.map((i) => i.id)];
+	await recordEvent(tx, actor, {
+		kind: 'item.purged',
+		subject: await itemSubject(tx, item.id),
+		data: { together: ids.length - 1 },
+		refIds: ids
+	});
 	await tx.sticker.updateMany({
 		where: { itemId: { in: ids } },
 		data: { status: 'WRITTEN_OFF', itemId: null }
