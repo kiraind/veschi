@@ -6,11 +6,12 @@
 	import QrScanner from './QrScanner.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 
-	/** The item's sticker with «Привязать» / «Отвязать» actions. */
+	/** The item's sticker with «Привязать» / «Заказать» / «Отвязать» actions. */
 	let {
 		itemId,
 		quantity = 1,
 		sticker,
+		ordered = false,
 		editable
 	}: {
 		itemId: string;
@@ -21,6 +22,8 @@
 			status: 'FREE' | 'BOUND' | 'WRITTEN_OFF';
 			caption: string | null;
 		} | null;
+		/** A sticker is ordered: it is printed and bound with the next batch on «Наклейки». */
+		ordered?: boolean;
 		/** False for archived items: their sticker is only shown. */
 		editable: boolean;
 	} = $props();
@@ -49,6 +52,9 @@
 			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
 		});
 
+	const order = () => run(() => api.post('/api/stickers/orders', { itemId }));
+	const cancelOrder = () => run(() => api.delete(`/api/stickers/orders/${itemId}`));
+
 	async function unbind() {
 		const ok = await confirmAction({
 			title: 'Отвязать наклейку?',
@@ -75,7 +81,7 @@
 				<span class="text-sm text-gray-500 dark:text-gray-400"
 					>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
 				>
-			{:else}
+			{:else if !ordered}
 				<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
 			{/if}
 			{#if editable}
@@ -88,8 +94,27 @@
 				>
 					{binding ? 'Отмена' : 'Привязать наклейку'}
 				</Button>
+				{#if !ordered && !binding}
+					<Button size="sm" color="alternative" type="button" onclick={order} disabled={busy}>
+						Заказать наклейку
+					</Button>
+				{/if}
 			{/if}
 		</div>
+		{#if ordered}
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm text-gray-500 dark:text-gray-400">
+					Наклейка заказана, она напечатается со следующими
+					<a href="/stickers" class="text-primary-700 underline dark:text-primary-500">наклейками</a
+					>{#if quantity > 1}; одна вещь из {quantity} шт. станет отдельной записью с наклейкой{/if}.
+				</span>
+				{#if editable}
+					<Button size="sm" color="alternative" type="button" onclick={cancelOrder} disabled={busy}>
+						Отменить заказ
+					</Button>
+				{/if}
+			</div>
+		{/if}
 		{#if binding}
 			{#if quantity > 1}
 				<p class="text-sm text-gray-500 dark:text-gray-400">
