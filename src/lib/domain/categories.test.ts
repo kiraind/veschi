@@ -3,6 +3,7 @@ import {
 	categoryNames,
 	categoryParamsSchema,
 	inCategories,
+	incompleteOwners,
 	missingParams,
 	requiredAt,
 	type CategoryRequirement
@@ -90,5 +91,15 @@ describe('categoryParamsSchema', () => {
 		).toBe(false);
 		expect(categoryParamsSchema.safeParse([{ defId: id, level: 'BOX' }]).success).toBe(false);
 		expect(categoryParamsSchema.safeParse([{ defId: id, level: 'ITEM' }]).success).toBe(true);
+	});
+});
+
+describe('incompleteOwners', () => {
+	it('names items and types in the genitive', () => {
+		expect(incompleteOwners(1, 0)).toBe('у 1 вещи');
+		expect(incompleteOwners(3, 0)).toBe('у 3 вещей');
+		expect(incompleteOwners(21, 1)).toBe('у 21 вещи и 1 типа');
+		expect(incompleteOwners(0, 5)).toBe('у 5 типов');
+		expect(incompleteOwners(0, 0)).toBe('');
 	});
 });

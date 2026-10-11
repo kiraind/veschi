@@ -5,6 +5,7 @@ import { createTestActor } from '$lib/server/testing/db';
 import { defIdFor, keyed, setKeyedParams } from '$lib/server/testing/params';
 import {
 	addTypeToCategory,
+	categoryNotices,
 	createCategory,
 	deleteCategory,
 	getCategoryCard,
@@ -13,6 +14,7 @@ import {
 	setCategoryParams,
 	updateCategory
 } from './categories';
+import { discard } from './archive';
 import { listHistory } from './history';
 import { createItem, getItemCard } from './items';
 import { addParam, deleteParam, deleteParamDef, listParams, setParams } from './params';
@@ -136,6 +138,44 @@ describe('categories', () => {
 		await setKeyedParams(actor, { itemId: old.id }, [
 			{ key: 'Жирность', valueType: 'NUMBER', value: 1.5 }
 		]);
+	});
+
+	it('warns about unfilled values and categories without parameters', async () => {
+		const empty = await createCategory(actor, { name: 'Хрупкое' });
+		expect(await categoryNotices(actor)).toEqual({ incomplete: [], empty: [empty] });
+
+		const milk = await createType(actor, { name: 'Молоко' });
+		const old = await createItem(actor, { typeId: milk.id });
+		const older = await createItem(actor, { typeId: milk.id });
+		await addTypeToCategory(actor, milk.id, food.id);
+		await createItem(actor, {
+			typeId: milk.id,
+			params: await keyed(actor, [{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-20' }])
+		});
+		expect((await categoryNotices(actor)).incomplete).toEqual([
+			{ ...food, typeCount: 1, itemCount: 2 }
+		]);
+
+		// Archived items do not count; a filled type and items clear the notice.
+		await discard(actor, older.id);
+		await addParam(
+			actor,
+			{ typeId: milk.id },
+			(
+				await keyed(actor, [{ key: 'Калорийность', valueType: 'NUMBER', value: 60, unit: 'ккал' }])
+			)[0]
+		);
+		expect((await categoryNotices(actor)).incomplete).toEqual([
+			{ ...food, typeCount: 0, itemCount: 1 }
+		]);
+		await setKeyedParams(actor, { itemId: old.id }, [
+			{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-21' }
+		]);
+		expect(await categoryNotices(actor)).toEqual({ incomplete: [], empty: [empty] });
+		expect(await categoryNotices(await createTestActor('other'))).toEqual({
+			incomplete: [],
+			empty: []
+		});
 	});
 
 	it('puts a new type into categories when an item is created with it', async () => {

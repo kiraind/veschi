@@ -12,6 +12,7 @@ import {
 	inCategories,
 	missingParams,
 	requiredAt,
+	type CategoryNotices,
 	type CategoryRef,
 	type CategoryRequirement,
 	type CategorySummary,
@@ -225,6 +226,52 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 		incompleteItems: incompleteItems.slice(0, MAX_INCOMPLETE_ITEMS),
 		incompleteItemCount: incompleteItems.length
 	};
+}
+
+/**
+ * What the search page warns about: categories with types or active items
+ * lacking a required value, and categories without required parameters.
+ */
+export async function categoryNotices(actor: Actor): Promise<CategoryNotices> {
+	const categories = await db.category.findMany({
+		where: visibleTo(actor),
+		include: {
+			params: { select: { defId: true, level: true } },
+			types: { select: { typeId: true, type: { select: { params: { select: { defId: true } } } } } }
+		},
+		orderBy: { name: 'asc' }
+	});
+	const notices: CategoryNotices = { incomplete: [], empty: [] };
+	const counted = await Promise.all(
+		categories.map(async (c) => {
+			const at = (level: ParamLevel) =>
+				c.params.filter((p) => p.level === level).map((p) => p.defId);
+			const perType = at('TYPE');
+			const perItem = at('ITEM');
+			const typeCount = c.types.filter(({ type }) => {
+				const own = new Set(type.params.map((p) => p.defId));
+				return perType.some((d) => !own.has(d));
+			}).length;
+			const itemCount =
+				perItem.length && c.types.length
+					? await db.item.count({
+							where: {
+								typeId: { in: c.types.map((t) => t.typeId) },
+								status: 'ACTIVE',
+								...visibleTo(actor),
+								OR: perItem.map((defId) => ({ params: { none: { defId } } }))
+							}
+						})
+					: 0;
+			return { c, typeCount, itemCount };
+		})
+	);
+	for (const { c, typeCount, itemCount } of counted) {
+		const ref = { id: c.id, name: c.name };
+		if (c.params.length === 0) notices.empty.push(ref);
+		else if (typeCount || itemCount) notices.incomplete.push({ ...ref, typeCount, itemCount });
+	}
+	return notices;
 }
 
 export async function createCategory(actor: Actor, input: unknown): Promise<CategoryRef> {
