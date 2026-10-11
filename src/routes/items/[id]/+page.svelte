@@ -14,6 +14,8 @@
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
 	import ContainerDiscardSheet from '$lib/components/ContainerDiscardSheet.svelte';
+	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { plural } from '$lib/domain/plural';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
@@ -23,7 +25,8 @@
 		ChevronSortOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
-		TrashBinOutline
+		TrashBinOutline,
+		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
 
@@ -36,6 +39,9 @@
 
 	let moving = $state(false);
 	let taking = $state(false);
+	let returning = $state(false);
+	/** How much «Вернуть» puts back. */
+	let returnQuantity = $state(1);
 	let adding = $state(false);
 	let renaming = $state(false);
 	let describing = $state(false);
@@ -77,15 +83,14 @@
 	let picked = $state<{ id: string; name: string; quantity: number } | null>(null);
 	let pickedQuantity = $state(1);
 
-	function toggleMoving() {
-		moving = !moving;
-		taking = false;
+	function startMoving() {
 		moveQuantity = item.quantity;
+		moving = true;
 	}
 
-	function toggleTaking() {
-		taking = !taking;
-		moving = false;
+	function startReturning() {
+		returnQuantity = item.quantity;
+		returning = true;
 	}
 
 	async function rename(name: string) {
@@ -227,11 +232,19 @@
 
 {#if active && !item.isWorkbench}
 	<ButtonGroup class="my-3 w-full sm:w-auto">
-		<Button color="alternative" class={actionClass} onclick={toggleTaking}>
-			<WorkbenchIcon icon={null} class={actionIconClass} />
-			На стол
-		</Button>
-		<Button color="alternative" class={actionClass} onclick={toggleMoving}>
+		{#if data.onBench}
+			<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
+			<Button color="alternative" class={actionClass} onclick={startReturning}>
+				<UndoOutline class={actionIconClass} />
+				Вернуть
+			</Button>
+		{:else}
+			<Button color="alternative" class={actionClass} onclick={() => (taking = true)}>
+				<WorkbenchIcon icon={null} class={actionIconClass} />
+				На стол
+			</Button>
+		{/if}
+		<Button color="alternative" class={actionClass} onclick={startMoving}>
 			<ArrowsRepeatOutline class={actionIconClass} />
 			Переложить
 		</Button>
@@ -255,45 +268,10 @@
 			</Button>
 		{/if}
 	</ButtonGroup>
-	{#if taking}
-		<div class="mb-3">
-			<TakeToWorkbench
-				item={{ id: item.id, quantity: item.quantity, name: item.displayName }}
-				bind:open={taking}
-				button={false}
-			/>
-		</div>
-	{/if}
-	{#if moving}
-		<div class="mb-3 space-y-2">
-			{#if item.quantity > 1}
-				<QuantityField
-					available={item.quantity}
-					bind:value={moveQuantity}
-					label="Сколько переложить"
-				/>
-			{/if}
-			<ContainerPicker
-				title="Куда переложить «{item.displayName}»?"
-				excludeId={item.id}
-				excludeIds={item.parentId && !item.takenById ? [item.parentId] : []}
-				onpick={(c) => {
-					if (!quantityError(item.quantity, moveQuantity)) moveTo(c.id);
-				}}
-			/>
-			{#if item.parentId}
-				<Button
-					color="alternative"
-					onclick={() => moveTo(null)}
-					disabled={busy || !!quantityError(item.quantity, moveQuantity)}
-				>
-					На верхний уровень
-				</Button>
-			{/if}
-		</div>
-	{/if}
 {/if}
-{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+{#if error && !moving}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
+		{error}
+	</p>{/if}
 
 {#if !item.isWorkbench}
 	<Card class="mt-3 max-w-none p-4">
@@ -427,4 +405,48 @@
 		item={{ id: item.id, name: item.displayName }}
 		ondiscarded={afterArchive}
 	/>
+	<TakeToWorkbench
+		item={{ id: item.id, quantity: item.quantity, name: item.displayName }}
+		bind:open={taking}
+	/>
+	{#if data.onBench}
+		<ReturnSheet
+			bind:open={returning}
+			item={data.onBench}
+			bind:amount={returnQuantity}
+			askAmount
+			onreturned={invalidateAll}
+			onrelocate={startMoving}
+		/>
+	{/if}
+	<Sheet bind:open={moving} title="Переложить «{item.displayName}»">
+		<div class="flex flex-col gap-3">
+			{#if item.quantity > 1}
+				<QuantityField
+					available={item.quantity}
+					bind:value={moveQuantity}
+					label="Сколько переложить"
+				/>
+			{/if}
+			<ContainerPicker
+				title="Куда переложить?"
+				card={false}
+				excludeId={item.id}
+				excludeIds={item.parentId && !item.takenById ? [item.parentId] : []}
+				onpick={(c) => {
+					if (!quantityError(item.quantity, moveQuantity)) moveTo(c.id);
+				}}
+			/>
+			{#if item.parentId}
+				<Button
+					color="alternative"
+					onclick={() => moveTo(null)}
+					disabled={busy || !!quantityError(item.quantity, moveQuantity)}
+				>
+					На верхний уровень
+				</Button>
+			{/if}
+			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+		</div>
+	</Sheet>
 {/if}

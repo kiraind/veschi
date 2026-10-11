@@ -17,7 +17,8 @@
 		excludeIds = [],
 		excludeParentId,
 		title = 'Куда положить?',
-		containersOnly = true
+		containersOnly = true,
+		card = true
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
 		/** The item being placed: it cannot go into itself. */
@@ -28,6 +29,8 @@
 		excludeParentId?: string;
 		title?: string;
 		containersOnly?: boolean;
+		/** In a card of its own; false inside a sheet. */
+		card?: boolean;
 	} = $props();
 
 	let query = $state('');
@@ -100,7 +103,7 @@
 	}
 </script>
 
-<Card class="max-w-none space-y-3 p-4">
+{#snippet picker()}
 	<p class="font-medium">{title}</p>
 	<div class="flex flex-wrap gap-2">
 		<Input
@@ -143,4 +146,10 @@
 			{containersOnly ? 'Контейнеров не найдено.' : 'Ничего не найдено.'}
 		</p>
 	{/if}
-</Card>
+{/snippet}
+
+{#if card}
+	<Card class="max-w-none space-y-3 p-4">{@render picker()}</Card>
+{:else}
+	<div class="space-y-3">{@render picker()}</div>
+{/if}

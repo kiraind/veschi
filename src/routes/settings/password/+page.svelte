@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
@@ -50,7 +51,7 @@
 		<!-- Lets password managers attach the new password to the right account. -->
 		<input type="hidden" name="username" autocomplete="username" value={data.profile.login} />
 		<Label>
-			Текущий пароль
+			Текущий пароль<RequiredMark />
 			<Input
 				class="mt-1"
 				type="password"
@@ -60,7 +61,7 @@
 			/>
 		</Label>
 		<Label>
-			Новый пароль (не короче 8 символов)
+			Новый пароль (не короче 8 символов)<RequiredMark />
 			<Input
 				class="mt-1"
 				type="password"
@@ -71,7 +72,7 @@
 			/>
 		</Label>
 		<Label>
-			Повторите новый пароль
+			Повторите новый пароль<RequiredMark />
 			<Input
 				class="mt-1"
 				type="password"

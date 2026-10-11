@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '$lib/api';
-	import { formatPath, pathNodeName } from '$lib/domain/item';
-	import { formatCode } from '$lib/domain/sticker-code';
+	import { formatPath } from '$lib/domain/item';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
 	import QuantityField from '$lib/components/QuantityField.svelte';
-	import Sheet from '$lib/components/Sheet.svelte';
+	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import Thumb from '$lib/components/Thumb.svelte';
@@ -84,11 +83,6 @@
 	function askReturn(item: Listed) {
 		returning = item;
 		returningOpen = true;
-	}
-
-	async function confirmReturn(item: Listed) {
-		await putAway(item, 'return', {});
-		if (error?.id !== item.id) returningOpen = false;
 	}
 
 	const relocate = (item: { id: string; quantity: number }, containerId: string) =>
@@ -252,41 +246,15 @@
 	</section>
 {/each}
 
-<Sheet bind:open={returningOpen} title="Вернуть «{returning?.name ?? ''}»">
-	{#if returning}
-		{@const item = returning}
-		{@const amount = amounts[item.id] ?? item.quantity}
-		<p class="mb-2 text-gray-500 dark:text-gray-400">
-			Положите{#if item.quantity > 1}&nbsp;{amount} шт.{/if}
-			{item.homePath.length ? 'сюда:' : 'на верхний уровень.'}
-		</p>
-		{#if item.homePath.length}
-			<ol class="mb-4 space-y-1 text-lg">
-				{#each item.homePath as node, i (node.id)}
-					<li
-						class="flex items-start gap-1.5 wrap-anywhere {i === item.homePath.length - 1
-							? 'font-semibold'
-							: ''}"
-						style:padding-inline-start="{i * 1.25}rem"
-					>
-						{#if i > 0}<span class="flex-none text-gray-400 dark:text-gray-500" aria-hidden="true"
-								>↳</span
-							>{/if}
-						<span class="min-w-0">
-							{pathNodeName(node)}{#if node.stickerCode}<span
-									class="ms-2 font-mono text-base font-normal whitespace-nowrap text-gray-500 dark:text-gray-400"
-									>{formatCode(node.stickerCode)}</span
-								>{/if}
-						</span>
-					</li>
-				{/each}
-			</ol>
-		{/if}
-		{#if error?.id === item.id}<p class="mb-2 text-sm text-red-600 dark:text-red-500" role="alert">
-				{error.message}
-			</p>{/if}
-		<Button class="w-full" onclick={() => confirmReturn(item)} disabled={busyId === item.id}>
-			Готово
-		</Button>
-	{/if}
-</Sheet>
+{#if returning}
+	{@const item = returning}
+	<ReturnSheet
+		bind:open={returningOpen}
+		{item}
+		bind:amount={() => amounts[item.id] ?? item.quantity, (v) => (amounts[item.id] = v)}
+		onreturned={async () => {
+			delete amounts[item.id];
+			await invalidateAll();
+		}}
+	/>
+{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '$lib/api';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
@@ -176,7 +177,7 @@
 		<form class="flex flex-col gap-4" onsubmit={save}>
 			<h2 class="text-lg font-semibold">{draft.id ? 'Изменить стол' : 'Новый стол'}</h2>
 			<Label>
-				Название
+				Название<RequiredMark />
 				<Input class="mt-1" bind:value={draft.name} required maxlength={200} placeholder="Гараж" />
 			</Label>
 			<fieldset>
@@ -208,12 +209,12 @@
 				</p>
 			</fieldset>
 			<div class="flex flex-col gap-2">
-				<span class="text-sm text-gray-500 dark:text-gray-400">Зона (необязательно)</span>
+				<span class="text-sm text-gray-500 dark:text-gray-400">Зона</span>
 				{#if draft.geoLat !== null && draft.geoLng !== null}
 					<span class="font-mono text-sm">{draft.geoLat.toFixed(5)}, {draft.geoLng.toFixed(5)}</span
 					>
 					<Label>
-						Радиус, м
+						Радиус, м<RequiredMark />
 						<Input
 							class="mt-1"
 							type="number"

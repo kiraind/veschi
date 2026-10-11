@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from './RequiredMark.svelte';
 	import { tick } from 'svelte';
 	import { Badge, Input, Label } from 'flowbite-svelte';
 	import { CloseOutline } from 'flowbite-svelte-icons';
@@ -87,7 +88,7 @@
 		</div>
 	{:else}
 		<Label>
-			{label}
+			{label}<RequiredMark />
 			<Input
 				id="{uid}-input"
 				class="mt-1"

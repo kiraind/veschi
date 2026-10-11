@@ -72,7 +72,7 @@ function workbenchData(input: WorkbenchInput) {
 	return { name, geoLat, geoLng, geoRadiusM, icon };
 }
 
-async function requireWorkbench(actor: Actor, id: string, tx: Tx = db): Promise<Workbench> {
+export async function requireWorkbench(actor: Actor, id: string, tx: Tx = db): Promise<Workbench> {
 	const bench = await tx.item.findFirst({
 		where: { id, isWorkbench: true, ...visibleTo(actor) },
 		select: workbenchSelect
@@ -257,14 +257,21 @@ function returnBlocker(home: HomeState | null, homePath: PathNode[]): string | n
 	return null;
 }
 
-/** Items on the actor's workbenches (or on one), with where each came from. */
-export async function listWorkbench(actor: Actor, workbenchId?: string): Promise<WorkbenchItem[]> {
+/**
+ * Items on the actor's workbenches (or on one, or just one item), with where
+ * each came from.
+ */
+export async function listWorkbench(
+	actor: Actor,
+	{ workbenchId, itemId }: { workbenchId?: string; itemId?: string } = {}
+): Promise<WorkbenchItem[]> {
 	const items = await db.item.findMany({
 		where: {
 			status: 'ACTIVE',
 			isWorkbench: false,
 			takenById: { not: null },
 			...(workbenchId ? { parentId: workbenchId } : {}),
+			...(itemId ? { id: itemId } : {}),
 			...visibleTo(actor)
 		},
 		include: {

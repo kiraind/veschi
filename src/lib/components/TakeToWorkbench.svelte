@@ -1,28 +1,11 @@
-<script lang="ts" module>
-	import type { GeoPoint } from '$lib/domain/workbench';
-
-	// The position is asked once per page load: a second prompt or wait would only annoy.
-	let positionRequest: Promise<GeoPoint | null> | null = null;
-
-	function currentPosition(): Promise<GeoPoint | null> {
-		positionRequest ??= new Promise((resolve) => {
-			if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve(null);
-			navigator.geolocation.getCurrentPosition(
-				(p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-				() => resolve(null),
-				{ timeout: 5000, maximumAge: 5 * 60_000 }
-			);
-		});
-		return positionRequest;
-	}
-</script>
-
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Card, Radio } from 'flowbite-svelte';
+	import { Button, Radio } from 'flowbite-svelte';
 	import { api } from '$lib/api';
 	import { pickWorkbench, quantityError } from '$lib/domain/workbench';
+	import { currentPosition } from '$lib/position';
+	import Sheet from './Sheet.svelte';
 	import QuantityField from './QuantityField.svelte';
 	import WorkbenchIcon from './WorkbenchIcon.svelte';
 
@@ -36,18 +19,15 @@
 	}
 
 	/**
-	 * «На стол»: picks a workbench (by geofence, else the last one) and takes the
-	 * item or part of it there. With `button = false` the caller opens it through
-	 * `open` (e.g. from a button group).
+	 * «На стол» in a sheet: picks a workbench (by geofence, else the last one) and
+	 * takes the item or part of it there.
 	 */
 	let {
 		item,
-		open = $bindable(false),
-		button = true
+		open = $bindable(false)
 	}: {
 		item: { id: string; quantity: number; name: string };
 		open?: boolean;
-		button?: boolean;
 	} = $props();
 
 	let loading = $state(false);
@@ -99,10 +79,8 @@
 	}
 </script>
 
-{#if !open}
-	{#if button}<Button onclick={() => (open = true)}>На стол</Button>{/if}
-{:else}
-	<Card class="max-w-none gap-3 p-4">
+<Sheet bind:open title="На стол">
+	<div class="flex flex-col gap-3">
 		{#if loading}
 			<p class="text-sm text-gray-500 dark:text-gray-400">Выбираю стол…</p>
 		{:else if benches.length === 0}
@@ -149,5 +127,5 @@
 			</div>
 		{/if}
 		{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
-	</Card>
-{/if}
+	</div>
+</Sheet>

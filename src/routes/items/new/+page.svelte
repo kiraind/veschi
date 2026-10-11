@@ -5,13 +5,17 @@
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { page } from '$app/state';
-	import { Alert, Button, Card, Checkbox, Helper, Input, Label } from 'flowbite-svelte';
+	import { Alert, Button, Card, Checkbox, Helper, Input, Label, Radio } from 'flowbite-svelte';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
 	import ParamValueInput from '$lib/components/ParamValueInput.svelte';
 	import CategoryMultiSelect from '$lib/components/CategoryMultiSelect.svelte';
 	import InfoHint from '$lib/components/InfoHint.svelte';
+	import RequiredMark from '$lib/components/RequiredMark.svelte';
+	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
+	import { pickWorkbench } from '$lib/domain/workbench';
+	import { currentPosition } from '$lib/position';
 	import type { TypeCard, TypeInfo } from '$lib/server/services/types';
 	import { inCategories, requiredAt, type RequiredParam } from '$lib/domain/categories';
 	import type { CategoryCard } from '$lib/server/services/categories';
@@ -39,6 +43,22 @@
 			? { id: data.parent.id, name: data.parent.name, path: formatPath(data.parent.path) }
 			: null
 	);
+	/** Without a container a new item goes on a workbench, picked as for «На стол». */
+	// svelte-ignore state_referenced_locally
+	let benchId = $state<string | null>(
+		data.parent ? null : pickWorkbench(data.workbenches, null, data.lastWorkbenchId)
+	);
+	const bench = $derived(data.workbenches.find((b) => b.id === benchId) ?? null);
+	// The bench whose zone we are in wins, unless another place was chosen meanwhile.
+	$effect(() => {
+		const first = untrack(() => benchId);
+		if (!first || !data.workbenches.some((b) => b.geoRadiusM !== null)) return;
+		currentPosition().then((position) => {
+			if (position && benchId === first) {
+				benchId = pickWorkbench(data.workbenches, position, data.lastWorkbenchId);
+			}
+		});
+	});
 	/** A new type is a container type (an existing type has its own mark). */
 	let newTypeIsContainer = $state(page.url.searchParams.get('container') === '1');
 	const isContainer = $derived(selectedType ? selectedType.isContainer : newTypeIsContainer);
@@ -131,6 +151,7 @@
 				// A container is a single instance: its quantity is always 1.
 				quantity: isContainer || freeSticker ? 1 : quantity,
 				parentId: parent?.id ?? null,
+				workbenchId: bench?.id,
 				stickerCode: freeSticker?.code
 			});
 			if (photo && askPhoto) {
@@ -184,12 +205,12 @@
 	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />
 
 	<div>
-		<Label for="item-name">Название этой конкретной вещи (необязательно)</Label>
+		<Label for="item-name">Название этой конкретной вещи</Label>
 		<Input
 			id="item-name"
 			class="mt-1"
 			bind:value={name}
-			placeholder="Например, Коробка с микросхемами"
+			placeholder={typeName.trim() || 'Например, Коробка с микросхемами'}
 		/>
 	</div>
 
@@ -202,7 +223,7 @@
 		</div>
 		<div>
 			<span class="text-sm font-medium"
-				>Категории (необязательно)<InfoHint title="Категории нового типа">
+				>Категории<InfoHint title="Категории нового типа">
 					<p>
 						Категория задаёт обязательные параметры типа, например у «Еды» — калорийность и срок
 						годности.
@@ -221,7 +242,7 @@
 
 	{#if !isContainer}
 		<div>
-			<Label for="item-quantity">Количество</Label>
+			<Label for="item-quantity">Количество<RequiredMark /></Label>
 			{#if freeSticker}
 				<Input id="item-quantity" class="mt-1" type="number" value={1} disabled />
 				<Helper class="mt-1">
@@ -244,7 +265,7 @@
 
 	{#each required as entry (entry.r.def.id)}
 		<div class="space-y-1">
-			<span class="text-sm font-medium">{entry.r.def.name}</span>
+			<span class="text-sm font-medium">{entry.r.def.name}<RequiredMark /></span>
 			<ParamValueInput bind:draft={entry.draft} def={entry.r.def} />
 			<Helper>Обязателен {inCategories(entry.r.categories)}</Helper>
 		</div>
@@ -252,7 +273,7 @@
 
 	{#if askPhoto}
 		<div class="space-y-1">
-			<span class="text-sm font-medium">Фото (необязательно)</span>
+			<span class="text-sm font-medium">Фото</span>
 			<PhotoField
 				previewUrl={photoUrl}
 				container={isContainer}
@@ -271,15 +292,62 @@
 
 	<Card class="max-w-none space-y-2 p-4">
 		<span class="text-sm text-gray-500 dark:text-gray-400">Где лежит</span>
-		<p class="break-words">
-			{parent ? [parent.path, parent.name].filter(Boolean).join(' → ') : 'Верхний уровень'}
-		</p>
+		{#if bench}
+			{#if data.workbenches.length === 1}
+				<p class="break-words">
+					<WorkbenchIcon icon={bench.icon} class="me-1 inline h-5 w-5 align-[-0.2em]" />На столе «{bench.name}»
+				</p>
+			{:else}
+				<p>На столе</p>
+				<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Рабочий стол">
+					{#each data.workbenches as b (b.id)}
+						<Radio
+							name="new-item-bench"
+							value={b.id}
+							bind:group={benchId}
+							classes={{
+								label:
+									'min-h-10 cursor-pointer rounded-lg border border-gray-200 px-3 text-base font-normal text-gray-900 dark:border-gray-700 dark:text-white'
+							}}
+						>
+							<WorkbenchIcon icon={b.icon} class="me-1.5 h-5 w-5" />{b.name}
+						</Radio>
+					{/each}
+				</div>
+			{/if}
+		{:else}
+			<p class="break-words">
+				{parent ? [parent.path, parent.name].filter(Boolean).join(' → ') : 'Верхний уровень'}
+			</p>
+		{/if}
 		<div class="flex flex-wrap gap-2">
 			<Button type="button" color="alternative" size="sm" onclick={() => (picking = !picking)}>
 				{picking ? 'Отмена' : 'Выбрать контейнер'}
 			</Button>
-			{#if parent}
-				<Button type="button" color="alternative" size="sm" onclick={() => (parent = null)}>
+			{#if !bench && data.workbenches.length > 0}
+				<Button
+					type="button"
+					color="alternative"
+					size="sm"
+					onclick={() => {
+						parent = null;
+						picking = false;
+						benchId = pickWorkbench(data.workbenches, null, data.lastWorkbenchId);
+					}}
+				>
+					На стол
+				</Button>
+			{/if}
+			{#if parent || bench}
+				<Button
+					type="button"
+					color="alternative"
+					size="sm"
+					onclick={() => {
+						parent = null;
+						benchId = null;
+					}}
+				>
 					На верхний уровень
 				</Button>
 			{/if}
@@ -288,6 +356,7 @@
 			<ContainerPicker
 				onpick={(c) => {
 					parent = { ...c, path: '' };
+					benchId = null;
 					picking = false;
 				}}
 			/>

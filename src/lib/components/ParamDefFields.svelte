@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from './RequiredMark.svelte';
 	import { Checkbox, Input, Label, Select } from 'flowbite-svelte';
 	import {
 		PARAM_VALUE_TYPES,
@@ -31,11 +32,11 @@
 </script>
 
 <Label>
-	Название
+	Название<RequiredMark />
 	<Input class="mt-1" bind:value={name} required />
 </Label>
 <Label>
-	Тип значения
+	Тип значения<RequiredMark />
 	<Select class="mt-1" bind:value={valueType} placeholder="" disabled={typeLocked}>
 		{#each PARAM_VALUE_TYPES as type (type)}
 			<option value={type}>{PARAM_VALUE_TYPE_LABELS[type]}</option>
@@ -44,7 +45,7 @@
 </Label>
 {#if hasUnit(valueType)}
 	<Label>
-		Единица измерения (необязательно)
+		Единица измерения
 		<Input class="mt-1" bind:value={unit} placeholder="Например, мм или В" />
 	</Label>
 {:else if valueType === 'ENUM'}
