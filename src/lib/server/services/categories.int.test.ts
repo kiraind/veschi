@@ -138,6 +138,23 @@ describe('categories', () => {
 		]);
 	});
 
+	it('puts a new type into categories when an item is created with it', async () => {
+		await expect(
+			createItem(actor, { newTypeName: 'Кефир', newTypeCategoryIds: [food.id] })
+		).rejects.toThrow('Заполните параметр «Срок годности»');
+		expect(await db.itemType.count()).toBe(0);
+
+		const { id } = await createItem(actor, {
+			newTypeName: 'Кефир',
+			newTypeCategoryIds: [food.id],
+			params: await keyed(actor, [{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-20' }])
+		});
+		const card = await getItemCard(actor, id);
+		expect(card.categories).toEqual([food]);
+		expect(card.missingTypeParams.map((m) => m.def.name)).toEqual(['Калорийность']);
+		expect(await historyKinds(card.type!.id)).toContain('type.category');
+	});
+
 	it('merges requirements of several categories', async () => {
 		const fragile = await createCategory(actor, { name: 'Хрупкое' });
 		const glass = await defIdFor(actor, 'Материал', 'STRING');

@@ -348,25 +348,25 @@ async function findType(actor: Actor, id: string, tx: Tx) {
 export async function addTypeToCategory(
 	actor: Actor,
 	typeId: string,
-	categoryId: string
+	categoryId: string,
+	tx?: Tx
 ): Promise<void> {
-	await db.$transaction(async (tx) => {
-		const type = await findType(actor, typeId, tx);
-		const category = await findCategory(actor, categoryId, tx);
-		const existing = await tx.typeCategory.findUnique({
-			where: { typeId_categoryId: { typeId, categoryId } }
-		});
-		if (existing) return;
-		await tx.typeCategory.create({ data: { typeId, categoryId } });
-		await recordEvent(tx, actor, {
-			kind: 'type.category',
-			subject: typeRef(type),
-			data: {
-				category: { id: category.id, name: category.name, kind: 'category' },
-				removed: false
-			},
-			refIds: [category.id]
-		});
+	if (!tx) return db.$transaction((t) => addTypeToCategory(actor, typeId, categoryId, t));
+	const type = await findType(actor, typeId, tx);
+	const category = await findCategory(actor, categoryId, tx);
+	const existing = await tx.typeCategory.findUnique({
+		where: { typeId_categoryId: { typeId, categoryId } }
+	});
+	if (existing) return;
+	await tx.typeCategory.create({ data: { typeId, categoryId } });
+	await recordEvent(tx, actor, {
+		kind: 'type.category',
+		subject: typeRef(type),
+		data: {
+			category: { id: category.id, name: category.name, kind: 'category' },
+			removed: false
+		},
+		refIds: [category.id]
 	});
 }
 

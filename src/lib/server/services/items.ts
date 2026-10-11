@@ -20,7 +20,7 @@ import {
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
-import { assertItemComplete, categoryInfoOf } from './categories';
+import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
 import { missingParams, type CategoryRef, type RequiredParam } from '$lib/domain/categories';
 
 const ownName = z
@@ -48,6 +48,8 @@ export const createItemSchema = z
 		parentId: idSchema.nullish(),
 		/** A new type (newTypeName) is a container type. */
 		newTypeIsContainer: z.boolean().default(false),
+		/** Categories of a new type (newTypeName). */
+		newTypeCategoryIds: z.array(idSchema).max(50).default([]),
 		stickerCode: z.string().trim().min(1).optional(),
 		params: paramListSchema.optional()
 	})
@@ -154,7 +156,7 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
 
 /**
  * Creates an item: an existing type or a new one by name (optionally a
- * container type), own name, parameters and a free sticker — all in one
+ * container type, put into categories), own name, parameters and a free sticker — all in one
  * transaction. Items of a container type have quantity 1.
  */
 export async function createItem(actor: Actor, input: unknown): Promise<{ id: string }> {
@@ -168,6 +170,11 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
+		if (!data.typeId) {
+			for (const categoryId of new Set(data.newTypeCategoryIds)) {
+				await addTypeToCategory(actor, type.id, categoryId, tx);
+			}
+		}
 		await assertItemComplete(type.id, data.params ?? [], tx);
 		const item = await tx.item.create({
 			data: {
