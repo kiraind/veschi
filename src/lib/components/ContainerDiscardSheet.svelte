@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
 
@@ -42,7 +42,7 @@
 			open = false;
 			await ondiscarded();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

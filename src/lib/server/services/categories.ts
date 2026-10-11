@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { escapeLike } from '$lib/domain/search';
 import { idSchema } from '$lib/domain/id';
-import { db, type Tx } from '$lib/server/db';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
@@ -113,7 +114,7 @@ async function findCategory(actor: Actor, id: string, tx: Tx = db) {
 async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
 	const same = await tx.category.findMany({
 		where: {
-			name: { equals: name, mode: 'insensitive' },
+			name: { equals: escapeLike(name), mode: 'insensitive' },
 			...visibleTo(actor),
 			...(exceptId ? { id: { not: exceptId } } : {})
 		},
@@ -228,7 +229,7 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 
 export async function createCategory(actor: Actor, input: unknown): Promise<CategoryRef> {
 	const { name, description } = categoryInputSchema.parse(input);
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		await assertNameFree(actor, name, null, tx);
 		const category = await tx.category.create({
 			data: { name, description, ...ownedBy(actor) }
@@ -245,7 +246,7 @@ export async function createCategory(actor: Actor, input: unknown): Promise<Cate
 /** Renames a category or changes its description. */
 export async function updateCategory(actor: Actor, id: string, input: unknown): Promise<void> {
 	const { name, description } = categoryUpdateSchema.parse(input);
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const category = await findCategory(actor, id, tx);
 		if (name !== undefined) await assertNameFree(actor, name, id, tx);
 		const updated = await tx.category.update({ where: { id }, data: { name, description } });
@@ -265,7 +266,7 @@ export async function updateCategory(actor: Actor, id: string, input: unknown): 
 
 /** Deletes a category: its types stay, without its requirements. */
 export async function deleteCategory(actor: Actor, id: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const category = await findCategory(actor, id, tx);
 		const types = await tx.typeCategory.count({ where: { categoryId: id } });
 		await recordEvent(tx, actor, {
@@ -288,7 +289,7 @@ export async function setCategoryParams(
 	input: unknown
 ): Promise<CategoryCard> {
 	const list = categoryParamsSchema.parse(input);
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const category = await findCategory(actor, id, tx);
 		const defs = await tx.paramDef.findMany({
 			where: { id: { in: list.map((p) => p.defId) }, ...visibleTo(actor) },
@@ -351,7 +352,7 @@ export async function addTypeToCategory(
 	categoryId: string,
 	tx?: Tx
 ): Promise<void> {
-	if (!tx) return db.$transaction((t) => addTypeToCategory(actor, typeId, categoryId, t));
+	if (!tx) return writeTransaction((t) => addTypeToCategory(actor, typeId, categoryId, t));
 	const type = await findType(actor, typeId, tx);
 	const category = await findCategory(actor, categoryId, tx);
 	const existing = await tx.typeCategory.findUnique({
@@ -375,7 +376,7 @@ export async function removeTypeFromCategory(
 	typeId: string,
 	categoryId: string
 ): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const type = await findType(actor, typeId, tx);
 		const category = await findCategory(actor, categoryId, tx);
 		const { count } = await tx.typeCategory.deleteMany({ where: { typeId, categoryId } });

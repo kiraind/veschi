@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -40,7 +41,7 @@
 			binding = false;
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -70,7 +71,14 @@
 		<div class="flex flex-wrap items-center gap-2">
 			<span>Наклейка <strong class="font-mono">{formatCode(sticker.code)}</strong></span>
 			{#if editable}
-				<Button size="sm" color="alternative" type="button" onclick={unbind} disabled={busy}>
+				<Button
+					size="sm"
+					class="h-10"
+					color="alternative"
+					type="button"
+					onclick={unbind}
+					disabled={busy}
+				>
 					Отвязать наклейку
 				</Button>
 			{/if}
@@ -91,6 +99,7 @@
 			<div class="flex flex-wrap gap-2">
 				<Button
 					size="sm"
+					class="h-10"
 					color="alternative"
 					type="button"
 					onclick={() => (binding = !binding)}
@@ -101,6 +110,7 @@
 				{#if !binding}
 					<Button
 						size="sm"
+						class="h-10"
 						color="alternative"
 						type="button"
 						onclick={ordered ? cancelOrder : order}
@@ -114,7 +124,7 @@
 		{#if binding}
 			{#if quantity > 1}
 				<p class="text-sm text-gray-500 dark:text-gray-400">
-					Наклейка обозначает одну вещь: из {quantity} шт. одна станет отдельной записью с наклейкой,
+					Наклейка обозначает одну вещь: из {pieces(quantity)} одна станет отдельной записью с наклейкой,
 					остальные останутся здесь.
 				</p>
 			{/if}

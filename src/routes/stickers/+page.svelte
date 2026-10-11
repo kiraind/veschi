@@ -3,7 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Alert, Button, Card, Checkbox, Input, Label, Textarea } from 'flowbite-svelte';
 	import { CloseOutline, FilePdfOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { plural } from '$lib/domain/plural';
 	import {
@@ -45,7 +45,7 @@
 
 	function batchStats(batch: PageData['batches'][number]): string {
 		return [
-			`${batch.total} шт., с подписью ${batch.captioned}`,
+			`${batch.total} ${plural(batch.total, ['наклейка', 'наклейки', 'наклеек'])}, с подписью ${batch.captioned}`,
 			batch.ordered > 0 ? `для вещей ${batch.ordered}` : '',
 			`свободно ${batch.free}`,
 			`привязано ${batch.bound}`,
@@ -81,7 +81,7 @@
 			blankCount = 0;
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Не удалось выпустить наклейки';
+			error = errorText(e, 'Не удалось выпустить наклейки');
 		} finally {
 			busy = false;
 		}
@@ -97,7 +97,7 @@
 			await action();
 			await invalidateAll();
 		} catch (e) {
-			const message = e instanceof ApiError ? e.message : fallback;
+			const message = errorText(e, fallback);
 			if (inList) batchError = message;
 			else error = message;
 		} finally {
@@ -146,7 +146,7 @@
 								>{order.caption}</a
 							>
 							<Button
-								class="shrink-0"
+								class="h-10 shrink-0"
 								size="sm"
 								color="alternative"
 								type="button"
@@ -244,6 +244,7 @@
 						<Button
 							color="alternative"
 							size="sm"
+							class="h-10"
 							href={pdfUrl(batch.id)}
 							target="_blank"
 							rel="noopener"
@@ -253,6 +254,7 @@
 						<Button
 							color="alternative"
 							size="sm"
+							class="h-10"
 							type="button"
 							disabled={busy}
 							onclick={() => unprint(batch.id, batch.ordered)}

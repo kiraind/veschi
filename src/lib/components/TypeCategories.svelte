@@ -2,7 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Helper } from 'flowbite-svelte';
 	import { CloseOutline, PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { CategoryRef, RequiredParam } from '$lib/domain/categories';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import CategoryPicker from './CategoryPicker.svelte';
@@ -26,7 +26,7 @@
 			await action();
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		}
 	}
 

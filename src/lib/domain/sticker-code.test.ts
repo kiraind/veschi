@@ -1,9 +1,11 @@
+import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
 	CODE_ALPHABET,
 	codeQuery,
 	MIN_CODE_DISTANCE,
 	RESERVED_CODES,
+	TOP_LEVEL_ROUTES,
 	codeNeighbors,
 	findSimilar,
 	formatCode,
@@ -132,5 +134,16 @@ describe('codeQuery', () => {
 		expect(codeQuery('коробка')).toBeNull();
 		expect(codeQuery('box')).toBeNull();
 		expect(codeQuery('K7M4QXA')).toBeNull();
+	});
+});
+
+describe('TOP_LEVEL_ROUTES', () => {
+	it('lists every top-level route folder, so no issued code is shadowed by a page', () => {
+		const folders = readdirSync('src/routes', { withFileTypes: true })
+			.filter((e) => e.isDirectory() && /^[a-z]/.test(e.name))
+			.map((e) => e.name)
+			.sort();
+		expect([...TOP_LEVEL_ROUTES].sort()).toEqual(folders);
+		expect([...RESERVED_CODES]).toEqual(['PARAMS']);
 	});
 });

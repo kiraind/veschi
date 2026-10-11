@@ -1,8 +1,9 @@
 <script lang="ts">
+	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Badge, Button } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import ParamDefFields from '$lib/components/ParamDefFields.svelte';
 	import type { ParamValueType } from '$lib/domain/params';
@@ -35,7 +36,7 @@
 		try {
 			await action();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -49,7 +50,10 @@
 				valueType,
 				unit,
 				multiple,
-				options: options.map(({ id, label }) => ({ id, label }))
+				// A new option left empty (Enter adds one) is not an option.
+				options: options
+					.filter((o) => o.id || o.label.trim())
+					.map(({ id, label }) => ({ id, label }))
 			});
 			await invalidateAll();
 			// New options got ids and usage counts.
@@ -123,3 +127,5 @@
 		{/each}
 	</ul>
 {/if}
+
+<div class="mt-6"><HistoryLink id={def.id} /></div>

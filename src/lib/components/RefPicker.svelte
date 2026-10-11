@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button, Input } from 'flowbite-svelte';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
 	import type { ParamDraft } from '$lib/domain/param-draft';
 	import type { SearchGroup } from '$lib/server/services/search';
@@ -12,6 +12,7 @@
 
 	let query = $state('');
 	let groups = $state<SearchGroup[]>([]);
+	let error = $state('');
 	let request = 0;
 
 	$effect(() => {
@@ -22,8 +23,16 @@
 		}
 		const id = ++request;
 		const timer = setTimeout(async () => {
-			const found = await api.get<SearchGroup[]>(`/api/search?q=${encodeURIComponent(q)}`);
-			if (id === request) groups = found.slice(0, 10);
+			try {
+				const found = await api.get<SearchGroup[]>(`/api/search?q=${encodeURIComponent(q)}`);
+				if (id !== request) return;
+				groups = found.slice(0, 10);
+				error = '';
+			} catch (e) {
+				if (id !== request) return;
+				groups = [];
+				error = errorText(e);
+			}
 		}, 250);
 		return () => clearTimeout(timer);
 	});
@@ -41,12 +50,22 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400"
 				>{value.kind === 'item' ? 'вещь' : 'тип'}</span
 			>
-			<Button color="alternative" size="sm" type="button" onclick={() => (value = null)}
-				>Изменить</Button
+			<Button
+				color="alternative"
+				size="sm"
+				class="h-10"
+				type="button"
+				onclick={() => (value = null)}>Изменить</Button
 			>
 		</div>
 	{:else}
-		<Input type="search" bind:value={query} placeholder="Найти вещь или тип" />
+		<Input
+			type="search"
+			bind:value={query}
+			placeholder="Найти вещь или тип"
+			onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && e.preventDefault()}
+		/>
+		{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 		{#each groups as group (group.typeId)}
 			<div class="flex flex-col gap-1">
 				<button

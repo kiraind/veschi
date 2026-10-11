@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Badge, Button, Card, Label, Select } from 'flowbite-svelte';
 	import { ArchiveOutline, CloseOutline } from 'flowbite-svelte-icons';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { formatIsoDate, formatIsoDateTime } from '$lib/domain/dates';
 	import {
 		HISTORY_GROUPS,
@@ -34,8 +35,16 @@
 	const events = $derived(current ? [...data.page.events, ...more.events] : data.page.events);
 	const cursor = $derived(current ? more.cursor : data.page.nextCursor);
 
+	/**
+	 * Dates and times are local to the device. The server renders them in its own
+	 * time zone (often UTC), so they are worked out again once the page is in the browser.
+	 */
+	let inBrowser = $state(false);
+	onMount(() => (inBrowser = true));
+
 	/** Events grouped by local date, newest first. */
 	const days = $derived.by(() => {
+		void inBrowser;
 		const result: { date: string; events: HistoryEventView[] }[] = [];
 		for (const e of events) {
 			const date = formatIsoDate(e.createdAt);
@@ -71,13 +80,17 @@
 				cursor: page.nextCursor
 			};
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			loading = false;
 		}
 	}
 
-	const time = (d: Date | string) => formatIsoDateTime(d).slice(11);
+	const time = $derived(inBrowser ? localTime : (d: Date | string) => localTime(d));
+
+	function localTime(d: Date | string): string {
+		return formatIsoDateTime(d).slice(11);
+	}
 </script>
 
 <svelte:head><title>История — Вещи</title></svelte:head>
@@ -92,7 +105,7 @@
 
 <div class="mb-3 flex items-center justify-between gap-3">
 	<h1 class="text-2xl font-bold">История</h1>
-	<Button href="/archive" size="sm" color="alternative" class="shrink-0 gap-1.5">
+	<Button href="/archive" size="sm" color="alternative" class="h-10 shrink-0 gap-1.5">
 		<ArchiveOutline class="h-4 w-4" />
 		Архив
 	</Button>
@@ -106,7 +119,7 @@
 	<Button
 		size="xs"
 		pill
-		class="shrink-0"
+		class="h-10 shrink-0"
 		color={data.filters.group ? 'alternative' : 'primary'}
 		onclick={() => setFilter({ group: null })}>Всё</Button
 	>
@@ -114,7 +127,7 @@
 		<Button
 			size="xs"
 			pill
-			class="shrink-0"
+			class="h-10 shrink-0"
 			color={data.filters.group === key ? 'primary' : 'alternative'}
 			aria-pressed={data.filters.group === key}
 			onclick={() => setFilter({ group: data.filters.group === key ? null : key })}
@@ -170,7 +183,7 @@
 			<span class="wrap-anywhere">{data.entity.name}</span>
 			<button
 				type="button"
-				class="-me-1 rounded p-0.5 hover:bg-primary-200 dark:hover:bg-primary-800"
+				class="-my-2 -me-2 flex h-10 w-10 items-center justify-center rounded hover:bg-primary-200 dark:hover:bg-primary-800"
 				aria-label="Показать всю историю"
 				onclick={() => setFilter({ entity: null })}
 			>

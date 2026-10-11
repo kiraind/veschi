@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { Badge, Button, Input } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import Thumb from '$lib/components/Thumb.svelte';
 	import type { PageData } from './$types';
 
@@ -31,7 +31,7 @@
 			const { id } = await api.post<{ id: string }>('/api/types', { name });
 			await goto(`/types/${id}`);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

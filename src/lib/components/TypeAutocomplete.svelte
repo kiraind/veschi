@@ -12,7 +12,7 @@
 	 * replaces the field with the type's card (photo, name; the cross brings
 	 * the field back) and sets `typeId` / `selected`; free text leaves them
 	 * null and `typeName` becomes the name of a new type (the server reuses a
-	 * type with the same name).
+	 * type with the same name; leaving the field with such a name picks it).
 	 */
 	let {
 		typeId = $bindable(null),
@@ -40,7 +40,10 @@
 		}
 		const id = ++request;
 		const timer = setTimeout(async () => {
-			const found = await api.get<TypeSummary[]>(`/api/types?q=${encodeURIComponent(q)}`);
+			// Without suggestions the typed name still works (a new type or the one with that name).
+			const found = await api
+				.get<TypeSummary[]>(`/api/types?q=${encodeURIComponent(q)}`)
+				.catch(() => []);
 			if (id === request) suggestions = found;
 		}, 200);
 		return () => clearTimeout(timer);
@@ -51,6 +54,17 @@
 		typeName = type.name;
 		selected = type;
 		suggestions = [];
+	}
+
+	/**
+	 * Leaving the field with the exact name of an existing type picks that type,
+	 * so its own mark «контейнер» and photo apply instead of a new type's.
+	 */
+	function leave() {
+		const name = typeName.trim().toLocaleLowerCase('ru');
+		const exact = suggestions.find((t) => t.name.toLocaleLowerCase('ru') === name);
+		if (exact && !typeId) pick(exact);
+		focused = false;
 	}
 
 	async function reset() {
@@ -99,7 +113,7 @@
 					selected = null;
 				}}
 				onfocus={() => (focused = true)}
-				onblur={() => setTimeout(() => (focused = false), 150)}
+				onblur={() => setTimeout(leave, 150)}
 				autocomplete="off"
 				placeholder="Например, NE555 или Нож Victorinox"
 				required

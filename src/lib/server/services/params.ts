@@ -1,6 +1,7 @@
 import type { Param, ParamDef, ParamEnumValue, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { db, type Tx } from '$lib/server/db';
+import { escapeLike } from '$lib/domain/search';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
@@ -31,6 +32,18 @@ type ParamRow = Param & { enumValues: ParamEnumValue[]; def: ParamDef };
 
 function targetWhere(target: ParamTarget) {
 	return 'typeId' in target ? { typeId: target.typeId } : { itemId: target.itemId };
+}
+
+/** Values change only at a type or an active ordinary item (not in the archive, not a workbench). */
+async function assertTargetEditable(actor: Actor, target: ParamTarget, tx: Tx): Promise<void> {
+	await assertTargetVisible(actor, target, tx);
+	if ('itemId' in target) await assertItemEditable(target.itemId, tx);
+}
+
+async function assertItemEditable(itemId: string, tx: Tx): Promise<void> {
+	const item = await tx.item.findUniqueOrThrow({ where: { id: itemId } });
+	if (item.isWorkbench) throw new ValidationError('У рабочего стола нет параметров');
+	if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
 }
 
 async function assertTargetVisible(actor: Actor, target: ParamTarget, tx: Tx): Promise<void> {
@@ -313,9 +326,19 @@ async function findDefs(actor: Actor, ids: string[], tx: Tx): Promise<Map<string
 
 /**
  * Checks one value against its definition and the references inside it:
- * value type, drop-down options, REF targets, uploaded files.
+ * value type, drop-down options, REF targets, uploaded files. A new REF
+ * points at an active item other than the target itself; `kept` are items
+ * the target already points at (a value kept as is stays valid after its
+ * item went to the archive).
  */
-async function assertValueValid(actor: Actor, def: ParamDef, p: ParamInput, tx: Tx): Promise<void> {
+async function assertValueValid(
+	actor: Actor,
+	def: ParamDef,
+	p: ParamInput,
+	tx: Tx,
+	target: ParamTarget,
+	kept: Set<string> = new Set()
+): Promise<void> {
 	if (p.valueType !== def.valueType) {
 		throw new ValidationError(
 			`«${def.name}»: нужно значение типа «${PARAM_VALUE_TYPE_LABELS[def.valueType]}»`
@@ -342,6 +365,12 @@ async function assertValueValid(actor: Actor, def: ParamDef, p: ParamInput, tx: 
 				})
 			: await tx.itemType.findFirst({ where: { id: p.refTypeId ?? '', ...visibleTo(actor) } });
 		if (!found) throw new ValidationError(`«${def.name}»: вещь или тип не найдены`);
+		if (p.refItemId && 'itemId' in target && p.refItemId === target.itemId) {
+			throw new ValidationError(`«${def.name}»: вещь не может ссылаться на саму себя`);
+		}
+		if (p.refItemId && 'status' in found && found.status !== 'ACTIVE' && !kept.has(p.refItemId)) {
+			throw new ValidationError(`«${def.name}»: вещь в архиве`);
+		}
 	}
 	if (p.valueType === 'FILE' && !isOwnUpload(actor, p.fileKey)) {
 		const known = await tx.param.findFirst({
@@ -352,6 +381,10 @@ async function assertValueValid(actor: Actor, def: ParamDef, p: ParamInput, tx: 
 		});
 		if (!known) throw new ValidationError(`«${def.name}»: файл не найден, загрузите его заново`);
 	}
+}
+
+function refsOf(rows: Pick<Param, 'refItemId'>[]): Set<string> {
+	return new Set(rows.flatMap((r) => (r.refItemId ? [r.refItemId] : [])));
 }
 
 /** Row data of a value: value columns plus the definition's type and list. */
@@ -377,16 +410,17 @@ export async function replaceParams(
 	{ record = true }: { record?: boolean } = {}
 ): Promise<string[]> {
 	const params = paramListSchema.parse(inputs);
-	await assertTargetVisible(actor, target, tx);
+	await assertTargetEditable(actor, target, tx);
 	const defs = await findDefs(
 		actor,
 		params.map((p) => p.defId),
 		tx
 	);
-	for (const p of params) await assertValueValid(actor, defs.get(p.defId)!, p, tx);
-
 	const where = targetWhere(target);
 	const old = await signedRows(target, tx);
+	const oldRefs = refsOf(old);
+	for (const p of params) await assertValueValid(actor, defs.get(p.defId)!, p, tx, target, oldRefs);
+
 	const kept = new Set(params.map((p) => p.defId));
 	await assertNotRequired(
 		target,
@@ -410,7 +444,7 @@ export async function setParams(
 	target: ParamTarget,
 	inputs: unknown
 ): Promise<ParamView[]> {
-	const dropped = await db.$transaction((tx) => replaceParams(actor, target, inputs, tx));
+	const dropped = await writeTransaction((tx) => replaceParams(actor, target, inputs, tx));
 	await deleteUnreferencedFiles(dropped);
 	return listParams(actor, target);
 }
@@ -422,10 +456,10 @@ export async function addParam(
 	input: unknown
 ): Promise<ParamView> {
 	const p = paramInputSchema.parse(input);
-	const id = await db.$transaction(async (tx) => {
-		await assertTargetVisible(actor, target, tx);
+	const id = await writeTransaction(async (tx) => {
+		await assertTargetEditable(actor, target, tx);
 		const def = (await findDefs(actor, [p.defId], tx)).get(p.defId)!;
-		await assertValueValid(actor, def, p, tx);
+		await assertValueValid(actor, def, p, tx, target);
 		const where = targetWhere(target);
 		if (await tx.param.findFirst({ where: { ...where, defId: def.id } })) {
 			throw new ConflictError(`Параметр «${def.name}» уже есть — измените его значение`);
@@ -471,11 +505,12 @@ export async function getParam(actor: Actor, id: string, tx: Tx = db): Promise<P
 /** Changes a stored value; its parameter stays the same. */
 export async function updateParam(actor: Actor, id: string, input: unknown): Promise<ParamView> {
 	const p = paramInputSchema.parse(input);
-	const dropped = await db.$transaction(async (tx) => {
+	const dropped = await writeTransaction(async (tx) => {
 		const param = await findParam(actor, id, tx);
 		if (p.defId !== param.defId) throw new ValidationError('Параметр значения менять нельзя');
-		await assertValueValid(actor, param.def, p, tx);
 		const target = paramTarget(param);
+		if (param.itemId) await assertItemEditable(param.itemId, tx);
+		await assertValueValid(actor, param.def, p, tx, target, refsOf([param]));
 		const before = await signedRows(target, tx);
 		await tx.paramEnumValue.deleteMany({ where: { paramId: id } });
 		const cleared = {
@@ -504,9 +539,10 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 }
 
 export async function deleteParam(actor: Actor, id: string): Promise<void> {
-	const param = await db.$transaction(async (tx) => {
+	const param = await writeTransaction(async (tx) => {
 		const param = await findParam(actor, id, tx);
 		const target = paramTarget(param);
+		if (param.itemId) await assertItemEditable(param.itemId, tx);
 		await assertNotRequired(target, [param], tx);
 		const before = await signedRows(target, tx);
 		await tx.param.delete({ where: { id } });
@@ -518,8 +554,9 @@ export async function deleteParam(actor: Actor, id: string): Promise<void> {
 
 /** Moves a value one place up (-1) or down (+1) in its list. */
 export async function moveParam(actor: Actor, id: string, delta: -1 | 1): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const param = await findParam(actor, id, tx);
+		if (param.itemId) await assertItemEditable(param.itemId, tx);
 		const where = param.typeId ? { typeId: param.typeId } : { itemId: param.itemId };
 		const list = await tx.param.findMany({
 			where,
@@ -648,7 +685,7 @@ export async function getParamDef(actor: Actor, id: string): Promise<ParamDefCar
 async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
 	const same = await tx.paramDef.findMany({
 		where: {
-			name: { equals: name, mode: 'insensitive' },
+			name: { equals: escapeLike(name), mode: 'insensitive' },
 			...visibleTo(actor),
 			...(exceptId ? { id: { not: exceptId } } : {})
 		},
@@ -662,7 +699,7 @@ async function assertNameFree(actor: Actor, name: string, exceptId: string | nul
 export async function createParamDef(actor: Actor, input: unknown): Promise<ParamDefView> {
 	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
 	if (options.some((o) => o.id)) throw new ValidationError('У новых вариантов не бывает id');
-	const id = await db.$transaction(async (tx) => {
+	const id = await writeTransaction(async (tx) => {
 		await assertNameFree(actor, data.name, null, tx);
 		const dictionaryId =
 			data.valueType === 'ENUM'
@@ -686,7 +723,7 @@ export async function updateParamDef(
 	input: unknown
 ): Promise<ParamDefView> {
 	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
 		await assertNameFree(actor, data.name, id, tx);
 		if (data.valueType !== def.valueType && (await tx.param.count({ where: { defId: id } }))) {
@@ -722,7 +759,7 @@ export async function updateParamDef(
 
 /** Deletes a definition no type or item has a value of (with its options). */
 export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
 		const used = await tx.param.count({ where: { defId: id } });
 		if (used > 0) {

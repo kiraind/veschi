@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { Button } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { pathNodeName } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { quantityError } from '$lib/domain/workbench';
@@ -52,7 +53,7 @@
 			open = false;
 			await onreturned();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -80,7 +81,7 @@
 			</div>
 		{/if}
 		<p class="mb-2 text-gray-500 dark:text-gray-400">
-			Положите{#if item.quantity > 1}&nbsp;{amount} шт.{/if}
+			Положите{#if item.quantity > 1}&nbsp;{pieces(amount)}{/if}
 			{item.homePath.length ? 'сюда:' : 'на верхний уровень.'}
 		</p>
 		{#if item.homePath.length}

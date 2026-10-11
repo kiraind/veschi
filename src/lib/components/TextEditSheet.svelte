@@ -1,7 +1,7 @@
 <script lang="ts">
 	import RequiredMark from './RequiredMark.svelte';
 	import { Button, Input, Label, Textarea } from 'flowbite-svelte';
-	import { ApiError } from '$lib/api';
+	import { errorText } from '$lib/api';
 	import Sheet from './Sheet.svelte';
 
 	/**
@@ -51,7 +51,7 @@
 			await onsave(text.trim());
 			open = false;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

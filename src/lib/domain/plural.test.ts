@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plural } from './plural';
+import { pieces, plural } from './plural';
 
 const forms = ['штука', 'штуки', 'штук'] as const;
 
@@ -21,5 +21,11 @@ describe('plural', () => {
 		[1004, 'штуки']
 	])('%i → %s', (n, form) => {
 		expect(plural(n, forms)).toBe(form);
+	});
+});
+
+describe('pieces', () => {
+	it('writes the quantity out', () => {
+		expect([1, 3, 10, 21].map(pieces)).toEqual(['1 штука', '3 штуки', '10 штук', '21 штука']);
 	});
 });

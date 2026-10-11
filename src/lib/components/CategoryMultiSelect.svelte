@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { CategoryRef, CategorySummary } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
 
@@ -51,7 +51,7 @@
 			selected = [...selected, created.id];
 			query = '';
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

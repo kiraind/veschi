@@ -2,7 +2,7 @@
 	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -28,7 +28,7 @@
 		} catch (e) {
 			message = {
 				ok: false,
-				text: e instanceof ApiError ? e.message : 'Не удалось сменить пароль'
+				text: errorText(e, 'Не удалось сменить пароль')
 			};
 		} finally {
 			saving = false;

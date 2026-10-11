@@ -177,10 +177,10 @@
 		<Alert color="yellow">
 			<p>{cameraError}</p>
 			<div class="mt-3 flex flex-wrap gap-2">
-				<Button type="button" size="sm" onclick={() => fileInput?.click()}>
+				<Button type="button" size="sm" class="h-10" onclick={() => fileInput?.click()}>
 					<ImageOutline class="me-1.5 h-5 w-5" />Выбрать файл
 				</Button>
-				<Button type="button" size="sm" color="alternative" onclick={retry}>
+				<Button type="button" size="sm" class="h-10" color="alternative" onclick={retry}>
 					Попробовать снова
 				</Button>
 			</div>
@@ -214,7 +214,7 @@
 					type="button"
 					color="alternative"
 					size="sm"
-					class="justify-self-start"
+					class="h-10 justify-self-start"
 					onclick={() => fileInput?.click()}
 				>
 					<ImageOutline class="me-1 h-5 w-5" />Файл

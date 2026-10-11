@@ -147,7 +147,8 @@ model Item {
   typeId      String?
   // Own name of this instance; when empty the type name is shown.
   name        String?
-  // Always 1 for containers (items of a container type) and workbenches.
+  // At least 1 (CHECK Item_quantity_positive); always 1 for containers (items
+  // of a container type), workbenches and items with a sticker (services).
   quantity    Int        @default(1)
   // Where the item lies; null = top level.
   parentId    String?
@@ -195,6 +196,8 @@ model Item {
   @@index([householdId, status])
   @@index([parentId])
   @@index([typeId])
+  @@index([homeId])
+  @@index([splitFromId])
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +365,9 @@ model Param {
   @@unique([typeId, defId])
   @@unique([itemId, defId])
   @@index([defId])
+  @@index([refItemId])
+  @@index([refTypeId])
+  @@index([fileKey])
 }
 
 model ParamEnumValue {
@@ -372,6 +378,7 @@ model ParamEnumValue {
   option EnumOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
 
   @@id([paramId, optionId])
+  @@index([optionId])
 }
 
 // ---------------------------------------------------------------------------

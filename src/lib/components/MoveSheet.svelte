@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
 	import ContainerPicker from './ContainerPicker.svelte';
 	import QuantityField from './QuantityField.svelte';
@@ -53,7 +53,7 @@
 			open = false;
 			await onmoved();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

@@ -4,7 +4,7 @@
 
 <script lang="ts">
 	import { Radio, Select } from 'flowbite-svelte';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 
 	/** «Что сделать с содержимым?» when a container is thrown away. */
 	let {
@@ -28,7 +28,7 @@
 			workbenchId =
 				benches.find((b) => b.id === data.lastWorkbenchId)?.id ?? benches[0]?.id ?? null;
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		}
 	}
 </script>

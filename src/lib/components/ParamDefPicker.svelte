@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Card, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { normalizeParamKey, paramKindLabel, type ParamDefView } from '$lib/domain/params';
 	import ParamDefCreate from './ParamDefCreate.svelte';
 
@@ -22,10 +22,14 @@
 
 	let defs = $state<ParamDefView[] | null>(null);
 	let query = $state('');
+	let loadError = $state('');
 	let creating = $state(false);
 
 	$effect(() => {
-		api.get<ParamDefView[]>('/api/param-defs').then((list) => (defs = list));
+		api
+			.get<ParamDefView[]>('/api/param-defs')
+			.then((list) => (defs = list))
+			.catch((e) => (loadError = errorText(e)));
 	});
 
 	const q = $derived(normalizeParamKey(query));
@@ -45,8 +49,11 @@
 			placeholder="Найти параметр или ввести новый"
 			aria-label="Параметр"
 			autocomplete="off"
+			onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && e.preventDefault()}
 		/>
-		{#if defs === null}
+		{#if loadError}
+			<p class="text-sm text-red-600 dark:text-red-500" role="alert">{loadError}</p>
+		{:else if defs === null}
 			<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка…</p>
 		{:else}
 			{#if matches.length > 0}

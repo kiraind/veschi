@@ -2,7 +2,7 @@
 	import { Card } from 'flowbite-svelte';
 	import Thumb from './Thumb.svelte';
 	import PathTrail from './PathTrail.svelte';
-	import { plural } from '$lib/domain/plural';
+	import { pieces } from '$lib/domain/plural';
 	import type { SearchGroup } from '$lib/server/services/search';
 
 	/**
@@ -23,8 +23,7 @@
 							><strong>{group.typeName}</strong></a
 						>
 						<div class="text-sm text-gray-500 dark:text-gray-400">
-							всего {group.total}
-							{plural(group.total, ['штука', 'штуки', 'штук'])}
+							всего {pieces(group.total)}
 						</div>
 					</div>
 				</div>
@@ -38,11 +37,11 @@
 								{/if}
 							</span>
 							<a
-								class="inline-flex min-h-8 items-center rounded-full bg-primary-100 px-3 text-sm font-medium whitespace-nowrap text-primary-800 hover:bg-primary-200 dark:bg-primary-900 dark:text-primary-300 dark:hover:bg-primary-800"
+								class="inline-flex min-h-10 items-center rounded-full bg-primary-100 px-3 text-sm font-medium whitespace-nowrap text-primary-800 hover:bg-primary-200 dark:bg-primary-900 dark:text-primary-300 dark:hover:bg-primary-800"
 								href="/items/{location.itemId}"
 								title="Открыть карточку"
 							>
-								{location.quantity} шт.
+								{pieces(location.quantity)}
 							</a>
 						</li>
 					{/each}

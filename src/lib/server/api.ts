@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { error, json, type RequestEvent } from '@sveltejs/kit';
+import { error, json, type RequestEvent, type ServerLoadEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { AppError, UnauthorizedError, ValidationError } from './errors';
 import type { Actor } from './scope';
@@ -12,7 +12,7 @@ export interface ApiErrorBody {
 }
 
 /**
- * Prisma errors that mean "no such record": a malformed UUID in the URL
+ * Prisma errors that mean "no such record": a malformed id in the URL
  * (P2023, or 22P02 from raw SQL) or a missing record (P2025).
  */
 function isNotFoundDbError(e: unknown): boolean {
@@ -46,6 +46,16 @@ export function errorResponse(e: unknown): Response {
 		const body: ApiErrorBody = { error: { code: 'not_found', message: 'Не найдено' } };
 		return json(body, { status: 404 });
 	}
+	// A unique or foreign key the services did not foresee: a conflict, not a server failure.
+	if (
+		e instanceof Prisma.PrismaClientKnownRequestError &&
+		(e.code === 'P2002' || e.code === 'P2003')
+	) {
+		const body: ApiErrorBody = {
+			error: { code: 'conflict', message: 'Данные изменились, обновите страницу' }
+		};
+		return json(body, { status: 409 });
+	}
 	console.error(e);
 	const body: ApiErrorBody = { error: { code: 'internal', message: 'Внутренняя ошибка сервера' } };
 	return json(body, { status: 500 });
@@ -55,6 +65,29 @@ export function errorResponse(e: unknown): Response {
 export function requireActor(event: Pick<RequestEvent, 'locals'>): Actor {
 	if (!event.locals.actor) throw new UnauthorizedError();
 	return event.locals.actor;
+}
+
+/**
+ * Wraps a page `load`: requires a signed-in user and shows service errors on
+ * the SvelteKit error page with their status (a deleted or mistyped id → 404),
+ * not as a bare 500.
+ *
+ * @example
+ * export const load: PageServerLoad = pageLoad(({ actor, params }) => getItemCard(actor, params.id));
+ */
+export function pageLoad<E extends ServerLoadEvent, R>(
+	load: (event: E & { actor: Actor }) => Promise<R>
+): (event: E) => Promise<R> {
+	return async (event) => {
+		const actor = actorOrError(event);
+		try {
+			return await load(Object.assign(event, { actor }));
+		} catch (e) {
+			if (e instanceof AppError) error(e.status, e.message);
+			if (isNotFoundDbError(e)) error(404, 'Не найдено');
+			throw e;
+		}
+	};
 }
 
 /** Same as requireActor, for `load` functions and form actions (SvelteKit error page). */

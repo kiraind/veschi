@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { ParamDefView, ParamValueType } from '$lib/domain/params';
 	import ParamDefFields from './ParamDefFields.svelte';
 
@@ -38,11 +38,12 @@
 					valueType,
 					unit,
 					multiple,
-					options
+					// An empty option left at the end (Enter adds one) is not an option.
+					options: options.filter((o) => o.label.trim())
 				})
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

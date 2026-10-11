@@ -4,9 +4,17 @@ export interface SearchQuery {
 	param: { key: string; value: string } | null;
 }
 
-/** Parses the search box input. «корпус: DIP-8» also yields param {корпус, DIP-8}. */
+/**
+ * Parses the search box input. «корпус: DIP-8» also yields param {корпус, DIP-8}.
+ * Numbers copied as the app shows them («−40», «4 500» with a narrow space)
+ * are turned back into the stored form («-40», «4500»).
+ */
 export function parseSearchQuery(input: string): SearchQuery {
-	const text = input.trim().replace(/\s+/g, ' ');
+	const text = input
+		.replace(/\u2212/g, '-')
+		.replace(/(\d)[\u00a0\u2009\u202f](?=\d{3}(?!\d))/g, '$1')
+		.trim()
+		.replace(/\s+/g, ' ');
 	const match = /^([^:]+):(.+)$/.exec(text);
 	const key = match?.[1]?.trim();
 	const value = match?.[2]?.trim();
@@ -15,9 +23,18 @@ export function parseSearchQuery(input: string): SearchQuery {
 	return { text, param };
 }
 
-/** Escapes LIKE wildcards so the input is matched literally as a substring. */
+/**
+ * Escapes LIKE wildcards so the input is matched literally. Prisma's `equals` and
+ * `contains` with `mode: 'insensitive'` become ILIKE without escaping, so names
+ * passed to them go through this too.
+ */
+export function escapeLike(s: string): string {
+	return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/** A LIKE pattern matching the input literally as a substring. */
 export function likePattern(s: string): string {
-	return `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+	return `%${escapeLike(s)}%`;
 }
 
 /** Longest example that still fits the search field on a phone. */

@@ -11,20 +11,22 @@ export const MIN_CODE_DISTANCE = 3;
 const CODE_RE = /^[2-9A-HJKMNP-Z]{6}$/;
 
 /**
- * Top-level app routes. A sticker URL is `/<CODE>`, so a code spelled like a
- * route would be shadowed by it; such codes are never issued. (None of the
- * current names fits the alphabet, the guard is for future routes.)
+ * Top-level app routes (a test keeps the list in sync with src/routes). A
+ * sticker URL is `/<CODE>`, so a code spelled like a route would be shadowed
+ * by it; such codes are never issued (today that is `params`).
  */
-const TOP_LEVEL_ROUTES = [
+export const TOP_LEVEL_ROUTES = [
 	'api',
 	'archive',
-	'dictionaries',
+	'categories',
+	'containers',
 	'files',
 	'healthz',
 	'history',
 	'items',
 	'login',
 	'logout',
+	'params',
 	'scan',
 	'settings',
 	'stickers',

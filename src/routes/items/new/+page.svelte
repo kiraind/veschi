@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
@@ -109,7 +109,7 @@
 				const typed = new Map(untrack(() => required).map((e) => [e.r.def.id, e.draft]));
 				required = list.map((r) => ({ r, draft: typed.get(r.def.id) ?? emptyDraft(r.def) }));
 			})
-			.catch((e) => (error = e instanceof ApiError ? e.message : String(e)));
+			.catch((e) => (error = errorText(e)));
 	});
 
 	/** Values of the required parameters, or an error message. */
@@ -167,7 +167,7 @@
 					// The item exists already: show its card, the photo can be added there.
 					await confirmAction({
 						title: 'Вещь создана, но фото не сохранилось',
-						message: e instanceof ApiError ? e.message : String(e),
+						message: errorText(e),
 						confirmLabel: 'Понятно',
 						cancelLabel: null,
 						danger: false
@@ -176,7 +176,7 @@
 			}
 			await goto(`/items/${id}`, { replaceState: true });
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -321,7 +321,13 @@
 			</p>
 		{/if}
 		<div class="flex flex-wrap gap-2">
-			<Button type="button" color="alternative" size="sm" onclick={() => (picking = !picking)}>
+			<Button
+				type="button"
+				color="alternative"
+				size="sm"
+				class="h-10"
+				onclick={() => (picking = !picking)}
+			>
 				{picking ? 'Отмена' : 'Выбрать контейнер'}
 			</Button>
 			{#if !bench && data.workbenches.length > 0}
@@ -329,6 +335,7 @@
 					type="button"
 					color="alternative"
 					size="sm"
+					class="h-10"
 					onclick={() => {
 						parent = null;
 						picking = false;
@@ -343,6 +350,7 @@
 					type="button"
 					color="alternative"
 					size="sm"
+					class="h-10"
 					onclick={() => {
 						parent = null;
 						benchId = null;

@@ -1,5 +1,5 @@
 import type { Item } from '@prisma/client';
-import { db, type Tx } from '$lib/server/db';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { config } from '$lib/server/env';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
@@ -10,9 +10,6 @@ import { itemSubject, recordEvent } from './history';
 import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
 import { MAX_SHEETS_PER_BATCH, planSheets } from '$lib/domain/sticker-sheet';
-
-/** Serializes code generation so concurrent batches cannot issue codes close to each other. */
-const ISSUE_LOCK_KEY = 0x5711c0de;
 
 /**
  * Binds a free sticker to an active item that has no sticker yet. Used when
@@ -27,7 +24,7 @@ export async function bindSticker(
 	itemId: string,
 	tx?: Tx
 ): Promise<{ itemId: string }> {
-	if (!tx) return db.$transaction((t) => bindSticker(actor, codeInput, itemId, t));
+	if (!tx) return writeTransaction((t) => bindSticker(actor, codeInput, itemId, t));
 	const code = normalizeCode(codeInput);
 	if (!code) throw new ValidationError('Некорректный ID наклейки');
 	const sticker = await tx.sticker.findFirst({ where: { code, ...visibleTo(actor) } });
@@ -36,7 +33,7 @@ export async function bindSticker(
 		throw new ConflictError(`Наклейка ${formatCode(code)} уже использована`);
 	}
 	const item = await tx.item.findFirst({
-		where: { id: itemId, status: 'ACTIVE', ...visibleTo(actor) }
+		where: { id: itemId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) }
 	});
 	if (!item) throw new NotFoundError('Вещь не найдена');
 	const existing = await tx.sticker.findUnique({ where: { itemId } });
@@ -83,7 +80,7 @@ async function stickerTarget(tx: Tx, item: Item): Promise<string> {
  * it), and the item can get a new sticker.
  */
 export async function unbindSticker(actor: Actor, itemId: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const sticker = await tx.sticker.findFirst({
 			where: { itemId, status: 'BOUND', ...visibleTo(actor) }
 		});
@@ -144,7 +141,7 @@ export interface StickerOrder {
  * changes nothing.
  */
 export async function orderSticker(actor: Actor, itemId: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id: itemId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) },
 			include: { sticker: { select: { status: true } } }
@@ -163,7 +160,7 @@ export async function orderSticker(actor: Actor, itemId: string): Promise<void> 
 
 /** Cancels the item's sticker order; nothing happens when there is none. */
 export async function cancelStickerOrder(actor: Actor, itemId: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({ where: { id: itemId, ...visibleTo(actor) } });
 		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (!item.stickerOrderedAt) return;
@@ -221,15 +218,15 @@ export async function issueBatch(
 	actor: Actor,
 	input: { captions: string[]; blankCount: number; orderItemIds?: string[]; fillSheet?: boolean }
 ): Promise<BatchSummary> {
+	if (!config().qrBaseUrl) throw noQrBaseUrl();
 	const typed = input.captions.map((c) => c.trim()).filter((c) => c.length > 0);
 	if (!Number.isInteger(input.blankCount) || input.blankCount < 0) {
 		throw new ValidationError('Число наклеек без подписи должно быть целым и не меньше 0');
 	}
 	const orderIds = [...new Set(input.orderItemIds ?? [])];
 
-	const { batch, plan, ordered } = await db.$transaction(
+	const { batch, plan, ordered } = await writeTransaction(
 		async (tx) => {
-			await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ISSUE_LOCK_KEY})`;
 			const orders = (await listStickerOrders(actor, tx)).filter((o) =>
 				orderIds.includes(o.itemId)
 			);
@@ -308,7 +305,7 @@ export async function issueBatch(
  * by scanning, or detached as damaged), because then it was printed.
  */
 export async function unprintBatch(actor: Actor, batchId: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const batch = await tx.stickerBatch.findFirst({ where: { id: batchId, ...visibleTo(actor) } });
 		if (!batch) throw new NotFoundError('Пачка наклеек не найдена');
 		const stickers = await tx.sticker.findMany({
@@ -393,12 +390,19 @@ export async function listBatches(actor: Actor): Promise<BatchSummary[]> {
 	});
 }
 
+function noQrBaseUrl(): ConflictError {
+	return new ConflictError(
+		'Не задан адрес приложения (ORIGIN или QR_BASE_URL): QR-коды на наклейках вели бы в никуда'
+	);
+}
+
 /** The batch PDF, regenerated from the stored codes (a lost PDF can be printed again). */
 export async function getBatchPdf(
 	actor: Actor,
 	batchId: string,
-	qrBaseUrl: string = config().qrBaseUrl
+	qrBaseUrl: string | null = config().qrBaseUrl
 ): Promise<{ filename: string; pdf: Buffer }> {
+	if (!qrBaseUrl) throw noQrBaseUrl();
 	const batch = await db.stickerBatch.findFirst({ where: { id: batchId, ...visibleTo(actor) } });
 	if (!batch) throw new NotFoundError('Пачка наклеек не найдена');
 	const stickers = await db.sticker.findMany({

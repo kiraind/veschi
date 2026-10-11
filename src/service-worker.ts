@@ -56,12 +56,13 @@ async function fromAssets(request: Request): Promise<Response> {
 async function networkFirstPage(request: Request): Promise<Response> {
 	try {
 		const response = await fetch(request);
-		if (response.status === 200 && !response.redirected) {
+		if (new URL(request.url).pathname === '/login') {
+			// The login page opens only without a session (signed out or expired; a redirect
+			// to it is opaque here): forget the pages of the previous session.
+			if (response.status === 200) await caches.delete(PAGES_CACHE);
+		} else if (response.status === 200 && response.type === 'basic') {
 			const cache = await caches.open(PAGES_CACHE);
 			await cache.put(request, response.clone());
-		} else if (response.redirected && new URL(response.url).pathname === '/login') {
-			// Signed out (or the session expired): forget the pages of the previous session.
-			await caches.delete(PAGES_CACHE);
 		}
 		return response;
 	} catch {

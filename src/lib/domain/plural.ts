@@ -11,3 +11,8 @@ export function plural(n: number, [one, few, many]: readonly [string, string, st
 	if (units >= 2 && units <= 4) return few;
 	return many;
 }
+
+/** A quantity written out, as Russian text shows it: «1 штука», «3 штуки», «10 штук». */
+export function pieces(n: number): string {
+	return `${n} ${plural(n, ['штука', 'штуки', 'штук'])}`;
+}

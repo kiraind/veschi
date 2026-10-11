@@ -1,7 +1,7 @@
 <script lang="ts">
 	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import { ArrowLeftOutline, MapPinOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
@@ -94,7 +94,7 @@
 			draft = null;
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -153,13 +153,20 @@
 					</div>
 				</div>
 				<div class="flex flex-wrap gap-2">
-					<Button color="alternative" size="sm" onclick={() => edit(bench)} disabled={busy}>
+					<Button
+						color="alternative"
+						size="sm"
+						class="h-10"
+						onclick={() => edit(bench)}
+						disabled={busy}
+					>
 						Изменить
 					</Button>
 					<Button
 						color="red"
 						outline
 						size="sm"
+						class="h-10"
 						onclick={() => remove(bench)}
 						disabled={busy || bench.itemCount > 0}
 						title={bench.itemCount > 0 ? 'Сначала уберите вещи со стола' : undefined}
@@ -235,6 +242,7 @@
 						type="button"
 						color="alternative"
 						size="sm"
+						class="h-10"
 						onclick={useCurrentPlace}
 						disabled={locating}
 						loading={locating}
@@ -243,7 +251,7 @@
 						{locating ? 'Определяю…' : 'Взять текущее место'}
 					</Button>
 					{#if draft.geoLat !== null}
-						<Button type="button" color="alternative" size="sm" onclick={clearZone}>
+						<Button type="button" color="alternative" size="sm" class="h-10" onclick={clearZone}>
 							Убрать зону
 						</Button>
 					{/if}

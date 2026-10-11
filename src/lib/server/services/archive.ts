@@ -1,9 +1,10 @@
-import { db, type Tx } from '$lib/server/db';
-import { NotFoundError, ValidationError } from '$lib/server/errors';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
+import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { getPaths, isContainerItem, type PathNode } from './paths';
 import { itemRef, itemSubject, placeRef, recordEvent } from './history';
+import { deleteUnreferencedFiles } from './files';
 import { restoreStickerOf, writeOffStickerOf } from './stickers';
 
 /** Where the active contents of a discarded container go. */
@@ -52,12 +53,21 @@ export async function discard(
 	options: DiscardOptions = {},
 	tx?: Tx
 ): Promise<void> {
-	if (!tx) return db.$transaction((t) => discard(actor, itemId, options, t));
+	if (!tx) return writeTransaction((t) => discard(actor, itemId, options, t));
 	const contents = options.contents ?? 'parent';
 	const item = await findItem(actor, itemId, tx);
 	if (item.status === 'ARCHIVED') throw new ValidationError('Вещь уже в архиве');
 	const now = new Date();
 	let archivedIds = [item.id];
+	/** Active contents that stay in the catalog and where they went. */
+	let moved: { ids: string[]; to: string | null } = { ids: [], to: null };
+	const inside = async () =>
+		(
+			await tx.item.findMany({
+				where: { parentId: item.id, status: 'ACTIVE' },
+				select: { id: true }
+			})
+		).map((i) => i.id);
 	const subject = await itemSubject(tx, item.id);
 	const from = await placeRef(tx, item.parentId);
 
@@ -73,6 +83,7 @@ export async function discard(
 			where: { id: options.workbenchId, isWorkbench: true, ...visibleTo(actor) }
 		});
 		if (!bench) throw new NotFoundError('Рабочий стол не найден');
+		moved = { ids: await inside(), to: bench.id };
 		await tx.item.updateMany({
 			where: { parentId: item.id, status: 'ACTIVE' },
 			data: {
@@ -86,6 +97,7 @@ export async function discard(
 		await tx.user.update({ where: { id: actor.userId }, data: { lastWorkbenchId: bench.id } });
 	} else {
 		const onBench = item.takenById !== null;
+		moved = { ids: await inside(), to: item.parentId };
 		await tx.item.updateMany({
 			where: { parentId: item.id, status: 'ACTIVE' },
 			data: onBench
@@ -114,9 +126,12 @@ export async function discard(
 			quantity: item.quantity,
 			from,
 			together: together.length,
+			...(moved.ids.length
+				? { moved: moved.ids.length, movedTo: await placeRef(tx, moved.to) }
+				: {}),
 			...(options.consumed ? { consumed: true } : {})
 		},
-		refIds: together
+		refIds: [...together, ...moved.ids]
 	});
 }
 
@@ -126,7 +141,7 @@ export async function discard(
  * container while that one is active, otherwise it goes to the top level.
  */
 export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<void> {
-	if (!tx) return db.$transaction((t) => restore(actor, itemId, t));
+	if (!tx) return writeTransaction((t) => restore(actor, itemId, t));
 	const item = await findItem(actor, itemId, tx);
 	if (item.status !== 'ARCHIVED') throw new ValidationError('Вещь не в архиве');
 
@@ -170,33 +185,56 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
 }
 
 /**
- * Deletes an archived item for good, with everything archived inside it.
- * Active items inside (restored on their own earlier) move to the top level.
- * Stickers stay WRITTEN_OFF with no item: codes are never reused.
+ * «Удалить навсегда»: deletes an archived item for good, with everything
+ * archived inside it. Active items inside (restored on their own earlier)
+ * move to the top level. Stickers stay WRITTEN_OFF with no item: codes are
+ * never reused. Files of its own parameters are deleted from the storage.
+ * Refused while something still counts on it: a parameter «Вещь» of another
+ * item pointing at it, or a thing on a workbench waiting to go back into it.
  */
-export async function purge(actor: Actor, itemId: string, tx?: Tx): Promise<void> {
-	if (!tx) return db.$transaction((t) => purge(actor, itemId, t));
-	const item = await findItem(actor, itemId, tx);
-	if (item.status !== 'ARCHIVED') {
-		throw new ValidationError('Удалить навсегда можно только вещь из архива');
-	}
-	const inside = await tx.item.findMany({
-		where: { id: { in: await descendantIds(item.id, tx) }, status: 'ARCHIVED' },
-		select: { id: true }
+export async function purge(actor: Actor, itemId: string): Promise<void> {
+	const fileKeys = await writeTransaction(async (tx) => {
+		const item = await findItem(actor, itemId, tx);
+		if (item.status !== 'ARCHIVED') {
+			throw new ValidationError('Удалить навсегда можно только вещь из архива');
+		}
+		const inside = await tx.item.findMany({
+			where: { id: { in: await descendantIds(item.id, tx) }, status: 'ARCHIVED' },
+			select: { id: true }
+		});
+		const ids = [item.id, ...inside.map((i) => i.id)];
+		const outside = { notIn: ids };
+		const [refs, waiting] = await Promise.all([
+			tx.param.count({ where: { refItemId: { in: ids }, NOT: { itemId: { in: ids } } } }),
+			tx.item.count({ where: { homeId: { in: ids }, id: outside, status: 'ACTIVE' } })
+		]);
+		if (refs > 0) {
+			throw new ConflictError('Нельзя удалить навсегда: на вещь ссылаются параметры других вещей');
+		}
+		if (waiting > 0) {
+			throw new ConflictError(
+				'Нельзя удалить навсегда: вещи на рабочем столе ждут возврата сюда — сначала верните их в другое место'
+			);
+		}
+		const files = await tx.param.findMany({
+			where: { itemId: { in: ids }, fileKey: { not: null } },
+			select: { fileKey: true }
+		});
+		await recordEvent(tx, actor, {
+			kind: 'item.purged',
+			subject: await itemSubject(tx, item.id),
+			data: { together: ids.length - 1 },
+			refIds: ids
+		});
+		await tx.sticker.updateMany({
+			where: { itemId: { in: ids } },
+			data: { status: 'WRITTEN_OFF', itemId: null }
+		});
+		// Remaining references (archived records that lay here or were split off) are nulled by the FKs.
+		await tx.item.deleteMany({ where: { id: { in: ids } } });
+		return files.flatMap((f) => (f.fileKey ? [f.fileKey] : []));
 	});
-	const ids = [item.id, ...inside.map((i) => i.id)];
-	await recordEvent(tx, actor, {
-		kind: 'item.purged',
-		subject: await itemSubject(tx, item.id),
-		data: { together: ids.length - 1 },
-		refIds: ids
-	});
-	await tx.sticker.updateMany({
-		where: { itemId: { in: ids } },
-		data: { status: 'WRITTEN_OFF', itemId: null }
-	});
-	// Remaining references (parent, home, split source, param refs) are nulled by the FKs.
-	await tx.item.deleteMany({ where: { id: { in: ids } } });
+	await deleteUnreferencedFiles(fileKeys);
 }
 
 export interface ArchivedItem {

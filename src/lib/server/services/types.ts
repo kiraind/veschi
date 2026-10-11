@@ -1,8 +1,10 @@
+import { pieces } from '$lib/domain/plural';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { ItemType } from '@prisma/client';
 import { z } from 'zod';
-import { db, type Tx } from '$lib/server/db';
+import { escapeLike } from '$lib/domain/search';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { storage } from '$lib/server/storage';
@@ -102,8 +104,8 @@ export async function listTypes(
 			...(q
 				? {
 						OR: [
-							{ name: { contains: q, mode: 'insensitive' } },
-							{ description: { contains: q, mode: 'insensitive' } }
+							{ name: { contains: escapeLike(q), mode: 'insensitive' } },
+							{ description: { contains: escapeLike(q), mode: 'insensitive' } }
 						]
 					}
 				: {})
@@ -147,7 +149,7 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 }
 
 export async function createType(actor: Actor, input: unknown, tx?: Tx): Promise<ItemType> {
-	if (!tx) return db.$transaction((t) => createType(actor, input, t));
+	if (!tx) return writeTransaction((t) => createType(actor, input, t));
 	const { name, description, isContainer } = typeInputSchema.parse(input);
 	const type = await tx.itemType.create({
 		data: { name, description, isContainer, ...ownedBy(actor) }
@@ -168,7 +170,7 @@ export async function findOrCreateType(
 ) {
 	const name = typeNameSchema.parse(rawName);
 	const existing = await tx.itemType.findFirst({
-		where: { name: { equals: name, mode: 'insensitive' }, ...visibleTo(actor) },
+		where: { name: { equals: escapeLike(name), mode: 'insensitive' }, ...visibleTo(actor) },
 		orderBy: { createdAt: 'asc' }
 	});
 	return existing ?? createType(actor, { name, isContainer }, tx);
@@ -181,7 +183,7 @@ export async function findOrCreateType(
  */
 export async function updateType(actor: Actor, id: string, input: unknown) {
 	const { name, description, isContainer } = typeUpdateSchema.parse(input);
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const type = await findType(actor, id, tx);
 		if (isContainer === true && !type.isContainer) {
 			const several = await tx.item.findFirst({
@@ -190,7 +192,7 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 			});
 			if (several) {
 				throw new ValidationError(
-					`${CONTAINER_QUANTITY}, а у «${itemDisplayName(several)}» ${several.quantity} шт. — сначала разделите или измените количество`
+					`${CONTAINER_QUANTITY}, а у «${itemDisplayName(several)}» ${pieces(several.quantity)} — сначала разделите или измените количество`
 				);
 			}
 		}
@@ -222,20 +224,22 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 
 /** Deletes a type nothing refers to: no items (archived ones count) and no REF parameters. */
 export async function deleteType(actor: Actor, id: string): Promise<void> {
-	const type = await findType(actor, id);
-	const [items, refs] = await Promise.all([
-		db.item.count({ where: { typeId: id } }),
-		db.param.count({ where: { refTypeId: id } })
-	]);
-	if (items > 0)
-		throw new ConflictError('Нельзя удалить тип: у него есть вещи (в том числе в архиве)');
-	if (refs > 0) throw new ConflictError('Нельзя удалить тип: на него ссылаются параметры');
-	const fileKeys = (
-		await db.param.findMany({ where: { typeId: id }, select: { fileKey: true } })
-	).flatMap((p) => (p.fileKey ? [p.fileKey] : []));
-	await db.$transaction(async (tx) => {
+	const { type, fileKeys } = await writeTransaction(async (tx) => {
+		const type = await findType(actor, id, tx);
+		const [items, refs] = await Promise.all([
+			tx.item.count({ where: { typeId: id } }),
+			tx.param.count({ where: { refTypeId: id } })
+		]);
+		if (items > 0) {
+			throw new ConflictError('Нельзя удалить тип: у него есть вещи (в том числе в архиве)');
+		}
+		if (refs > 0) throw new ConflictError('Нельзя удалить тип: на него ссылаются параметры');
+		const fileKeys = (
+			await tx.param.findMany({ where: { typeId: id }, select: { fileKey: true } })
+		).flatMap((p) => (p.fileKey ? [p.fileKey] : []));
 		await recordEvent(tx, actor, { kind: 'type.deleted', subject: typeRef(type), data: {} });
 		await tx.itemType.delete({ where: { id } });
+		return { type, fileKeys };
 	});
 	await deleteUnreferencedFiles([...fileKeys, ...(type.photoKey ? [type.photoKey] : [])]);
 }
@@ -246,22 +250,41 @@ export interface PhotoVariants {
 	thumb: Buffer;
 }
 
+/** Larger pictures are rejected before decoding: a small PNG can unpack to gigabytes. */
+const PHOTO_MAX_PIXELS = 50_000_000;
+
+/** Photos are processed one at a time, so parallel uploads cannot add up their memory. */
+let photoQueue: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+	const run = photoQueue.then(task, task);
+	photoQueue = run.catch(() => undefined);
+	return run;
+}
+
 /**
  * Re-encodes an uploaded photo to two square WebPs (EXIF rotation applied):
  * the full one up to PHOTO_MAX_SIDE and a PHOTO_THUMB_SIDE thumbnail. The
  * picture is centred and padded with transparent margins, never cropped or
- * enlarged.
+ * enlarged. Pictures over PHOTO_MAX_PIXELS are rejected.
  */
-export async function toWebp(data: Buffer): Promise<PhotoVariants> {
-	try {
-		const { data: pixels, info } = await sharp(data)
-			.rotate()
-			.ensureAlpha()
-			.raw()
-			.toBuffer({ resolveWithObject: true });
-		const longest = Math.max(info.width, info.height);
+export function toWebp(data: Buffer): Promise<PhotoVariants> {
+	return oneAtATime(async () => {
+		const unreadable = new ValidationError(
+			'Не удалось прочитать изображение (подходят JPEG, PNG, WebP, GIF)'
+		);
+		const { width = 0, height = 0 } = await sharp(data)
+			.metadata()
+			.catch(() => ({ width: 0, height: 0 }));
+		if (width === 0 || height === 0) throw unreadable;
+		if (width * height > PHOTO_MAX_PIXELS) {
+			throw new ValidationError('Слишком большое изображение: больше 50 мегапикселей');
+		}
+		const longest = Math.max(width, height);
 		const square = (side: number, quality: number) =>
-			sharp(pixels, { raw: { width: info.width, height: info.height, channels: info.channels } })
+			sharp(data, { limitInputPixels: PHOTO_MAX_PIXELS })
+				.rotate()
+				.ensureAlpha()
 				.resize({
 					width: side,
 					height: side,
@@ -270,14 +293,14 @@ export async function toWebp(data: Buffer): Promise<PhotoVariants> {
 				})
 				.webp({ quality })
 				.toBuffer();
-		const [full, thumb] = await Promise.all([
-			square(Math.min(longest, PHOTO_MAX_SIDE), 88),
-			square(Math.min(longest, PHOTO_THUMB_SIDE), 75)
-		]);
-		return { full, thumb };
-	} catch {
-		throw new ValidationError('Не удалось прочитать изображение (подходят JPEG, PNG, WebP, GIF)');
-	}
+		try {
+			const full = await square(Math.min(longest, PHOTO_MAX_SIDE), 88);
+			const thumb = await square(Math.min(longest, PHOTO_THUMB_SIDE), 75);
+			return { full, thumb };
+		} catch {
+			throw unreadable;
+		}
+	});
 }
 
 /** Sets the type's photo; the previous photo is deleted. Returns the new key. */
@@ -287,7 +310,7 @@ export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Prom
 	const photoKey = `types/${id}/${randomUUID()}.webp`;
 	await storage().put(photoKey, full, 'image/webp');
 	await storage().put(thumbKeyOf(photoKey), thumb, 'image/webp');
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		await tx.itemType.update({ where: { id }, data: { photoKey } });
 		await recordEvent(tx, actor, {
 			kind: 'type.photo',
@@ -302,7 +325,7 @@ export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Prom
 export async function removeTypePhoto(actor: Actor, id: string): Promise<void> {
 	const type = await findType(actor, id);
 	if (!type.photoKey) return;
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		await tx.itemType.update({ where: { id }, data: { photoKey: null } });
 		await recordEvent(tx, actor, {
 			kind: 'type.photo',
