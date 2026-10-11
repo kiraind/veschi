@@ -15,6 +15,7 @@ import { diffFields } from '$lib/domain/history';
 import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
 import { categoryInfoOf, type CategoryInfo } from './categories';
+import { collectionNamesHolding } from './collections';
 import { missingParams, type RequiredParam } from '$lib/domain/categories';
 import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
 
@@ -222,7 +223,10 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 	});
 }
 
-/** Deletes a type nothing refers to: no items (archived ones count) and no REF parameters. */
+/**
+ * Deletes a type nothing refers to: no items (archived ones count), no REF
+ * parameters and no collection lines.
+ */
 export async function deleteType(actor: Actor, id: string): Promise<void> {
 	const { type, fileKeys } = await writeTransaction(async (tx) => {
 		const type = await findType(actor, id, tx);
@@ -234,6 +238,8 @@ export async function deleteType(actor: Actor, id: string): Promise<void> {
 			throw new ConflictError('Нельзя удалить тип: у него есть вещи (в том числе в архиве)');
 		}
 		if (refs > 0) throw new ConflictError('Нельзя удалить тип: на него ссылаются параметры');
+		const held = await collectionNamesHolding(tx, { typeId: id });
+		if (held) throw new ConflictError(`Нельзя удалить тип: он есть ${held}`);
 		const fileKeys = (
 			await tx.param.findMany({ where: { typeId: id }, select: { fileKey: true } })
 		).flatMap((p) => (p.fileKey ? [p.fileKey] : []));

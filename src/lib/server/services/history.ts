@@ -120,6 +120,16 @@ export function categoryRef(category: Scope & { id: string; name: string }): Ent
 	};
 }
 
+export function collectionRef(collection: Scope & { id: string; name: string }): EntityRef & Scope {
+	return {
+		id: collection.id,
+		name: collection.name,
+		kind: 'collection',
+		ownerId: collection.ownerId,
+		householdId: collection.householdId
+	};
+}
+
 export function paramDefRef(def: Scope & { id: string; name: string }): EntityRef & Scope {
 	return {
 		id: def.id,
@@ -155,6 +165,7 @@ async function liveIds(actor: Actor, ids: string[]): Promise<Set<string>> {
 		db.itemType.findMany({ where, select }),
 		db.paramDef.findMany({ where, select }),
 		db.category.findMany({ where, select }),
+		db.collection.findMany({ where, select }),
 		db.stickerBatch.findMany({ where, select })
 	]);
 	return new Set(rows.flat().map((r) => r.id));
@@ -241,6 +252,8 @@ export async function describeEntity(
 	if (def) return { name: def.name, kind: 'paramDef' };
 	const category = await db.category.findFirst({ where: { id, ...scope } });
 	if (category) return { name: category.name, kind: 'category' };
+	const collection = await db.collection.findFirst({ where: { id, ...scope } });
+	if (collection) return { name: collection.name, kind: 'collection' };
 	const last = await db.historyEvent.findFirst({
 		where: { subjectId: id, ...scope },
 		orderBy: { createdAt: 'desc' }

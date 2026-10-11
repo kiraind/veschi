@@ -19,6 +19,7 @@ export const TOP_LEVEL_ROUTES = [
 	'api',
 	'archive',
 	'categories',
+	'collections',
 	'containers',
 	'files',
 	'healthz',

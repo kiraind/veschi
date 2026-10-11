@@ -6,6 +6,7 @@ import { getPaths, isContainerItem, type PathNode } from './paths';
 import { itemRef, itemSubject, placeRef, recordEvent } from './history';
 import { deleteUnreferencedFiles } from './files';
 import { restoreStickerOf, writeOffStickerOf } from './stickers';
+import { collectionNamesHolding } from './collections';
 
 /** Where the active contents of a discarded container go. */
 export type DiscardContents = 'parent' | 'workbench' | 'discard';
@@ -190,7 +191,8 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
  * move to the top level. Stickers stay WRITTEN_OFF with no item: codes are
  * never reused. Files of its own parameters are deleted from the storage.
  * Refused while something still counts on it: a parameter «Вещь» of another
- * item pointing at it, or a thing on a workbench waiting to go back into it.
+ * item pointing at it, a thing on a workbench waiting to go back into it, or
+ * a collection line.
  */
 export async function purge(actor: Actor, itemId: string): Promise<void> {
 	const fileKeys = await writeTransaction(async (tx) => {
@@ -210,6 +212,12 @@ export async function purge(actor: Actor, itemId: string): Promise<void> {
 		]);
 		if (refs > 0) {
 			throw new ConflictError('Нельзя удалить навсегда: на вещь ссылаются параметры других вещей');
+		}
+		const held = await collectionNamesHolding(tx, { itemId: { in: ids } });
+		if (held) {
+			throw new ConflictError(
+				`Нельзя удалить навсегда: вещь есть ${held} — сначала уберите её оттуда`
+			);
 		}
 		if (waiting > 0) {
 			throw new ConflictError(

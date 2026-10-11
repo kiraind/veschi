@@ -19,6 +19,7 @@
 		DotsHorizontalOutline,
 		QrCodeOutline,
 		LayersOutline,
+		ClipboardListOutline,
 		SearchOutline,
 		TagOutline,
 		UserCircleOutline,
@@ -42,6 +43,7 @@
 		{ href: '/containers', label: 'Контейнеры', icon: BoxIcon }
 	];
 	const secondary: Link[] = [
+		{ href: '/collections', label: 'Коллекции', icon: ClipboardListOutline },
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
 		{ href: '/types', label: 'Типы вещей', icon: SwatchbookOutline },
 		{ href: '/categories', label: 'Категории', icon: LayersOutline },
