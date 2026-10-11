@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import { idSchema } from './id';
 import type { ParamDefView } from './params';
+import { plural } from './plural';
 
 export const PARAM_LEVELS = ['TYPE', 'ITEM'] as const;
 
@@ -132,4 +133,23 @@ export function categoryNames(categories: CategoryRef[]): string {
 /** «в категории «Еда»», «в категориях «Еда» и «Хрупкое»». */
 export function inCategories(categories: CategoryRef[]): string {
 	return `в ${categories.length > 1 ? 'категориях' : 'категории'} ${categoryNames(categories)}`;
+}
+
+/**
+ * Notices on the search page: categories whose types or items lack required
+ * values, and categories that require nothing yet. Each leads to the category
+ * card, which lists what to fill or where to add parameters.
+ */
+export interface CategoryNotices {
+	incomplete: (CategoryRef & { typeCount: number; itemCount: number })[];
+	empty: CategoryRef[];
+}
+
+/** «у 3 вещей и 1 типа» — whose required values are missing. */
+export function incompleteOwners(itemCount: number, typeCount: number): string {
+	const parts = [
+		itemCount ? `${itemCount} ${plural(itemCount, ['вещи', 'вещей', 'вещей'])}` : '',
+		typeCount ? `${typeCount} ${plural(typeCount, ['типа', 'типов', 'типов'])}` : ''
+	].filter(Boolean);
+	return parts.length ? `у ${parts.join(' и ')}` : '';
 }

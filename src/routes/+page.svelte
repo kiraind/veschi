@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { Button, Input } from 'flowbite-svelte';
 	import { PlusOutline, QrCodeOutline, SearchOutline } from 'flowbite-svelte-icons';
+	import SearchNotices from '$lib/components/SearchNotices.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import type { PageData } from './$types';
 
@@ -98,7 +99,8 @@
 </form>
 
 {#if empty}
-	<div class="flex flex-wrap gap-2 max-md:hidden">{@render actions('')}</div>
+	<div class="mb-4 flex flex-wrap gap-2 max-md:hidden">{@render actions('')}</div>
+	{#if data.notices}<SearchNotices notices={data.notices} />{/if}
 {:else if data.groups.length === 0}
 	<p class="text-sm text-gray-500 dark:text-gray-400">Ничего не найдено.</p>
 {:else}
