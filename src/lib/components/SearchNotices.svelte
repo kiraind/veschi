@@ -29,14 +29,20 @@
 			<li>
 				<a
 					href="/categories/{notice.id}"
-					class="flex min-h-14 items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:outline-none dark:border-amber-800 dark:bg-gray-800 dark:text-amber-300 dark:hover:bg-gray-700"
+					class="flex min-h-14 items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-xs hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
 				>
-					<ExclamationCircleOutline class="h-5 w-5 shrink-0" />
-					<span class="min-w-0 flex-1">
-						<span class="block font-medium wrap-anywhere">{notice.title}</span>
-						<span class="block text-sm text-amber-800 dark:text-amber-400">{notice.text}</span>
+					<span
+						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400/80"
+					>
+						<ExclamationCircleOutline class="h-5 w-5" />
 					</span>
-					<ChevronRightOutline class="h-5 w-5 shrink-0" />
+					<span class="min-w-0 flex-1">
+						<span class="block font-medium wrap-anywhere text-gray-900 dark:text-white"
+							>{notice.title}</span
+						>
+						<span class="block text-sm text-gray-500 dark:text-gray-400">{notice.text}</span>
+					</span>
+					<ChevronRightOutline class="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500" />
 				</a>
 			</li>
 		{/each}
