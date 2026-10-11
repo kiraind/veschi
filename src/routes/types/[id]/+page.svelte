@@ -126,7 +126,7 @@
 	itemRequired={data.card.itemRequired}
 />
 
-<h2 class="mt-6 mb-2 text-lg font-semibold">Коллекции</h2>
+<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
 <InCollections target={{ typeId: type.id }} collections={data.collections} />
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>

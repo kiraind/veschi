@@ -11,17 +11,20 @@
 
 	/**
 	 * Collections a type or an item is in, on its card: a chip per collection
-	 * (link with the quantity, cross to take it out) and «Коллекция» to add it
+	 * (link, with the quantity unless `showQuantity` is off; cross to take it out) and «Коллекция» to add it
 	 * to one more (one piece; the quantity is changed on the collection page).
 	 */
 	let {
 		target,
 		collections,
-		editable = true
+		editable = true,
+		showQuantity = true
 	}: {
 		target: { typeId: string } | { itemId: string };
 		collections: EntryOf[];
 		editable?: boolean;
+		/** «· 2 штуки» after the name; an item's card leaves it out. */
+		showQuantity?: boolean;
 	} = $props();
 
 	let picking = $state(false);
@@ -58,9 +61,9 @@
 			class="inline-flex h-10 items-center rounded-lg bg-gray-100 ps-3 text-sm font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-100"
 		>
 			<a href="/collections/{entry.id}" class="hover:underline"
-				>{entry.name}<span class="font-normal text-gray-500 dark:text-gray-400"
-					>{` · ${pieces(entry.quantity)}`}</span
-				></a
+				>{entry.name}{#if showQuantity}<span class="font-normal text-gray-500 dark:text-gray-400"
+						>{` · ${pieces(entry.quantity)}`}</span
+					>{/if}</a
 			>
 			{#if editable}
 				<button

@@ -308,8 +308,13 @@
 	{/if}
 
 	{#if active || data.collections.length}
-		<h2 class="mt-6 mb-2 text-lg font-semibold">Коллекции</h2>
-		<InCollections target={{ itemId: item.id }} collections={data.collections} editable={active} />
+		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
+		<InCollections
+			target={{ itemId: item.id }}
+			collections={data.collections}
+			editable={active}
+			showQuantity={false}
+		/>
 	{/if}
 {/if}
 
