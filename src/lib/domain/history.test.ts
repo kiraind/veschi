@@ -200,7 +200,7 @@ describe('describeEvent', () => {
 				}
 			})
 		);
-		expect(plain(params.title)).toBe('Обязательные параметры категории Еда изменены');
+		expect(plain(params.title)).toBe('Параметры категории Еда изменены');
 		expect(params.details.map(plain)).toEqual([
 			'«Срок годности» обязателен у каждой вещи',
 			'«Калорийность» теперь обязателен у типа',

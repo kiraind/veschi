@@ -10,13 +10,10 @@
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
 	import ParamValueInput from '$lib/components/ParamValueInput.svelte';
+	import CategoryMultiSelect from '$lib/components/CategoryMultiSelect.svelte';
+	import InfoHint from '$lib/components/InfoHint.svelte';
 	import type { TypeCard, TypeInfo } from '$lib/server/services/types';
-	import {
-		inCategories,
-		requiredAt,
-		type CategorySummary,
-		type RequiredParam
-	} from '$lib/domain/categories';
+	import { inCategories, requiredAt, type RequiredParam } from '$lib/domain/categories';
 	import type { CategoryCard } from '$lib/server/services/categories';
 	import { untrack } from 'svelte';
 	import { draftToInput, emptyDraft, type ParamDraft } from '$lib/domain/param-draft';
@@ -54,17 +51,7 @@
 	let error = $state('');
 
 	/** Categories to put a new type into (an existing type has its own). */
-	let categories = $state<CategorySummary[]>([]);
 	let newTypeCategoryIds = $state<string[]>([]);
-	$effect(() => {
-		api.get<CategorySummary[]>('/api/categories').then((list) => (categories = list));
-	});
-
-	function toggleCategory(id: string) {
-		newTypeCategoryIds = newTypeCategoryIds.includes(id)
-			? newTypeCategoryIds.filter((c) => c !== id)
-			: [...newTypeCategoryIds, id];
-	}
 
 	/** What the categories of the type (or of the new type) require on each item. */
 	async function loadRequired(id: string | null, categoryIds: string[]): Promise<RequiredParam[]> {
@@ -213,27 +200,23 @@
 				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
 			</Helper>
 		</div>
-		{#if categories.length}
-			<div>
-				<span class="text-sm font-medium">Категории (необязательно)</span>
-				<div class="mt-1 flex flex-wrap gap-2" role="group" aria-label="Категории нового типа">
-					{#each categories as category (category.id)}
-						{@const on = newTypeCategoryIds.includes(category.id)}
-						<button
-							type="button"
-							class="h-10 rounded-lg border px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none {on
-								? 'border-primary-700 bg-primary-700 text-white dark:border-primary-600 dark:bg-primary-600'
-								: 'border-gray-200 bg-white text-gray-900 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'}"
-							aria-pressed={on}
-							onclick={() => toggleCategory(category.id)}>{category.name}</button
-						>
-					{/each}
-				</div>
-				{#if newTypeCategoryIds.length}
-					<Helper class="mt-1">Параметры «у типа» заполните потом на странице типа.</Helper>
-				{/if}
+		<div>
+			<span class="text-sm font-medium"
+				>Категории (необязательно)<InfoHint title="Категории нового типа">
+					<p>
+						Категория задаёт обязательные параметры типа, например у «Еды» — калорийность и срок
+						годности.
+					</p>
+					<p>
+						Параметры «у каждой вещи» форма спросит сразу. Параметры «у типа» заполните потом на
+						странице типа — там они будут отмечены как «не заполнено».
+					</p>
+				</InfoHint></span
+			>
+			<div class="mt-1">
+				<CategoryMultiSelect bind:selected={newTypeCategoryIds} />
 			</div>
-		{/if}
+		</div>
 	{/if}
 
 	{#if !isContainer}

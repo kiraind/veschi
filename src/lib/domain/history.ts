@@ -486,7 +486,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 		}
 		case 'category.params':
 			return {
-				title: [t('Обязательные параметры категории '), subject, t(' изменены')],
+				title: [t('Параметры категории '), subject, t(' изменены')],
 				details: (e.data as HistoryData<'category.params'>).changes.map((c) => [
 					t(categoryParamLine(c))
 				])

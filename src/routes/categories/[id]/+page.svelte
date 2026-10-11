@@ -6,6 +6,7 @@
 	import { confirmAction } from '$lib/confirm.svelte';
 	import Description from '$lib/components/Description.svelte';
 	import EditButton from '$lib/components/EditButton.svelte';
+	import InfoHint from '$lib/components/InfoHint.svelte';
 	import ParamDefPicker from '$lib/components/ParamDefPicker.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
@@ -123,11 +124,18 @@
 	<Description text={category.description} onedit={() => (describing = true)} />
 </div>
 
-<h2 class="mt-6 mb-1 text-lg font-semibold">Обязательные параметры</h2>
-<p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
-	«У типа» — одно значение на весь тип (калорийность). «У каждой вещи» — своё у каждой вещи (срок
-	годности): без него новую вещь не создать.
-</p>
+<h2 class="mt-6 mb-2 text-lg font-semibold">
+	Параметры<InfoHint title="Параметры категории">
+		<p>Эти параметры обязательно заполнить у всех типов категории.</p>
+		<p>
+			<strong>У типа</strong> — одно значение на весь тип, например калорийность гречки.
+		</p>
+		<p>
+			<strong>У каждой вещи</strong> — своё значение у каждой вещи, например срок годности пачки: без
+			него новую вещь не создать.
+		</p>
+	</InfoHint>
+</h2>
 <div class="flex flex-col gap-3">
 	{#each data.card.params as p (p.def.id)}
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -163,7 +171,7 @@
 			</div>
 		</div>
 	{:else}
-		<p class="text-sm text-gray-500 dark:text-gray-400">Обязательных параметров пока нет.</p>
+		<p class="text-sm text-gray-500 dark:text-gray-400">Параметров пока нет.</p>
 	{/each}
 	{#if addingParam}
 		<ParamDefPicker

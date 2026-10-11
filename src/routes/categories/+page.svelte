@@ -3,6 +3,7 @@
 	import { Button, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
 	import { api, ApiError } from '$lib/api';
+	import InfoHint from '$lib/components/InfoHint.svelte';
 	import { PARAM_LEVEL_LABELS, type CategoryRef } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
 	import { plural } from '$lib/domain/plural';
@@ -38,11 +39,15 @@
 
 <svelte:head><title>Категории — Вещи</title></svelte:head>
 
-<h1 class="mb-1 text-2xl font-bold">Категории</h1>
-<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-	Категория задаёт, какие параметры обязательно заполнить у её типов: например, у «Еды» —
-	калорийность у типа и срок годности у каждой вещи.
-</p>
+<h1 class="mb-4 text-2xl font-bold">
+	Категории<InfoHint title="Что такое категория">
+		<p>
+			Категория задаёт, какие параметры обязательно заполнить у её типов: например, у «Еды» —
+			калорийность у типа и срок годности у каждой вещи.
+		</p>
+		<p>У типа может быть несколько категорий, их параметры складываются.</p>
+	</InfoHint>
+</h1>
 
 <form class="flex gap-2" onsubmit={create}>
 	<div class="min-w-0 flex-1">

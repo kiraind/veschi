@@ -51,6 +51,7 @@ prisma/              схема и миграции
 - **Тема** (светлая / тёмная / системная) — cookie `theme` (`$lib/domain/theme`), сервер ставит `<html data-theme>` и класс `dark` в `hooks.server.ts`, скрипт в `app.html` обслуживает «Системную», смена — `setTheme` из `$lib/theme`. Стили для тёмной темы пишутся как обычно, через `dark:`.
 - Даты показываются только как ГГГГ-ММ-ДД (`$lib/domain/dates`), ввод даты — `DateInput`.
 - Положить вещь можно только в контейнер — вещь типа с `ItemType.isContainer` или рабочий стол: `isContainerItem` / `assertIsContainer` из `services/paths.ts` (в запросе — `containerTypeInclude`).
+- Пояснения к разделу (что это, как работает) не пишутся абзацем на странице: иконка «i» рядом с заголовком — `<InfoHint title="…">текст</InfoHint>`, текст открывается в шторке.
 - Подтверждение действия — `await confirmAction({ title, message?, confirmLabel? })` из `$lib/confirm.svelte`, не `confirm()` браузера.
 - Длинные имена файлов и ссылки показываются через `shortenFileName` / `shortenUrl` из `$lib/domain/shorten`.
 - **Интерфейс**: компоненты Flowbite Svelte (`Button`, `Card`, `Input`, `Badge`, `Alert`…) и утилиты Tailwind; `<style>` в компонентах — только если без него никак. Сначала вёрстка под телефон (≈390 px), кнопки не ниже 40 px. Общие приёмы: h1 — `text-2xl font-bold`, вторичный текст — `text-sm text-gray-500 dark:text-gray-400`, ошибка — `text-sm text-red-600 dark:text-red-500` с `role="alert"`.
