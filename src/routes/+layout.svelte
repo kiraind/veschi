@@ -18,6 +18,7 @@
 		AdjustmentsHorizontalOutline,
 		DotsHorizontalOutline,
 		QrCodeOutline,
+		LayersOutline,
 		SearchOutline,
 		TagOutline,
 		UserCircleOutline,
@@ -43,6 +44,7 @@
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
 		{ href: '/types', label: 'Типы вещей', icon: SwatchbookOutline },
+		{ href: '/categories', label: 'Категории', icon: LayersOutline },
 		{ href: '/params', label: 'Параметры', icon: AdjustmentsHorizontalOutline },
 		{ href: '/history', label: 'История', icon: ClockOutline }
 	];

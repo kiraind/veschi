@@ -194,6 +194,9 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400">Рабочий стол</span>
 		{/if}
 		{#if card.type?.isContainer}<Badge color="indigo">контейнер</Badge>{/if}
+		{#each card.categories as category (category.id)}
+			<a href="/categories/{category.id}"><Badge color="primary">{category.name}</Badge></a>
+		{/each}
 		{#if item.quantity > 1 && !(active && !item.isWorkbench)}<Badge
 				color="gray"
 				class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
@@ -318,6 +321,8 @@
 		target={{ kind: 'item', id: item.id }}
 		editable={active}
 		emptyText=""
+		required={card.itemRequired}
+		missing={active ? card.missingItemParams : []}
 	/>
 
 	{#if card.type}
@@ -327,6 +332,8 @@
 			target={{ kind: 'type', id: card.type.id }}
 			editable={active}
 			exclude={card.itemParams.map((p) => p.defId)}
+			required={card.typeRequired}
+			missing={active ? card.missingTypeParams : []}
 		/>
 	{/if}
 {/if}

@@ -77,7 +77,7 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 
 /**
  * Case-insensitive substring search over item own names, type names and
- * descriptions and parameter keys and values; «ключ: значение» also matches parameters with
+ * descriptions, category names and parameter keys and values; «ключ: значение» also matches parameters with
  * that key and value. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
@@ -88,6 +88,8 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 		Prisma.sql`i.name ILIKE ${pattern}`,
 		Prisma.sql`t.name ILIKE ${pattern}`,
 		Prisma.sql`t.description ILIKE ${pattern}`,
+		Prisma.sql`EXISTS (SELECT 1 FROM "TypeCategory" tc JOIN "Category" c ON c.id = tc."categoryId"
+			WHERE tc."typeId" = t.id AND c.name ILIKE ${pattern})`,
 		hasParam(Prisma.sql`(d.name ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
 	];
 	if (query.param) {

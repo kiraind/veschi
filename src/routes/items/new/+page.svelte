@@ -9,7 +9,15 @@
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
-	import type { TypeInfo } from '$lib/server/services/types';
+	import ParamValueInput from '$lib/components/ParamValueInput.svelte';
+	import CategoryMultiSelect from '$lib/components/CategoryMultiSelect.svelte';
+	import InfoHint from '$lib/components/InfoHint.svelte';
+	import type { TypeCard, TypeInfo } from '$lib/server/services/types';
+	import { inCategories, requiredAt, type RequiredParam } from '$lib/domain/categories';
+	import type { CategoryCard } from '$lib/server/services/categories';
+	import { untrack } from 'svelte';
+	import { draftToInput, emptyDraft, type ParamDraft } from '$lib/domain/param-draft';
+	import { paramInputSchema, type ParamInput } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -42,6 +50,61 @@
 	let busy = $state(false);
 	let error = $state('');
 
+	/** Categories to put a new type into (an existing type has its own). */
+	let newTypeCategoryIds = $state<string[]>([]);
+
+	/** What the categories of the type (or of the new type) require on each item. */
+	async function loadRequired(id: string | null, categoryIds: string[]): Promise<RequiredParam[]> {
+		if (id) return (await api.get<TypeCard>(`/api/types/${id}`)).itemRequired;
+		const cards = await Promise.all(
+			categoryIds.map((c) => api.get<CategoryCard>(`/api/categories/${c}`))
+		);
+		return requiredAt(
+			cards.flatMap((card) =>
+				card.params.map((p) => ({
+					categoryId: card.category.id,
+					categoryName: card.category.name,
+					def: p.def,
+					level: p.level
+				}))
+			),
+			'ITEM'
+		);
+	}
+
+	/**
+	 * Parameters the type's categories require on each item, with their values
+	 * being typed (kept when the list changes).
+	 */
+	let required = $state<{ r: RequiredParam; draft: ParamDraft }[]>([]);
+	let requiredKey = '';
+	$effect(() => {
+		const id = typeId;
+		const categoryIds = id ? [] : [...newTypeCategoryIds];
+		const key = id ?? categoryIds.join(',');
+		requiredKey = key;
+		loadRequired(id, categoryIds)
+			.then((list) => {
+				if (requiredKey !== key) return;
+				const typed = new Map(untrack(() => required).map((e) => [e.r.def.id, e.draft]));
+				required = list.map((r) => ({ r, draft: typed.get(r.def.id) ?? emptyDraft(r.def) }));
+			})
+			.catch((e) => (error = e instanceof ApiError ? e.message : String(e)));
+	});
+
+	/** Values of the required parameters, or an error message. */
+	function requiredParams(): ParamInput[] | string {
+		const result: ParamInput[] = [];
+		for (const { r, draft } of required) {
+			const parsed = paramInputSchema.safeParse(draftToInput(draft));
+			if (!parsed.success) {
+				return `«${r.def.name}»: ${parsed.error.issues[0]?.message ?? 'проверьте значение'}`;
+			}
+			result.push(parsed.data);
+		}
+		return result;
+	}
+
 	$effect(() => {
 		const url = photoUrl;
 		return () => {
@@ -51,11 +114,19 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
+		const params = requiredParams();
+		if (typeof params === 'string') {
+			error = params;
+			return;
+		}
 		busy = true;
 		error = '';
 		try {
 			const { id } = await api.post<{ id: string }>('/api/items', {
-				...(typeId ? { typeId } : { newTypeName: typeName, newTypeIsContainer }),
+				params,
+				...(typeId
+					? { typeId }
+					: { newTypeName: typeName, newTypeIsContainer, newTypeCategoryIds }),
 				name,
 				// A container is a single instance: its quantity is always 1.
 				quantity: isContainer || freeSticker ? 1 : quantity,
@@ -129,6 +200,23 @@
 				Вещи этого типа — контейнеры: в них можно класть другие вещи (шкаф, ящик, коробка).
 			</Helper>
 		</div>
+		<div>
+			<span class="text-sm font-medium"
+				>Категории (необязательно)<InfoHint title="Категории нового типа">
+					<p>
+						Категория задаёт обязательные параметры типа, например у «Еды» — калорийность и срок
+						годности.
+					</p>
+					<p>
+						Параметры «у каждой вещи» форма спросит сразу. Параметры «у типа» заполните потом на
+						странице типа — там они будут отмечены как «не заполнено».
+					</p>
+				</InfoHint></span
+			>
+			<div class="mt-1">
+				<CategoryMultiSelect bind:selected={newTypeCategoryIds} />
+			</div>
+		</div>
 	{/if}
 
 	{#if !isContainer}
@@ -153,6 +241,14 @@
 			{/if}
 		</div>
 	{/if}
+
+	{#each required as entry (entry.r.def.id)}
+		<div class="space-y-1">
+			<span class="text-sm font-medium">{entry.r.def.name}</span>
+			<ParamValueInput bind:draft={entry.draft} def={entry.r.def} />
+			<Helper>Обязателен {inCategories(entry.r.categories)}</Helper>
+		</div>
+	{/each}
 
 	{#if askPhoto}
 		<div class="space-y-1">
