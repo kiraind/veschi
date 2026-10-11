@@ -38,6 +38,17 @@ describe('search', () => {
 		await item({ typeId: ne555Type, quantity: 2, parentId: solderingBox });
 	});
 
+	it('finds an item by a piece of its sticker ID, in any case and with the dash', async () => {
+		await db.sticker.create({
+			data: { code: 'K7M4QX', ownerId: actor.userId, status: 'BOUND', itemId: chipBox }
+		});
+		for (const q of ['k7m-4qx', 'M4Q', 'k7m']) {
+			const locations = (await search(actor, q)).flatMap((g) => g.locations);
+			expect(locations.map((l) => [l.itemId, l.stickerCode])).toEqual([[chipBox, 'K7M4QX']]);
+		}
+		expect(await search(actor, 'K7')).toEqual([]);
+	});
+
 	it('finds «ne555» as one type with the total and every location with its path', async () => {
 		const results = await search(actor, 'ne555');
 		expect(results).toHaveLength(1);

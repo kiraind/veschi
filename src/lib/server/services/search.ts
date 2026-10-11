@@ -3,6 +3,7 @@ import { db } from '$lib/server/db';
 import { visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
 import { likePattern, parseSearchQuery } from '$lib/domain/search';
+import { codeQuery } from '$lib/domain/sticker-code';
 import { getPaths, type PathNode } from './paths';
 
 /** Upper bound of matching item records per query. */
@@ -14,6 +15,8 @@ export interface SearchLocation {
 	name: string;
 	quantity: number;
 	isContainer: boolean;
+	/** The bound sticker's ID. */
+	stickerCode: string | null;
 	path: PathNode[];
 }
 
@@ -78,7 +81,7 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 /**
  * Case-insensitive substring search over item own names, type names and
  * descriptions, category names and parameter keys and values; «ключ: значение» also matches parameters with
- * that key and value. Active ordinary items only. Results are grouped by type.
+ * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
 	const query = parseSearchQuery(input);
@@ -92,6 +95,8 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			WHERE tc."typeId" = t.id AND c.name ILIKE ${pattern})`,
 		hasParam(Prisma.sql`(d.name ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
 	];
+	const code = codeQuery(query.text);
+	if (code) conditions.push(Prisma.sql`s.code LIKE ${likePattern(code)}`);
 	if (query.param) {
 		conditions.push(
 			hasParam(
@@ -109,12 +114,14 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			type_id: string;
 			type_name: string;
 			photo_key: string | null;
+			sticker_code: string | null;
 		}[]
 	>`
 		SELECT i.id::text, i.name, i.quantity, t."isContainer" AS is_container, t.id::text AS type_id, t.name AS type_name,
-			t."photoKey" AS photo_key
+			t."photoKey" AS photo_key, s.code AS sticker_code
 		FROM "Item" i
 		JOIN "ItemType" t ON t.id = i."typeId"
+		LEFT JOIN "Sticker" s ON s."itemId" = i.id AND s.status = 'BOUND'
 		WHERE ${visibleSql(actor)}
 			AND i.status = 'ACTIVE' AND NOT i."isWorkbench"
 			AND (${Prisma.join(conditions, ' OR ')})
@@ -142,6 +149,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			name: row.name?.trim() || row.type_name,
 			quantity: row.quantity,
 			isContainer: row.is_container,
+			stickerCode: row.sticker_code,
 			path: paths.get(row.id) ?? []
 		});
 	}
