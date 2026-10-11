@@ -19,6 +19,7 @@ import {
 } from './paths';
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
+import { requireWorkbench } from './workbench';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
 import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
 import { missingParams, type CategoryRef, type RequiredParam } from '$lib/domain/categories';
@@ -46,6 +47,8 @@ export const createItemSchema = z
 		name: ownName,
 		quantity: quantity.default(1),
 		parentId: idSchema.nullish(),
+		/** Put on this workbench instead of into a container (as if taken from the top level). */
+		workbenchId: idSchema.optional(),
 		/** A new type (newTypeName) is a container type. */
 		newTypeIsContainer: z.boolean().default(false),
 		/** Categories of a new type (newTypeName). */
@@ -56,6 +59,10 @@ export const createItemSchema = z
 	.refine((v) => Boolean(v.typeId) !== Boolean(v.newTypeName), {
 		message: 'Выберите тип или введите название нового',
 		path: ['typeId']
+	})
+	.refine((v) => !(v.parentId && v.workbenchId), {
+		message: 'Вещь кладётся либо в контейнер, либо на стол',
+		path: ['workbenchId']
 	});
 
 /** The type of an existing item never changes; a new item is created instead. */
@@ -157,7 +164,8 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
 /**
  * Creates an item: an existing type or a new one by name (optionally a
  * container type, put into categories), own name, parameters and a free sticker — all in one
- * transaction. Items of a container type have quantity 1.
+ * transaction. Items of a container type have quantity 1. With `workbenchId` the item
+ * lies on that bench as taken by the actor, its home being the top level.
  */
 export async function createItem(actor: Actor, input: unknown): Promise<{ id: string }> {
 	const data = createItemSchema.parse(input);
@@ -170,6 +178,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
+		const bench = data.workbenchId ? await requireWorkbench(actor, data.workbenchId, tx) : null;
 		if (!data.typeId) {
 			for (const categoryId of new Set(data.newTypeCategoryIds)) {
 				await addTypeToCategory(actor, type.id, categoryId, tx);
@@ -182,9 +191,14 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				typeId: type.id,
 				name: data.name,
 				quantity: data.quantity,
-				parentId: data.parentId ?? null
+				...(bench
+					? { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId: null }
+					: { parentId: data.parentId ?? null })
 			}
 		});
+		if (bench) {
+			await tx.user.update({ where: { id: actor.userId }, data: { lastWorkbenchId: bench.id } });
+		}
 		await recordEvent(tx, actor, {
 			kind: 'item.created',
 			subject: itemRef({ ...item, type }),

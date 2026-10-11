@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CODE_ALPHABET,
+	codeQuery,
 	MIN_CODE_DISTANCE,
 	RESERVED_CODES,
 	codeNeighbors,
@@ -116,5 +117,20 @@ describe('generateCodes', () => {
 		const codes = generateCodes([], 5);
 		expect(codes).toHaveLength(5);
 		expectAllFar(codes);
+	});
+});
+
+describe('codeQuery', () => {
+	it('takes a piece of an ID in any case, with or without the dash', () => {
+		expect(codeQuery('k7m')).toBe('K7M');
+		expect(codeQuery(' K7M-4QX ')).toBe('K7M4QX');
+		expect(codeQuery('m-4q')).toBe('M4Q');
+	});
+
+	it('ignores text an ID cannot contain and pieces too short or too long', () => {
+		expect(codeQuery('k7')).toBeNull();
+		expect(codeQuery('коробка')).toBeNull();
+		expect(codeQuery('box')).toBeNull();
+		expect(codeQuery('K7M4QXA')).toBeNull();
 	});
 });

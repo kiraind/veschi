@@ -1,13 +1,9 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { api } from '$lib/api';
-	import { formatPath, pathNodeName } from '$lib/domain/item';
-	import { formatCode } from '$lib/domain/sticker-code';
-	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
+	import { formatPath } from '$lib/domain/item';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
-	import QuantityField from '$lib/components/QuantityField.svelte';
-	import Sheet from '$lib/components/Sheet.svelte';
-	import { quantityError } from '$lib/domain/workbench';
+	import MoveSheet from '$lib/components/MoveSheet.svelte';
+	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import Thumb from '$lib/components/Thumb.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
@@ -28,13 +24,12 @@
 		}))
 	);
 
-	let relocatingId = $state<string | null>(null);
 	/** The item whose «Использовать / выкинуть» form is open. */
 	let discardingId = $state<string | null>(null);
 
 	/** The action buttons of an item; labels are dropped when they don't fit in one row. */
 	const RETURN_LABEL = 'Вернуть на место';
-	const RELOCATE_LABEL = 'Положить в другое место';
+	const RELOCATE_LABEL = 'Вернуть в другое место';
 	const DISCARD_LABEL = 'Использовать / выкинуть';
 	const ACTION_LABELS = [RETURN_LABEL, RELOCATE_LABEL, DISCARD_LABEL];
 	let actionsWidth = $state(0);
@@ -42,57 +37,30 @@
 	const compact = $derived(labelledWidth > actionsWidth);
 	const actionClass = $derived(compact ? 'h-11 px-2' : 'h-11 whitespace-nowrap');
 	const actionIconClass = $derived(compact ? 'h-5 w-5' : 'me-2 h-5 w-5 flex-none');
-	let busyId = $state<string | null>(null);
-	let error = $state<{ id: string; message: string } | null>(null);
-
-	async function act(id: string, action: () => Promise<unknown>) {
-		busyId = id;
-		error = null;
-		try {
-			await action();
-			relocatingId = null;
-			await invalidateAll();
-		} catch (e) {
-			error = { id, message: e instanceof Error ? e.message : String(e) };
-		} finally {
-			busyId = null;
-		}
-	}
-
-	/** How much of each item «Вернуть» / «Положить» puts away; missing = all of it. */
-	let amounts = $state<Record<string, number>>({});
-
-	function part(item: { id: string; quantity: number }) {
-		const amount = amounts[item.id] ?? item.quantity;
-		return amount < item.quantity ? { quantity: amount } : {};
-	}
-
-	const partProblem = (item: { id: string; quantity: number }) =>
-		quantityError(item.quantity, amounts[item.id] ?? item.quantity);
-
-	async function putAway(item: { id: string; quantity: number }, path: string, body: object) {
-		await act(item.id, () => api.post(`/api/items/${item.id}/${path}`, { ...body, ...part(item) }));
-		if (error?.id !== item.id) delete amounts[item.id];
-	}
 
 	type Listed = PageData['items'][number];
 
 	/** «Вернуть на место» first shows where exactly to put the item; «Готово» returns it. */
 	let returning = $state<Listed | null>(null);
 	let returningOpen = $state(false);
+	/** How much «Вернуть на место» puts back (the sheet asks it). */
+	let returnAmount = $state(1);
 
 	function askReturn(item: Listed) {
 		returning = item;
+		returnAmount = item.quantity;
 		returningOpen = true;
 	}
 
-	async function confirmReturn(item: Listed) {
-		await putAway(item, 'return', {});
-		if (error?.id !== item.id) returningOpen = false;
-	}
+	/** «Вернуть в другое место»: the same sheet as «Переложить» on the item page. */
+	let relocating = $state<Listed | null>(null);
+	let relocatingOpen = $state(false);
 
-	const relocate = (item: { id: string; quantity: number }, containerId: string) =>
-		putAway(item, 'relocate', { containerId });
+	function askRelocate(item: Listed) {
+		relocating = item;
+		discardingId = null;
+		relocatingOpen = true;
+	}
 </script>
 
 <svelte:head><title>Рабочий стол — Вещи</title></svelte:head>
@@ -145,15 +113,6 @@
 								</div>
 							</div>
 
-							{#if item.quantity > 1}
-								<QuantityField
-									available={item.quantity}
-									bind:value={
-										() => amounts[item.id] ?? item.quantity, (v) => (amounts[item.id] = v)
-									}
-									label="Сколько убрать со стола"
-								/>
-							{/if}
 							<div class="relative" bind:clientWidth={actionsWidth}>
 								<!-- The same buttons with labels, unseen: their width decides whether labels fit. -->
 								<div
@@ -174,7 +133,7 @@
 										title={RETURN_LABEL}
 										aria-label={RETURN_LABEL}
 										onclick={() => askReturn(item)}
-										disabled={!item.canReturn || busyId === item.id || !!partProblem(item)}
+										disabled={!item.canReturn}
 									>
 										<UndoOutline class={actionIconClass} />
 										{#if !compact}{RETURN_LABEL}{/if}
@@ -184,11 +143,7 @@
 										class={actionClass}
 										title={RELOCATE_LABEL}
 										aria-label={RELOCATE_LABEL}
-										onclick={() => {
-											relocatingId = relocatingId === item.id ? null : item.id;
-											discardingId = null;
-										}}
-										disabled={busyId === item.id}
+										onclick={() => askRelocate(item)}
 									>
 										<ArrowsRepeatOutline class={actionIconClass} />
 										{#if !compact}{RELOCATE_LABEL}{/if}
@@ -198,11 +153,7 @@
 										class={actionClass}
 										title={DISCARD_LABEL}
 										aria-label={DISCARD_LABEL}
-										onclick={() => {
-											discardingId = discardingId === item.id ? null : item.id;
-											relocatingId = null;
-										}}
-										disabled={busyId === item.id}
+										onclick={() => (discardingId = discardingId === item.id ? null : item.id)}
 									>
 										<TrashBinOutline class={actionIconClass} />
 										{#if !compact}{DISCARD_LABEL}{/if}
@@ -211,18 +162,8 @@
 							</div>
 							{#if !item.canReturn}
 								<p class="text-sm text-gray-500 dark:text-gray-400">
-									{item.returnBlockedReason}. Положите вещь в другое место.
+									{item.returnBlockedReason}. Верните вещь в другое место.
 								</p>
-							{/if}
-
-							{#if relocatingId === item.id}
-								<ContainerPicker
-									title="Куда положить «{item.name}»?"
-									excludeId={item.id}
-									onpick={(container: { id: string }) => {
-										if (!partProblem(item)) relocate(item, container.id);
-									}}
-								/>
 							{/if}
 
 							<DiscardDialog
@@ -237,13 +178,6 @@
 									hasChildren: item.hasChildren
 								}}
 							/>
-
-							{#if error?.id === item.id}<p
-									class="text-sm text-red-600 dark:text-red-500"
-									role="alert"
-								>
-									{error.message}
-								</p>{/if}
 						</Card>
 					</li>
 				{/each}
@@ -252,41 +186,25 @@
 	</section>
 {/each}
 
-<Sheet bind:open={returningOpen} title="Вернуть «{returning?.name ?? ''}»">
-	{#if returning}
-		{@const item = returning}
-		{@const amount = amounts[item.id] ?? item.quantity}
-		<p class="mb-2 text-gray-500 dark:text-gray-400">
-			Положите{#if item.quantity > 1}&nbsp;{amount} шт.{/if}
-			{item.homePath.length ? 'сюда:' : 'на верхний уровень.'}
-		</p>
-		{#if item.homePath.length}
-			<ol class="mb-4 space-y-1 text-lg">
-				{#each item.homePath as node, i (node.id)}
-					<li
-						class="flex items-start gap-1.5 wrap-anywhere {i === item.homePath.length - 1
-							? 'font-semibold'
-							: ''}"
-						style:padding-inline-start="{i * 1.25}rem"
-					>
-						{#if i > 0}<span class="flex-none text-gray-400 dark:text-gray-500" aria-hidden="true"
-								>↳</span
-							>{/if}
-						<span class="min-w-0">
-							{pathNodeName(node)}{#if node.stickerCode}<span
-									class="ms-2 font-mono text-base font-normal whitespace-nowrap text-gray-500 dark:text-gray-400"
-									>{formatCode(node.stickerCode)}</span
-								>{/if}
-						</span>
-					</li>
-				{/each}
-			</ol>
-		{/if}
-		{#if error?.id === item.id}<p class="mb-2 text-sm text-red-600 dark:text-red-500" role="alert">
-				{error.message}
-			</p>{/if}
-		<Button class="w-full" onclick={() => confirmReturn(item)} disabled={busyId === item.id}>
-			Готово
-		</Button>
-	{/if}
-</Sheet>
+{#if returning}
+	<ReturnSheet
+		bind:open={returningOpen}
+		item={returning}
+		bind:amount={returnAmount}
+		askAmount
+		onreturned={invalidateAll}
+	/>
+{/if}
+{#if relocating}
+	<MoveSheet
+		bind:open={relocatingOpen}
+		title="Вернуть в другое место «{relocating.name}»"
+		item={{
+			id: relocating.id,
+			quantity: relocating.quantity,
+			parentId: relocating.workbenchId,
+			onBench: true
+		}}
+		onmoved={invalidateAll}
+	/>
+{/if}

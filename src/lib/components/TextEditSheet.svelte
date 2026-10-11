@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from './RequiredMark.svelte';
 	import { Button, Input, Label, Textarea } from 'flowbite-svelte';
 	import { ApiError } from '$lib/api';
 	import Sheet from './Sheet.svelte';
@@ -60,7 +61,9 @@
 <Sheet bind:open {title}>
 	<form class="flex flex-col gap-3" onsubmit={save}>
 		<div>
-			<Label for="text-{id}">{label}</Label>
+			<Label for="text-{id}"
+				>{label}{#if required}<RequiredMark />{/if}</Label
+			>
 			{#if multiline}
 				<Textarea id="text-{id}" class="mt-1" bind:value={text} rows={5} {placeholder} />
 			{:else}

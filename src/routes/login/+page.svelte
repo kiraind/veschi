@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { enhance } from '$app/forms';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
 	import type { ActionData } from './$types';
@@ -13,7 +14,7 @@
 		<h1 class="mb-4 text-center text-2xl font-bold">Вещи</h1>
 		<form method="POST" use:enhance class="flex flex-col gap-4">
 			<Label>
-				Логин
+				Логин<RequiredMark />
 				<Input
 					class="mt-1"
 					name="login"
@@ -23,7 +24,7 @@
 				/>
 			</Label>
 			<Label>
-				Пароль
+				Пароль<RequiredMark />
 				<Input
 					class="mt-1"
 					name="password"

@@ -7,7 +7,7 @@ import { createItem, getItemCard, listContents, moveItem, updateItem } from './i
 import { keyed, setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
 import { updateType } from './types';
-import { createWorkbench, take } from './workbench';
+import { createWorkbench, listWorkbench, take } from './workbench';
 
 describe('items', () => {
 	let actor: Actor;
@@ -105,6 +105,29 @@ describe('items', () => {
 			await expect(createItem(actor, { typeId: boxType, parentId: foreign.id })).rejects.toThrow(
 				'Контейнер не найден'
 			);
+		});
+
+		it('puts the item on a workbench as taken from the top level', async () => {
+			const bench = (await createWorkbench(actor, { name: 'Стол' })).id;
+			const { id } = await createItem(actor, { typeId: thingType, workbenchId: bench });
+			const item = await db.item.findUniqueOrThrow({ where: { id } });
+			expect(item).toMatchObject({ parentId: bench, takenById: actor.userId, homeId: null });
+			expect(item.takenAt).toBeInstanceOf(Date);
+			const [listed] = await listWorkbench(actor, { itemId: id });
+			expect(listed).toMatchObject({ id, workbenchId: bench, homePath: [], canReturn: true });
+			const user = await db.user.findUniqueOrThrow({ where: { id: actor.userId } });
+			expect(user.lastWorkbenchId).toBe(bench);
+		});
+
+		it('rejects a workbench that is not one, and a container together with a bench', async () => {
+			const shelf = await box('Полка');
+			const bench = (await createWorkbench(actor, { name: 'Стол' })).id;
+			await expect(createItem(actor, { typeId: thingType, workbenchId: shelf })).rejects.toThrow(
+				'Рабочий стол не найден'
+			);
+			await expect(
+				createItem(actor, { typeId: thingType, parentId: shelf, workbenchId: bench })
+			).rejects.toThrow();
 		});
 	});
 

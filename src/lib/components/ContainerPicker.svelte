@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import { Button, Card, Input } from 'flowbite-svelte';
 	import { QrCodeOutline } from 'flowbite-svelte-icons';
 	import QrScanner from './QrScanner.svelte';
@@ -17,7 +18,8 @@
 		excludeIds = [],
 		excludeParentId,
 		title = 'Куда положить?',
-		containersOnly = true
+		containersOnly = true,
+		card = true
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
 		/** The item being placed: it cannot go into itself. */
@@ -28,10 +30,12 @@
 		excludeParentId?: string;
 		title?: string;
 		containersOnly?: boolean;
+		/** In a card of its own; false inside a sheet. */
+		card?: boolean;
 	} = $props();
 
 	let query = $state('');
-	let results = $state<{ id: string; name: string; path: string }[]>([]);
+	let results = $state<{ id: string; name: string; path: string; code: string | null }[]>([]);
 	let scanning = $state(false);
 	let message = $state('');
 	let request = 0;
@@ -55,7 +59,12 @@
 						(!excludeParentId || l.path.at(-1)?.id !== excludeParentId) &&
 						(!containersOnly || l.isContainer)
 				)
-				.map((l) => ({ id: l.itemId, name: l.name, path: formatPath(l.path) }));
+				.map((l) => ({
+					id: l.itemId,
+					name: l.name,
+					path: formatPath(l.path),
+					code: l.stickerCode
+				}));
 		}, 250);
 		return () => clearTimeout(timer);
 	});
@@ -100,14 +109,16 @@
 	}
 </script>
 
-<Card class="max-w-none space-y-3 p-4">
+{#snippet picker()}
 	<p class="font-medium">{title}</p>
 	<div class="flex flex-wrap gap-2">
 		<Input
 			class="min-w-40 flex-1"
 			type="search"
 			bind:value={query}
-			placeholder={containersOnly ? 'Найти контейнер по названию' : 'Найти вещь по названию'}
+			placeholder={containersOnly
+				? 'Название контейнера или ID наклейки'
+				: 'Название вещи или ID наклейки'}
 			aria-label={containersOnly ? 'Найти контейнер' : 'Найти вещь'}
 		/>
 		<Button type="button" color="alternative" onclick={() => (scanning = !scanning)}>
@@ -130,7 +141,12 @@
 						class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
 						onclick={() => onpick(result)}
 					>
-						<span class="break-words">{result.name}</span>
+						<span class="break-words"
+							>{result.name}{#if result.code}<span
+									class="ms-2 font-mono text-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
+									>{formatCode(result.code)}</span
+								>{/if}</span
+						>
 						{#if result.path}
 							<span class="text-sm text-gray-500 dark:text-gray-400">{result.path}</span>
 						{/if}
@@ -143,4 +159,10 @@
 			{containersOnly ? 'Контейнеров не найдено.' : 'Ничего не найдено.'}
 		</p>
 	{/if}
-</Card>
+{/snippet}
+
+{#if card}
+	<Card class="max-w-none space-y-3 p-4">{@render picker()}</Card>
+{:else}
+	<div class="space-y-3">{@render picker()}</div>
+{/if}

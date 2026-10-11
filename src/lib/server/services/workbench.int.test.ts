@@ -101,7 +101,7 @@ describe('workbench service', () => {
 		expect(taken.takenAt).toBeInstanceOf(Date);
 		expect((await listWorkbenches(actor)).lastWorkbenchId).toBe(garage);
 
-		const [listed] = await listWorkbench(actor, garage);
+		const [listed] = await listWorkbench(actor, { workbenchId: garage });
 		expect(listed).toMatchObject({
 			id: knife.id,
 			name: 'Нож',
@@ -121,7 +121,7 @@ describe('workbench service', () => {
 		});
 		await take(actor, knife.id, { workbenchId: garage });
 
-		const [listed] = await listWorkbench(actor, garage);
+		const [listed] = await listWorkbench(actor, { workbenchId: garage });
 		expect(listed?.homePath.map((n) => [n.name, n.stickerCode])).toEqual([
 			['Стеллаж', 'K7M4QX'],
 			['Ящик', null]
@@ -405,7 +405,7 @@ describe('workbench service', () => {
 		await take(actor, knife.id, { workbenchId: garage });
 		await take(actor, knife.id, { workbenchId: home });
 		expect(await reload(knife.id)).toMatchObject({ parentId: home, homeId: drawer.id });
-		expect(await listWorkbench(actor, garage)).toEqual([]);
+		expect(await listWorkbench(actor, { workbenchId: garage })).toEqual([]);
 		expect((await listWorkbenches(actor)).lastWorkbenchId).toBe(home);
 	});
 

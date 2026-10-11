@@ -41,6 +41,19 @@ export function normalizeCode(input: string): string | null {
 	return CODE_RE.test(code) ? code : null;
 }
 
+/** Shortest piece of a sticker ID that search looks up (shorter ones match too much). */
+const MIN_CODE_PART = 3;
+
+/**
+ * A query that may be (part of) a sticker ID — `k7m`, `K7M-4QX`, `m4q` — in the
+ * stored form, or null when it has characters an ID never contains or is too short.
+ */
+export function codeQuery(input: string): string | null {
+	const part = input.trim().toUpperCase().replace(/[-\s]/g, '');
+	if (part.length < MIN_CODE_PART || part.length > CODE_LENGTH) return null;
+	return [...part].every((c) => CODE_ALPHABET.includes(c)) ? part : null;
+}
+
 /** Stored form → display form: `K7M4QX` → `K7M-4QX`. */
 export function formatCode(code: string): string {
 	return `${code.slice(0, 3)}-${code.slice(3)}`;
