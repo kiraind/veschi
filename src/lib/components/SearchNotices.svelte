@@ -7,18 +7,20 @@
 	 * categories with unfilled required values and categories without
 	 * parameters. Each notice opens the category card, where it is fixed.
 	 */
+	const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 	let { notices }: { notices: CategoryNotices } = $props();
 
 	const list = $derived([
 		...notices.incomplete.map((c) => ({
 			id: c.id,
-			title: `«${c.name}»: ${incompleteOwners(c.itemCount, c.typeCount)} не заполнены параметры`,
-			text: 'Заполните их на карточках типов и вещей из категории.'
+			title: `${capitalize(incompleteOwners(c.itemCount, c.typeCount))} в категории «${c.name}» не заполнены параметры`,
+			text: 'Заполните недостающие данные.'
 		})),
 		...notices.empty.map((c) => ({
 			id: c.id,
 			title: `В категории «${c.name}» нет параметров`,
-			text: 'Добавьте параметры, обязательные для её типов и вещей.'
+			text: 'Добавьте параметры или удалите категорию.'
 		}))
 	]);
 </script>
