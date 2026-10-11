@@ -15,7 +15,7 @@
 	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
 	import ContainerDiscardSheet from '$lib/components/ContainerDiscardSheet.svelte';
 	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
-	import Sheet from '$lib/components/Sheet.svelte';
+	import MoveSheet from '$lib/components/MoveSheet.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { plural } from '$lib/domain/plural';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
@@ -77,14 +77,11 @@
 		'h-16 flex-1 flex-col gap-1 px-2 whitespace-nowrap sm:h-11 sm:flex-none sm:flex-row sm:gap-0 sm:px-4';
 	const actionIconClass = 'h-6 w-6 flex-none sm:me-1.5 sm:h-5 sm:w-5';
 
-	/** How much «Переложить» moves (asked only when there is more than one). */
-	let moveQuantity = $state(1);
 	/** «Положить сюда существующую»: the picked item while asking how much of it. */
 	let picked = $state<{ id: string; name: string; quantity: number } | null>(null);
 	let pickedQuantity = $state(1);
 
 	function startMoving() {
-		moveQuantity = item.quantity;
 		moving = true;
 	}
 
@@ -107,14 +104,6 @@
 		adding = !adding;
 		picked = null;
 	}
-
-	const moveTo = (parentId: string | null) =>
-		run(() =>
-			api.post(`/api/items/${item.id}/move`, {
-				parentId,
-				...(moveQuantity < item.quantity ? { quantity: moveQuantity } : {})
-			})
-		);
 
 	/** «Положить сюда существующую»: asks how much when the picked item has more than one. */
 	async function pickChild(c: { id: string; name: string }) {
@@ -269,7 +258,7 @@
 		{/if}
 	</ButtonGroup>
 {/if}
-{#if error && !moving}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
+{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
 		{error}
 	</p>{/if}
 
@@ -419,34 +408,15 @@
 			onrelocate={startMoving}
 		/>
 	{/if}
-	<Sheet bind:open={moving} title="Переложить «{item.displayName}»">
-		<div class="flex flex-col gap-3">
-			{#if item.quantity > 1}
-				<QuantityField
-					available={item.quantity}
-					bind:value={moveQuantity}
-					label="Сколько переложить"
-				/>
-			{/if}
-			<ContainerPicker
-				title="Куда переложить?"
-				card={false}
-				excludeId={item.id}
-				excludeIds={item.parentId && !item.takenById ? [item.parentId] : []}
-				onpick={(c) => {
-					if (!quantityError(item.quantity, moveQuantity)) moveTo(c.id);
-				}}
-			/>
-			{#if item.parentId}
-				<Button
-					color="alternative"
-					onclick={() => moveTo(null)}
-					disabled={busy || !!quantityError(item.quantity, moveQuantity)}
-				>
-					На верхний уровень
-				</Button>
-			{/if}
-			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
-		</div>
-	</Sheet>
+	<MoveSheet
+		bind:open={moving}
+		title="Переложить «{item.displayName}»"
+		item={{
+			id: item.id,
+			quantity: item.quantity,
+			parentId: item.parentId,
+			onBench: !!item.takenById
+		}}
+		onmoved={invalidateAll}
+	/>
 {/if}
