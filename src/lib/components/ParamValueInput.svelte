@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button, Fileupload, Input, Radio, Select } from 'flowbite-svelte';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { ParamDraft } from '$lib/domain/param-draft';
 	import { formatFileSize, type ParamDefView } from '$lib/domain/params';
 	import { shortenFileName } from '$lib/domain/shorten';
@@ -37,7 +37,7 @@
 			const { valueType: _type, ...value } = await api.post<FileValue>('/api/uploads', body);
 			draft.file = value;
 		} catch (e) {
-			uploadError = e instanceof ApiError ? e.message : String(e);
+			uploadError = errorText(e);
 		} finally {
 			uploading = false;
 			input.value = '';
@@ -113,8 +113,12 @@
 			<span class="text-sm text-gray-500 dark:text-gray-400"
 				>{formatFileSize(draft.file.fileSize)}</span
 			>
-			<Button color="alternative" size="sm" type="button" onclick={() => (draft.file = null)}
-				>Заменить</Button
+			<Button
+				color="alternative"
+				size="sm"
+				class="h-10"
+				type="button"
+				onclick={() => (draft.file = null)}>Заменить</Button
 			>
 		</div>
 	{:else}

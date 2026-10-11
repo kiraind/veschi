@@ -14,7 +14,7 @@
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 	<h1 class="text-2xl font-bold">Контейнеры</h1>
-	<Button href="/items/new?container=1" size="sm">
+	<Button href="/items/new?container=1" size="sm" class="h-10">
 		<PlusOutline class="me-1.5 h-4 w-4" />
 		Новый контейнер
 	</Button>

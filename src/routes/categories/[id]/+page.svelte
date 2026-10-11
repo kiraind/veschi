@@ -1,8 +1,9 @@
 <script lang="ts">
+	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PlusOutline, TrashBinOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import Description from '$lib/components/Description.svelte';
 	import EditButton from '$lib/components/EditButton.svelte';
@@ -39,7 +40,7 @@
 			await action();
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -96,7 +97,7 @@
 			await api.delete(`/api/categories/${category.id}`);
 			await goto('/categories');
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		}
 	}
 
@@ -116,8 +117,12 @@
 		href="/categories"><ArrowLeftOutline class="h-4 w-4" />Категории</a
 	>
 </p>
-<h1 class="text-2xl font-bold wrap-anywhere">
-	{category.name}<EditButton label="Изменить название" onclick={() => (renaming = true)} />
+<!-- Named by the text alone: the pen is not part of the heading's name. -->
+<h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
+	<span id="page-title">{category.name}</span><EditButton
+		label="Изменить название"
+		onclick={() => (renaming = true)}
+	/>
 </h1>
 
 <div class="mt-4">
@@ -282,3 +287,5 @@
 	placeholder="Что сюда входит"
 	onsave={(description) => save({ description })}
 />
+
+<div class="mt-6"><HistoryLink id={category.id} /></div>

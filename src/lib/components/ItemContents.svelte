@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { Badge } from 'flowbite-svelte';
 	import { ChevronDownOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import Thumb from './Thumb.svelte';
 	import ItemContents from './ItemContents.svelte';
 	import type { ContentEntry } from '$lib/server/services/items';
@@ -20,7 +21,7 @@
 		try {
 			open[id] = await api.get<ContentEntry[]>(`/api/items?parent=${id}`);
 		} catch (e) {
-			open[id] = { error: e instanceof Error ? e.message : String(e) };
+			open[id] = { error: errorText(e) };
 		}
 	}
 </script>
@@ -39,7 +40,7 @@
 				>
 				{#if entry.onWorkbench}<Badge color="yellow">на столе</Badge>{/if}
 				{#if entry.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
-						>{entry.quantity} шт.</Badge
+						>{pieces(entry.quantity)}</Badge
 					>{/if}
 				{#if entry.childCount > 0}
 					<button

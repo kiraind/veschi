@@ -7,7 +7,7 @@ import {
 	setSessionCookie,
 	validateSession
 } from '$lib/server/auth/session';
-import { UnauthorizedError } from '$lib/server/errors';
+import { ForbiddenError, UnauthorizedError } from '$lib/server/errors';
 import { initApp } from '$lib/server/init';
 import { THEME_COOKIE, parseTheme } from '$lib/domain/theme';
 
@@ -22,6 +22,17 @@ function isPublic(pathname: string): boolean {
 	return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/**
+ * A change sent from another site. SvelteKit checks the Origin of form posts
+ * only; a JSON or bodiless request (POST …/purge) is checked here. Browsers
+ * send Origin with every such request, so a missing one is not a browser.
+ */
+function isCrossSiteChange(request: Request, url: URL): boolean {
+	if (request.method === 'GET' || request.method === 'HEAD') return false;
+	const origin = request.headers.get('origin');
+	return origin !== null && origin !== url.origin;
+}
+
 /** API endpoints and files answer 401 instead of redirecting to the login page. */
 function isApi(pathname: string): boolean {
 	return pathname.startsWith('/api/') || pathname.startsWith('/files/');
@@ -31,6 +42,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
 	event.locals.actor = null;
 	event.locals.sessionId = null;
+
+	if (isCrossSiteChange(event.request, event.url)) {
+		return errorResponse(new ForbiddenError('Запрос с другого сайта отклонён'));
+	}
 
 	const token = event.cookies.get(SESSION_COOKIE);
 	if (token) {

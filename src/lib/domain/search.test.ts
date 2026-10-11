@@ -19,6 +19,15 @@ describe('parseSearchQuery', () => {
 	});
 });
 
+describe('parseSearchQuery numbers', () => {
+	it('reads numbers as the app shows them', () => {
+		expect(parseSearchQuery('\u221240').text).toBe('-40');
+		expect(parseSearchQuery('4\u202f500 мкФ').text).toBe('4500 мкФ');
+		expect(parseSearchQuery('1\u202f000\u202f000').text).toBe('1000000');
+		expect(parseSearchQuery('M3 100').text).toBe('M3 100');
+	});
+});
+
 describe('likePattern', () => {
 	it('escapes wildcards', () => {
 		expect(likePattern('100%_a\\b')).toBe('%100\\%\\_a\\\\b%');

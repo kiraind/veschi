@@ -1,9 +1,4 @@
-import { THEME_COOKIE, isDarkTheme, parseTheme, type Theme } from '$lib/domain/theme';
-
-/** The theme the page was rendered with (`<html data-theme>`). */
-export function currentTheme(): Theme {
-	return parseTheme(document.documentElement.dataset.theme);
-}
+import { THEME_COOKIE, isDarkTheme, type Theme } from '$lib/domain/theme';
 
 /** Saves the theme for this browser and applies it at once. */
 export function setTheme(theme: Theme): void {

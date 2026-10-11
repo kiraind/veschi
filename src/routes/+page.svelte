@@ -10,11 +10,24 @@
 	// Initialised from the URL once; afterwards the input drives the URL.
 	// svelte-ignore state_referenced_locally
 	let query = $state(data.q);
+	/** The query this page last put into the URL. */
+	// svelte-ignore state_referenced_locally
+	let requested = data.q.trim();
+
+	// The URL changed from outside (the «Поиск» tab, back): the field follows it.
+	$effect(() => {
+		const q = data.q.trim();
+		if (q !== requested) {
+			requested = q;
+			query = data.q;
+		}
+	});
 
 	$effect(() => {
 		const q = query.trim();
 		if (q === data.q.trim()) return;
 		const timer = setTimeout(() => {
+			requested = q;
 			const url = q ? `/?q=${encodeURIComponent(q)}` : '/';
 			goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 		}, 300);
@@ -90,6 +103,11 @@
 	<p class="text-sm text-gray-500 dark:text-gray-400">Ничего не найдено.</p>
 {:else}
 	<SearchResults groups={data.groups} />
+	{#if data.truncated}
+		<p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+			Показаны не все места — уточните запрос.
+		</p>
+	{/if}
 {/if}
 
 <div class="h-16 md:hidden" aria-hidden="true"></div>

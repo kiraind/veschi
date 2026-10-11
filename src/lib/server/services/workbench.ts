@@ -1,4 +1,4 @@
-import { db, type Tx } from '$lib/server/db';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
@@ -107,7 +107,7 @@ function geofence(b: Pick<Workbench, 'geoLat' | 'geoLng' | 'geoRadiusM'>): Chang
 
 export async function createWorkbench(actor: Actor, input: WorkbenchInput): Promise<Workbench> {
 	const data = workbenchData(input);
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const bench = await tx.item.create({
 			data: { ...ownedBy(actor), isWorkbench: true, ...data },
 			select: workbenchSelect
@@ -127,7 +127,7 @@ export async function updateWorkbench(
 	input: WorkbenchInput
 ): Promise<Workbench> {
 	const data = workbenchData(input);
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const old = await requireWorkbench(actor, id, tx);
 		const bench = await tx.item.update({ where: { id }, data, select: workbenchSelect });
 		const changes = diffFields(
@@ -147,7 +147,7 @@ export async function updateWorkbench(
 
 /** Deletes an empty workbench; one with items on it is rejected. */
 export async function deleteWorkbench(actor: Actor, id: string): Promise<void> {
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		await requireWorkbench(actor, id, tx);
 		const onIt = await tx.item.count({ where: { parentId: id, status: 'ACTIVE' } });
 		if (onIt > 0) throw new ConflictError('На столе есть вещи — сначала уберите их');
@@ -155,6 +155,11 @@ export async function deleteWorkbench(actor: Actor, id: string): Promise<void> {
 			kind: 'workbench.deleted',
 			subject: await itemSubject(tx, id),
 			data: {}
+		});
+		// A sticker bound to a bench by older versions is written off, not left bound to nothing.
+		await tx.sticker.updateMany({
+			where: { itemId: id },
+			data: { status: 'WRITTEN_OFF', itemId: null }
 		});
 		// Archived items that lay on it lose their parent and are restored to the top level.
 		await tx.item.delete({ where: { id } });
@@ -192,7 +197,7 @@ export async function take(
 	itemId: string,
 	{ workbenchId, quantity }: TakeOptions
 ): Promise<{ itemId: string }> {
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		const bench = await requireWorkbench(actor, workbenchId, tx);
 		const count = partCount(item, quantity);
@@ -362,7 +367,7 @@ export async function returnHome(
 	itemId: string,
 	{ quantity }: PartOptions = {}
 ): Promise<{ itemId: string; merged: boolean }> {
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		if (!item.takenById) throw new ValidationError('Вещь не на рабочем столе');
 		const count = partCount(item, quantity);
@@ -436,9 +441,12 @@ export async function relocate(
 	containerId: string | null,
 	{ quantity }: PartOptions = {}
 ): Promise<{ itemId: string }> {
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		const count = partCount(item, quantity);
+		if (containerId === item.parentId && !item.takenById) {
+			throw new ValidationError('Вещь уже лежит здесь');
+		}
 		if (containerId) {
 			const container = await tx.item.findFirst({
 				where: { id: containerId, ...visibleTo(actor) },
@@ -481,12 +489,17 @@ export async function consume(
 	quantity: number,
 	{ thrownAway = false }: { thrownAway?: boolean } = {}
 ): Promise<{ archived: boolean }> {
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const item = await requireActiveItem(actor, itemId, tx);
 		const problem = quantityError(item.quantity, quantity);
 		if (problem) throw new ValidationError(problem);
 		if (quantity === item.quantity) {
-			await discard(actor, item.id, { consumed: true }, tx);
+			const inside = await tx.item.count({ where: { parentId: item.id, status: 'ACTIVE' } });
+			if (inside > 0) {
+				// «Выкинуть» asks what to do with the contents; using a container up would not.
+				throw new ValidationError('В контейнере есть вещи — выкиньте его и выберите, куда их деть');
+			}
+			await discard(actor, item.id, thrownAway ? {} : { consumed: true }, tx);
 			return { archived: true };
 		}
 		await tx.item.update({ where: { id: item.id }, data: { quantity: item.quantity - quantity } });

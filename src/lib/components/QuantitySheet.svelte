@@ -1,17 +1,18 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Input, Label } from 'flowbite-svelte';
 	import { MinusOutline, PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
-	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
 
 	/**
-	 * «Изменить» on the item card: the quantity with − and +. More than now →
-	 * «Сохранить»; less → «Использовать N» / «Выкинуть N» take N away; as it is →
-	 * «Использовать» / «Выкинуть» send the whole item to the archive. `lock`
-	 * explains why the quantity of this item is always 1 (a container, a sticker).
+	 * The quantity button on the card of a thing (containers have «Выкинуть»
+	 * instead, see ContainerDiscardSheet): the quantity with − and +. More than
+	 * now → «Сохранить»; less → «Использовать N» / «Выкинуть N» take N away; as
+	 * it is → «Использовать» / «Выкинуть» send the whole item to the archive.
+	 * `lock` explains why the quantity of this item is always 1 (a sticker).
 	 */
 	let {
 		open = $bindable(false),
@@ -20,7 +21,7 @@
 		onarchived
 	}: {
 		open?: boolean;
-		item: { id: string; name: string; quantity: number; hasChildren: boolean };
+		item: { id: string; name: string; quantity: number };
 		lock?: string | null;
 		/** Called after the item went to the archive (the page may be gone). */
 		onarchived: () => Promise<void>;
@@ -28,18 +29,12 @@
 
 	const id = $props.id();
 	let value = $state(1);
-	let contents = $state<Contents>('parent');
-	let workbenchId = $state<string | null>(null);
-	/** «Выкинуть» of a container with contents asks what to do with them first. */
-	let askContents = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 
 	$effect(() => {
 		if (open) {
 			value = item.quantity;
-			contents = 'parent';
-			askContents = false;
 			error = '';
 		}
 	});
@@ -57,7 +52,7 @@
 			if (archived) await onarchived();
 			else await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -74,7 +69,7 @@
 			title: `Использовать «${item.name}»?`,
 			message:
 				item.quantity > 1
-					? `Все ${item.quantity} шт. уйдут в архив как использованные.`
+					? `Все ${pieces(item.quantity)} уйдут в архив как использованные.`
 					: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
 			confirmLabel: 'Использовать'
 		});
@@ -82,26 +77,12 @@
 	}
 
 	async function discardAll() {
-		if (item.hasChildren && !askContents) {
-			askContents = true;
-			return;
-		}
-		if (!item.hasChildren) {
-			const ok = await confirmAction({
-				title: `Выкинуть «${item.name}»?`,
-				message: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
-				confirmLabel: 'Выкинуть'
-			});
-			if (!ok) return;
-		}
-		run(
-			() =>
-				api.post(`/api/items/${item.id}/discard`, {
-					contents,
-					workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
-				}),
-			true
-		);
+		const ok = await confirmAction({
+			title: `Выкинуть «${item.name}»?`,
+			message: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
+			confirmLabel: 'Выкинуть'
+		});
+		if (ok) run(() => api.post(`/api/items/${item.id}/discard`, {}), true);
 	}
 </script>
 
@@ -149,7 +130,7 @@
 				</p>
 			{:else if taken > 0}
 				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					Станет на {taken} шт. меньше.
+					Станет на {pieces(taken)} меньше.
 				</p>
 			{/if}
 		</div>
@@ -163,34 +144,20 @@
 			</div>
 		{:else if taken > 0}
 			<div class="flex flex-wrap gap-2">
-				<Button onclick={() => takeAway(false)} disabled={busy}>Использовать {taken} шт.</Button>
+				<Button onclick={() => takeAway(false)} disabled={busy}>Использовать {pieces(taken)}</Button
+				>
 				<Button color="red" outline onclick={() => takeAway(true)} disabled={busy}
-					>Выкинуть {taken} шт.</Button
+					>Выкинуть {pieces(taken)}</Button
 				>
 			</div>
 		{:else if valid}
-			{#if askContents}
-				<DiscardContents bind:contents bind:workbenchId />
-			{/if}
 			<div class="flex flex-wrap gap-2">
-				{#if !askContents}
-					<Button color="alternative" onclick={useAll} disabled={busy}>
-						{item.quantity > 1 ? 'Использовать всё' : 'Использовать'}
-					</Button>
-				{/if}
-				<Button
-					color="red"
-					outline
-					onclick={discardAll}
-					disabled={busy || (askContents && contents === 'workbench' && !workbenchId)}
-				>
+				<Button color="alternative" onclick={useAll} disabled={busy}>
+					{item.quantity > 1 ? 'Использовать всё' : 'Использовать'}
+				</Button>
+				<Button color="red" outline onclick={discardAll} disabled={busy}>
 					{item.quantity > 1 ? 'Выкинуть всё' : 'Выкинуть'}
 				</Button>
-				{#if askContents}
-					<Button color="alternative" onclick={() => (askContents = false)} disabled={busy}
-						>Отмена</Button
-					>
-				{/if}
 			</div>
 			<p class="text-sm text-gray-500 dark:text-gray-400">
 				Использованная или выкинутая вещь попадёт в архив, оттуда её можно вернуть.

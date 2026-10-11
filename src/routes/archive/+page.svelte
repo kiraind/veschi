@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
 	import { Badge, Button, Card } from 'flowbite-svelte';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import type { PageData } from './$types';
@@ -20,7 +21,7 @@
 			await action();
 			await invalidateAll();
 		} catch (e) {
-			error = { id, message: e instanceof Error ? e.message : String(e) };
+			error = { id, message: errorText(e) };
 		} finally {
 			busyId = null;
 		}
@@ -66,7 +67,7 @@
 								><strong>{item.name}</strong></a
 							>
 							{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"
-									>{item.quantity} шт.</Badge
+									>{pieces(item.quantity)}</Badge
 								>{/if}
 							{#if item.stickerCode}<span class="font-mono text-sm text-gray-500 dark:text-gray-400"
 									>{formatCode(item.stickerCode)}</span
@@ -78,11 +79,17 @@
 						</div>
 					</div>
 					<div class="flex flex-wrap gap-2">
-						<Button size="sm" onclick={() => restore(item.id)} disabled={busyId === item.id}>
+						<Button
+							size="sm"
+							class="h-10"
+							onclick={() => restore(item.id)}
+							disabled={busyId === item.id}
+						>
 							Восстановить
 						</Button>
 						<Button
 							size="sm"
+							class="h-10"
 							color="red"
 							outline
 							onclick={() => purge(item)}

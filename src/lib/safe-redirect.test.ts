@@ -11,6 +11,9 @@ describe('safeRedirectPath', () => {
 		expect(safeRedirectPath('https://evil.example')).toBe('/');
 		expect(safeRedirectPath('//evil.example')).toBe('/');
 		expect(safeRedirectPath('/\\evil.example')).toBe('/');
+		expect(safeRedirectPath('/\t/evil.example')).toBe('/');
+		expect(safeRedirectPath('/\n/evil.example')).toBe('/');
+		expect(safeRedirectPath('/ok\r\nSet-Cookie: x')).toBe('/');
 		expect(safeRedirectPath(null)).toBe('/');
 		expect(safeRedirectPath('', '/search')).toBe('/search');
 	});

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { pieces } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { formatPath } from '$lib/domain/item';
 	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
@@ -67,7 +68,7 @@
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 	<h1 class="text-2xl font-bold">Рабочий стол</h1>
-	<Button href="/workbench/settings" color="alternative" size="sm">
+	<Button href="/workbench/settings" color="alternative" size="sm" class="h-10">
 		<CogOutline class="me-1.5 h-4 w-4" />Настроить столы
 	</Button>
 </div>
@@ -103,7 +104,7 @@
 										>
 										{#if item.quantity > 1}<Badge
 												color="gray"
-												class="dark:bg-gray-700 dark:text-gray-200">{item.quantity} шт.</Badge
+												class="dark:bg-gray-700 dark:text-gray-200">{pieces(item.quantity)}</Badge
 											>{/if}
 									</div>
 									<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
@@ -170,7 +171,6 @@
 								bind:open={
 									() => discardingId === item.id, (v) => (discardingId = v ? item.id : null)
 								}
-								button={false}
 								item={{
 									id: item.id,
 									name: item.name,

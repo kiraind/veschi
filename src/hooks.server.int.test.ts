@@ -5,15 +5,21 @@ import { createTestActor } from '$lib/server/testing/db';
 import { handle } from './hooks.server';
 
 /** A minimal request event: cookie jar, URL and empty locals. */
-function fakeEvent(path: string, cookies: Record<string, string> = {}): RequestEvent {
+function fakeEvent(
+	path: string,
+	cookies: Record<string, string> = {},
+	init: RequestInit = {}
+): RequestEvent {
 	const jar = new Map(Object.entries(cookies));
 	const cookieApi: Partial<Cookies> = {
 		get: (name) => jar.get(name),
 		set: (name, value) => void jar.set(name, value),
 		delete: (name) => void jar.delete(name)
 	};
+	const url = new URL(path, 'http://localhost');
 	return {
-		url: new URL(path, 'http://localhost'),
+		url,
+		request: new Request(url, init),
 		cookies: cookieApi,
 		locals: {}
 	} as unknown as RequestEvent;
@@ -29,6 +35,31 @@ async function run(event: RequestEvent) {
 		throw e;
 	}
 }
+
+describe('cross-site changes (hooks.server handle)', () => {
+	it('rejects a change sent from another site, even without a body', async () => {
+		const { response, resolve } = await run(
+			fakeEvent(
+				'/api/items/x/purge',
+				{},
+				{ method: 'POST', headers: { origin: 'https://evil.example' } }
+			)
+		);
+		expect(response?.status).toBe(403);
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('lets changes from the app itself and reads from anywhere through', async () => {
+		const own = await run(
+			fakeEvent('/login', {}, { method: 'POST', headers: { origin: 'http://localhost' } })
+		);
+		expect(own.response?.status).toBe(200);
+		const read = await run(
+			fakeEvent('/login', {}, { headers: { origin: 'https://evil.example' } })
+		);
+		expect(read.response?.status).toBe(200);
+	});
+});
 
 describe('auth guard (hooks.server handle)', () => {
 	it('redirects a page request without a session to /login with the way back', async () => {

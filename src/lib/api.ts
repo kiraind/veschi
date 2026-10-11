@@ -58,3 +58,14 @@ export const api = {
 	patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
 	delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body)
 };
+
+/**
+ * Text of a failed request for the user: the server's message, or `fallback`
+ * when the request did not reach the server (no network, aborted).
+ */
+export function errorText(
+	e: unknown,
+	fallback = 'Нет связи с сервером, попробуйте ещё раз'
+): string {
+	return e instanceof ApiError ? e.message : fallback;
+}

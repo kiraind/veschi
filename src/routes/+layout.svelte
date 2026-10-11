@@ -103,7 +103,7 @@
 			<a
 				href="/settings"
 				title="Настройки"
-				class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+				class="flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
 				aria-current={isActive('/settings') ? 'page' : undefined}
 			>
 				<UserCircleOutline class="h-5 w-5" />

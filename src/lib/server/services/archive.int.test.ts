@@ -143,11 +143,28 @@ describe('archive service', () => {
 
 		await expect(purge(actor, box.id)).rejects.toThrow('только вещь из архива');
 		await discard(actor, box.id, { contents: 'discard' });
+		// A parameter «Вещь» of another item still points at it.
+		await expect(purge(actor, box.id)).rejects.toThrow('ссылаются параметры');
+		await db.param.deleteMany({ where: { itemId: other.id } });
 		await purge(actor, box.id);
 
 		expect(await db.item.findMany({ where: { id: { in: [box.id, chip.id] } } })).toEqual([]);
 		expect(await sticker(s.id)).toMatchObject({ status: 'WRITTEN_OFF', itemId: null });
 		expect((await reload(other.id)).id).toBe(other.id);
+	});
+
+	it('does not purge a place a thing on a workbench waits to go back into', async () => {
+		const box = await item('Коробка');
+		const chip = await item('NE555', box.id);
+		const bench = await db.item.create({
+			data: { ownerId: actor.userId, isWorkbench: true, name: 'Стол' }
+		});
+		await db.item.update({
+			where: { id: chip.id },
+			data: { parentId: bench.id, homeId: box.id, takenById: actor.userId, takenAt: new Date() }
+		});
+		await discard(actor, box.id);
+		await expect(purge(actor, box.id)).rejects.toThrow('ждут возврата');
 	});
 
 	it('keeps param refs to archived items', async () => {

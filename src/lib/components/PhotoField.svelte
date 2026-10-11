@@ -6,7 +6,7 @@
 		PenOutline,
 		TrashBinOutline
 	} from 'flowbite-svelte-icons';
-	import { ApiError } from '$lib/api';
+	import { errorText } from '$lib/api';
 	import CameraCapture from './CameraCapture.svelte';
 	import NoPhoto from './NoPhoto.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -53,7 +53,7 @@
 		try {
 			await action();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

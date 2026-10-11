@@ -12,10 +12,18 @@ const schema = z.object({
 	S3_REGION: z.string().default('us-east-1'),
 	ADMIN_LOGIN: z.string().optional(),
 	ADMIN_PASSWORD: z.string().optional(),
-	ADMIN_NAME: z.string().optional()
+	ADMIN_NAME: z.string().optional(),
+	ADMIN_RESET_PASSWORD: z
+		.string()
+		.optional()
+		.transform((v) => v === '1' || v === 'true')
 });
 
-export type Config = z.infer<typeof schema> & { qrBaseUrl: string };
+/**
+ * `qrBaseUrl` is null in production without ORIGIN and QR_BASE_URL: stickers
+ * printed with a localhost link could never be fixed, so they are not printed.
+ */
+export type Config = z.infer<typeof schema> & { qrBaseUrl: string | null };
 
 let cached: Config | null = null;
 
@@ -23,10 +31,8 @@ let cached: Config | null = null;
 export function config(): Config {
 	if (cached) return cached;
 	const parsed = schema.parse(env);
-	const qrBaseUrl = (parsed.QR_BASE_URL ?? parsed.ORIGIN ?? 'http://localhost:3000').replace(
-		/\/+$/,
-		''
-	);
+	const fallback = process.env.NODE_ENV === 'production' ? null : 'http://localhost:3000';
+	const qrBaseUrl = (parsed.QR_BASE_URL ?? parsed.ORIGIN ?? fallback)?.replace(/\/+$/, '') ?? null;
 	cached = { ...parsed, qrBaseUrl };
 	return cached;
 }

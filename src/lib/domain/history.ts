@@ -4,6 +4,7 @@
  * keep names as they were at the moment, so they read the same after renames
  * and deletions.
  */
+import { pieces } from './plural';
 import { formatCode } from './sticker-code';
 import { pathNodeName } from './item';
 
@@ -62,10 +63,18 @@ export interface HistoryDataMap {
 	'item.moved': { quantity: number; of: number; from: Place; to: Place; resultId?: string };
 	'item.taken': { quantity: number; of?: number; from: Place; to: Place; resultId?: string };
 	'item.returned': { quantity: number; of: number; from: Place; to: Place; resultId?: string };
-	/** `thrownAway`: «Выкинуть N шт.» rather than «Использовать N шт.». */
+	/** `thrownAway`: «Выкинуть» rather than «Использовать». */
 	'item.consumed': { quantity: number; left: number; thrownAway?: boolean };
 	/** `together`: contents archived with it; `consumed`: «Использовать» took all of it. */
-	'item.discarded': { quantity?: number; from?: Place; together?: number; consumed?: boolean };
+	/** `moved`: active contents that stayed in the catalog and went to `movedTo`. */
+	'item.discarded': {
+		quantity?: number;
+		from?: Place;
+		together?: number;
+		moved?: number;
+		movedTo?: Place;
+		consumed?: boolean;
+	};
 	'item.restored': { to: Place; together: number };
 	'item.purged': { together: number };
 	'sticker.bound': { code: string; resultId?: string };
@@ -333,9 +342,9 @@ export function describeEvent(e: HistoryEventView): EventText {
 	const t = (text: string): Segment => ({ text });
 	const part = (quantity: number, of?: number): Segment[] =>
 		of !== undefined && quantity < of
-			? [t(` (${quantity} из ${of} шт.)`)]
+			? [t(` (${quantity} из ${of})`)]
 			: quantity > 1
-				? [t(` (${quantity} шт.)`)]
+				? [t(` (${pieces(quantity)})`)]
 				: [];
 	const changes = (list: Change[]) => list.map(changeLine);
 
@@ -379,9 +388,9 @@ export function describeEvent(e: HistoryEventView): EventText {
 				title: [
 					t('Вещь '),
 					subject,
-					t(`${d.thrownAway ? ' выкинута' : ' использована'}: ${d.quantity} шт.`)
+					t(`${d.thrownAway ? ' выкинута' : ' использована'}: ${pieces(d.quantity)}`)
 				],
-				details: [[t(`Осталось ${d.left} шт.`)]]
+				details: [[t(`Осталось ${pieces(d.left)}`)]]
 			};
 		}
 		case 'item.discarded': {
@@ -389,6 +398,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 			const details: Segment[][] = [];
 			if (d.from !== undefined) details.push([t('Лежала: '), place(d.from)]);
 			if (d.together) details.push([t(`Вместе с ней в архив: ${d.together}`)]);
+			if (d.moved) details.push([t(`Содержимое (${d.moved}) переложено: `), place(d.movedTo)]);
 			return {
 				title: [
 					t('Вещь '),
@@ -516,7 +526,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 					live.has(e.subjectId)
 						? { text: 'Выпущены наклейки', href: '/stickers' }
 						: t('Выпущены наклейки'),
-					t(`: ${d.count} шт.`)
+					t(`: ${d.count}`)
 				],
 				details: d.ordered ? [[t(`Для вещей: ${d.ordered}`)]] : []
 			};
@@ -524,7 +534,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 		case 'stickers.unprinted': {
 			const d = e.data as HistoryData<'stickers.unprinted'>;
 			return {
-				title: [t(`Наклейки не распечатаны, ID освобождены: ${d.count} шт.`)],
+				title: [t(`Наклейки не распечатаны, ID освобождены: ${d.count}`)],
 				details: d.ordered ? [[t(`Снова ждут печати: ${d.ordered}`)]] : []
 			};
 		}

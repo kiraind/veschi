@@ -138,7 +138,7 @@ describe('types', () => {
 			await db.item.update({ where: { id: several.id }, data: { status: 'ARCHIVED' } });
 			await expect(
 				updateType(actor, type.id, { name: 'Пакет', isContainer: true })
-			).rejects.toThrow('а у «Пакеты» 3 шт.');
+			).rejects.toThrow('а у «Пакеты» 3 штуки');
 			expect((await db.itemType.findUniqueOrThrow({ where: { id: type.id } })).isContainer).toBe(
 				false
 			);
@@ -188,6 +188,16 @@ describe('types', () => {
 		});
 	});
 
+	it('matches % and _ in names literally', async () => {
+		const resistor = await createType(actor, { name: 'Резистор 10 кОм' });
+		await createType(actor, { name: 'axb' });
+		const percent = await findOrCreateType(actor, 'Резистор%');
+		expect(percent.id).not.toBe(resistor.id);
+		expect((await findOrCreateType(actor, 'a_b')).name).toBe('a_b');
+		expect((await findOrCreateType(actor, 'РЕЗИСТОР%')).id).toBe(percent.id);
+		expect((await listTypes(actor, '%')).map((t) => t.name)).toEqual(['Резистор%']);
+	});
+
 	describe('photo', () => {
 		it('stores a square WebP and a thumbnail, and replaces the old photo', async () => {
 			const type = await createType(actor, { name: 'Нож' });
@@ -230,6 +240,16 @@ describe('types', () => {
 			await removeTypePhoto(actor, type.id);
 			expect(await storage().get(second)).toBeNull();
 			expect(await storage().get(thumbKeyOf(second))).toBeNull();
+		});
+
+		it('rejects a picture over 50 megapixels before decoding it', async () => {
+			const type = await createType(actor, { name: 'Нож' });
+			await expect(setTypePhoto(actor, type.id, await png(8000, 8000))).rejects.toThrow(
+				'мегапикселей'
+			);
+			await expect(setTypePhoto(actor, type.id, Buffer.from('not a picture'))).rejects.toThrow(
+				'прочитать'
+			);
 		});
 
 		it('serves the thumbnail, or the photo itself when an old photo has none', async () => {

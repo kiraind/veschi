@@ -1,14 +1,14 @@
-import { actorOrError } from '$lib/server/api';
-import { search, searchExamples } from '$lib/server/services/search';
+import { pageLoad } from '$lib/server/api';
+import { searchExamples, searchWithLimit } from '$lib/server/services/search';
 import { searchPlaceholder } from '$lib/domain/search';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => {
-	const actor = actorOrError(event);
+export const load: PageServerLoad = pageLoad(async (event) => {
+	const { actor } = event;
 	const q = event.url.searchParams.get('q') ?? '';
-	const [groups, examples] = await Promise.all([
-		q.trim() ? search(actor, q) : [],
+	const [{ groups, truncated }, examples] = await Promise.all([
+		searchWithLimit(actor, q),
 		searchExamples(actor)
 	]);
-	return { q, groups, placeholder: searchPlaceholder(examples.names, examples.params) };
-};
+	return { q, groups, truncated, placeholder: searchPlaceholder(examples.names, examples.params) };
+});

@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { Button, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import InfoHint from '$lib/components/InfoHint.svelte';
 	import { PARAM_LEVEL_LABELS, type CategoryRef } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
@@ -30,7 +30,7 @@
 			const category = await api.post<CategoryRef>('/api/categories', { name: query });
 			await goto(`/categories/${category.id}`);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

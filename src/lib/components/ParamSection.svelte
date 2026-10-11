@@ -8,7 +8,7 @@
 		PlusOutline,
 		TrashBinOutline
 	} from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import {
 		draftFromView,
 		draftToInput,
@@ -74,7 +74,7 @@
 			.then((card) => {
 				if (draft?.defId === defId) def = card.def;
 			})
-			.catch((e) => (error = e instanceof ApiError ? e.message : String(e)));
+			.catch((e) => (error = errorText(e)));
 	});
 
 	function close() {
@@ -115,7 +115,7 @@
 			close();
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -158,7 +158,7 @@
 			await api.post(`/api/params/${param.id}/move`, { delta });
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}

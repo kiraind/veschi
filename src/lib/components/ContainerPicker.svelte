@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { Button, Card, Input } from 'flowbite-svelte';
@@ -48,8 +48,17 @@
 		}
 		const id = ++request;
 		const timer = setTimeout(async () => {
-			const groups = await api.get<SearchGroup[]>(`/api/search?q=${encodeURIComponent(q)}`);
+			let groups: SearchGroup[];
+			try {
+				groups = await api.get<SearchGroup[]>(`/api/search?q=${encodeURIComponent(q)}`);
+			} catch (e) {
+				if (id !== request) return;
+				results = [];
+				message = errorText(e, 'Не удалось выполнить поиск');
+				return;
+			}
 			if (id !== request) return;
+			message = '';
 			results = groups
 				.flatMap((g) => g.locations)
 				.filter(
@@ -104,7 +113,7 @@
 			scanning = false;
 			onpick({ id: card.item.id, name: card.item.displayName });
 		} catch (e) {
-			message = e instanceof ApiError ? e.message : String(e);
+			message = errorText(e);
 		}
 	}
 </script>
@@ -116,6 +125,10 @@
 			class="min-w-40 flex-1"
 			type="search"
 			bind:value={query}
+			onkeydown={(e: KeyboardEvent) => {
+				// The picker may sit inside a form («Новая вещь»): Enter searches, it does not submit.
+				if (e.key === 'Enter') e.preventDefault();
+			}}
 			placeholder={containersOnly
 				? 'Название контейнера или ID наклейки'
 				: 'Название вещи или ID наклейки'}

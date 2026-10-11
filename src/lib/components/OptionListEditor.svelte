@@ -33,9 +33,13 @@
 		inputs().at(-1)?.focus();
 	}
 
-	/** Enter goes to the next option (adding one after the last) instead of submitting. */
+	/**
+	 * Enter goes to the next option (adding one after the last) instead of
+	 * submitting; Enter in an empty last option submits the form as usual.
+	 */
 	function onkeydown(event: KeyboardEvent, index: number) {
 		if (event.key !== 'Enter') return;
+		if (index === options.length - 1 && !options[index]?.label.trim()) return;
 		event.preventDefault();
 		if (index === options.length - 1) add();
 		else inputs()[index + 1]?.focus();

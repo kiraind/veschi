@@ -99,7 +99,7 @@ describe('describeEvent', () => {
 				live: ['i1', 'bench']
 			})
 		);
-		expect(plain(text.title)).toBe('Вещь Отвёртка перемещена (2 из 5 шт.)');
+		expect(plain(text.title)).toBe('Вещь Отвёртка перемещена (2 из 5)');
 		expect(text.title[1]).toEqual({ text: 'Отвёртка', href: '/items/i1' });
 		expect(plain(text.details[0]!)).toBe('Коробка → Рабочий стол Гараж');
 		expect(text.details[0]![0]!.href).toBeUndefined();
@@ -154,7 +154,7 @@ describe('describeEvent', () => {
 		const unprinted = describeEvent(
 			event({ kind: 'stickers.unprinted', subjectKind: 'batch', data: { count: 140, ordered: 2 } })
 		);
-		expect(plain(unprinted.title)).toBe('Наклейки не распечатаны, ID освобождены: 140 шт.');
+		expect(plain(unprinted.title)).toBe('Наклейки не распечатаны, ID освобождены: 140');
 		expect(unprinted.details.map(plain)).toEqual(['Снова ждут печати: 2']);
 		const params = describeEvent(
 			event({

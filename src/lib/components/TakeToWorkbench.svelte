@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Radio } from 'flowbite-svelte';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { pickWorkbench, quantityError } from '$lib/domain/workbench';
 	import { currentPosition } from '$lib/position';
 	import Sheet from './Sheet.svelte';
@@ -19,8 +19,9 @@
 	}
 
 	/**
-	 * «На стол» in a sheet: picks a workbench (by geofence, else the last one) and
-	 * takes the item or part of it there.
+	 * «На стол» in a sheet: picks a workbench (the last one, then by geofence once
+	 * the position is known, unless a bench was picked by hand) and takes the
+	 * item or part of it there.
 	 */
 	let {
 		item,
@@ -36,6 +37,8 @@
 	let benches = $state<Bench[]>([]);
 	let selectedId = $state<string | null>(null);
 	let quantity = $state(1);
+	/** A bench was picked by hand: the position no longer changes the choice. */
+	let picked = false;
 
 	const selected = $derived(benches.find((b) => b.id === selectedId) ?? null);
 	const quantityProblem = $derived(quantityError(item.quantity, quantity));
@@ -48,18 +51,23 @@
 		loading = true;
 		error = '';
 		quantity = item.quantity;
+		picked = false;
+		let data: { workbenches: Bench[]; lastWorkbenchId: string | null };
 		try {
-			const data = await api.get<{ workbenches: Bench[]; lastWorkbenchId: string | null }>(
-				'/api/workbenches'
-			);
-			benches = data.workbenches;
-			const hasZones = benches.some((b) => b.geoRadiusM !== null);
-			const position = hasZones ? await currentPosition() : null;
-			selectedId = pickWorkbench(benches, position, data.lastWorkbenchId);
+			data = await api.get('/api/workbenches');
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
+			return;
 		} finally {
 			loading = false;
+		}
+		benches = data.workbenches;
+		selectedId = pickWorkbench(benches, null, data.lastWorkbenchId);
+		if (benches.some((b) => b.geoRadiusM !== null)) {
+			const position = await currentPosition();
+			if (position && !picked) {
+				selectedId = pickWorkbench(benches, position, data.lastWorkbenchId);
+			}
 		}
 	}
 
@@ -72,7 +80,7 @@
 			open = false;
 			await invalidateAll();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -82,7 +90,7 @@
 <Sheet bind:open title="На стол">
 	<div class="flex flex-col gap-3">
 		{#if loading}
-			<p class="text-sm text-gray-500 dark:text-gray-400">Выбираю стол…</p>
+			<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка…</p>
 		{:else if benches.length === 0}
 			<p>Рабочих столов пока нет.</p>
 			<div class="flex flex-wrap gap-2">
@@ -106,6 +114,7 @@
 							name="bench-{item.id}"
 							value={bench.id}
 							bind:group={selectedId}
+							onchange={() => (picked = true)}
 							classes={{
 								label:
 									'min-h-10 cursor-pointer rounded-lg border border-gray-200 px-3 text-base font-normal text-gray-900 dark:border-gray-700 dark:text-white'

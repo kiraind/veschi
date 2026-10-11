@@ -1,7 +1,7 @@
 import type { StickerStatus } from '@prisma/client';
 import { z } from 'zod';
 import { idSchema } from '$lib/domain/id';
-import { db, type Tx } from '$lib/server/db';
+import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
@@ -169,7 +169,7 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
  */
 export async function createItem(actor: Actor, input: unknown): Promise<{ id: string }> {
 	const data = createItemSchema.parse(input);
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const type = data.typeId
 			? await findVisibleType(actor, data.typeId, tx)
 			: await findOrCreateType(actor, data.newTypeName ?? '', tx, {
@@ -203,7 +203,8 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 			kind: 'item.created',
 			subject: itemRef({ ...item, type }),
 			data: { quantity: item.quantity, to: await placeRef(tx, item.parentId) },
-			refIds: [type.id]
+			// Its parameters too, so the history of a parameter shows items created with it.
+			refIds: [type.id, ...(data.params ?? []).map((p) => p.defId)]
 		});
 		if (data.params?.length) {
 			await replaceParams(actor, { itemId: item.id }, data.params, tx, { record: false });
@@ -219,7 +220,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
  */
 export async function updateItem(actor: Actor, id: string, input: unknown): Promise<void> {
 	const data = updateItemSchema.parse(input);
-	await db.$transaction(async (tx) => {
+	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id, ...visibleTo(actor) },
 			include: { type: true, sticker: true }
@@ -257,7 +258,7 @@ export async function moveItem(
 	parentId: string | null,
 	{ quantity }: { quantity?: number } = {}
 ): Promise<{ itemId: string }> {
-	return db.$transaction(async (tx) => {
+	return writeTransaction(async (tx) => {
 		const item = await findItem(actor, itemId, tx);
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол нельзя переложить');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');

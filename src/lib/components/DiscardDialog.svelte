@@ -1,22 +1,21 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
-	import { api } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
+	import { confirmAction } from '$lib/confirm.svelte';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 
+	/**
+	 * «Выкинуть» of an item on a workbench: use part of it, or throw all of it
+	 * away (asking what to do with a container's contents, or confirming).
+	 */
 	let {
 		item,
-		ondone,
-		open = $bindable(false),
-		button = true
+		open = $bindable(false)
 	}: {
 		item: { id: string; name: string; quantity: number; hasChildren: boolean };
-		/** Called after a change; without it the page data is reloaded. */
-		ondone?: () => void;
 		open?: boolean;
-		/** Its own «Использовать / выкинуть» button; without it the caller opens it. */
-		button?: boolean;
 	} = $props();
 
 	let busy = $state(false);
@@ -41,10 +40,9 @@
 		try {
 			await action();
 			open = false;
-			if (ondone) ondone();
-			else await invalidateAll();
+			await invalidateAll();
 		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -52,20 +50,25 @@
 
 	const use = () => run(() => api.post(`/api/items/${item.id}/consume`, { quantity: useCount }));
 
-	const discard = () =>
-		run(() =>
+	async function discard() {
+		if (!item.hasChildren) {
+			const ok = await confirmAction({
+				title: `Выкинуть «${item.name}»?`,
+				message: 'Вещь уйдёт в архив, оттуда её можно вернуть. Наклейка будет списана.',
+				confirmLabel: 'Выкинуть'
+			});
+			if (!ok) return;
+		}
+		await run(() =>
 			api.post(`/api/items/${item.id}/discard`, {
 				contents,
 				workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
 			})
 		);
+	}
 </script>
 
-{#if !open}
-	{#if button}
-		<Button color="alternative" onclick={() => (open = true)}>Использовать / выкинуть</Button>
-	{/if}
-{:else}
+{#if open}
 	<Card class="max-w-none gap-3 p-4">
 		<strong class="wrap-anywhere">{item.name}</strong>
 
@@ -104,7 +107,7 @@
 				onclick={discard}
 				disabled={busy || (contents === 'workbench' && !workbenchId)}
 			>
-				{item.quantity > 1 ? 'Выкинуть всё' : 'Использовано / выкинуть'}
+				{item.quantity > 1 ? 'Выкинуть всё' : 'Выкинуть'}
 			</Button>
 			<Button color="alternative" onclick={() => (open = false)} disabled={busy}>Отмена</Button>
 		</div>

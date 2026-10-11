@@ -50,9 +50,7 @@ describe('history', () => {
 		]);
 		const text = events.map((e) => describeEvent(e));
 		expect(text[2]!.details[0]!.map((s) => s.text).join('')).toBe('Ящик → Полка');
-		expect(text[4]!.title.map((s) => s.text).join('')).toBe(
-			'Вещь Винт взята на стол (4 из 10 шт.)'
-		);
+		expect(text[4]!.title.map((s) => s.text).join('')).toBe('Вещь Винт взята на стол (4 из 10)');
 		expect(text[4]!.details[0]!.map((s) => s.text).join('')).toBe('Ящик → Рабочий стол Гараж');
 		expect(events.every((e) => e.actor?.id === actor.userId)).toBe(true);
 		// The split-off part merged back and is gone: no link to it.
@@ -122,7 +120,7 @@ describe('history', () => {
 			describeEvent(events[1]!)
 				.title.map((s) => s.text)
 				.join('')
-		).toBe('Вещь Гайка выкинута: 2 шт.');
+		).toBe('Вещь Гайка выкинута: 2 штуки');
 	});
 
 	it('records changes of types, parameters and stickers', async () => {

@@ -84,8 +84,19 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
  * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
+	return (await searchWithLimit(actor, input)).groups;
+}
+
+/**
+ * Same as `search`, telling whether there were more matches than MAX_MATCHES
+ * (the rest is left out: exact type name matches first, then by type name).
+ */
+export async function searchWithLimit(
+	actor: Actor,
+	input: string
+): Promise<{ groups: SearchGroup[]; truncated: boolean }> {
 	const query = parseSearchQuery(input);
-	if (!query.text) return [];
+	if (!query.text) return { groups: [], truncated: false };
 	const pattern = likePattern(query.text);
 	const conditions = [
 		Prisma.sql`i.name ILIKE ${pattern}`,
@@ -125,8 +136,11 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 		WHERE ${visibleSql(actor)}
 			AND i.status = 'ACTIVE' AND NOT i."isWorkbench"
 			AND (${Prisma.join(conditions, ' OR ')})
-		LIMIT ${MAX_MATCHES}
+		ORDER BY lower(t.name) = lower(${query.text}) DESC, t.name, t.id, i.id
+		LIMIT ${MAX_MATCHES + 1}
 	`;
+	const truncated = rows.length > MAX_MATCHES;
+	if (truncated) rows.pop();
 
 	const paths = await getPaths(rows.map((r) => r.id));
 	const groups = new Map<string, SearchGroup>();
@@ -164,7 +178,7 @@ export async function search(actor: Actor, input: string): Promise<SearchGroup[]
 			`${formatPath(a.path)} ${a.name}`.localeCompare(`${formatPath(b.path)} ${b.name}`, 'ru')
 		);
 	}
-	return result;
+	return { groups: result, truncated };
 }
 
 /** How many recent names and parameters the placeholder picks its examples from. */

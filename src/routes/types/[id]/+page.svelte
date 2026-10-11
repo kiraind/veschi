@@ -1,13 +1,14 @@
 <script lang="ts">
+	import HistoryLink from '$lib/components/HistoryLink.svelte';
+	import { pieces } from '$lib/domain/plural';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Badge, Button, Checkbox, Helper } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import ParamSection from '$lib/components/ParamSection.svelte';
 	import Description from '$lib/components/Description.svelte';
 	import EditButton from '$lib/components/EditButton.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
-	import { plural } from '$lib/domain/plural';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import TypeCategories from '$lib/components/TypeCategories.svelte';
@@ -38,7 +39,7 @@
 			await save({ isContainer: checked });
 		} catch (e) {
 			event.currentTarget.checked = !checked;
-			containerError = e instanceof ApiError ? e.message : String(e);
+			containerError = errorText(e);
 		} finally {
 			containerBusy = false;
 		}
@@ -51,7 +52,7 @@
 			await api.delete(`/api/types/${type.id}`);
 			await goto('/types');
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		}
 	}
 </script>
@@ -64,8 +65,12 @@
 		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
 	>
 </p>
-<h1 class="text-2xl font-bold wrap-anywhere">
-	{type.name}<EditButton label="Изменить название" onclick={() => (renaming = true)} />
+<!-- Named by the text alone: the pen is not part of the heading's name. -->
+<h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
+	<span id="page-title">{type.name}</span><EditButton
+		label="Изменить название"
+		onclick={() => (renaming = true)}
+	/>
 </h1>
 {#if type.isContainer}<div class="mt-1"><Badge color="indigo">контейнер</Badge></div>{/if}
 
@@ -133,8 +138,7 @@
 	<Button color="red" outline onclick={remove}>Удалить тип</Button>
 {:else}
 	<h2 class="mt-6 mb-2 text-lg font-semibold">
-		Всего {total}
-		{plural(total, ['штука', 'штуки', 'штук'])}
+		Всего {pieces(total)}
 	</h2>
 	<ul class="flex flex-col gap-3">
 		{#each data.card.items as item (item.id)}
@@ -145,7 +149,7 @@
 					>{item.name}</a
 				>
 				{#if item.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
-						>{item.quantity} шт.</Badge
+						>{pieces(item.quantity)}</Badge
 					>{/if}
 				<p class="text-sm text-gray-500 dark:text-gray-400">
 					<PathTrail path={item.path} emptyText="верхний уровень" muted />
@@ -173,3 +177,5 @@
 	placeholder="Что это, для чего, чем отличается — поиск находит и по описанию"
 	onsave={(description) => save({ description })}
 />
+
+<div class="mt-6"><HistoryLink id={type.id} /></div>

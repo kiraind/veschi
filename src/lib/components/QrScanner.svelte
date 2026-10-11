@@ -132,7 +132,7 @@
 		<Alert color="yellow">
 			<p>{cameraError}</p>
 			<Button
-				class="mt-3"
+				class="h-10 mt-3"
 				size="sm"
 				color="alternative"
 				type="button"

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, ButtonGroup, Card, Listgroup, ListgroupItem } from 'flowbite-svelte';
 	import {
@@ -13,14 +12,14 @@
 	import EditButton from '$lib/components/EditButton.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import type { Theme } from '$lib/domain/theme';
-	import { currentTheme, setTheme } from '$lib/theme';
+	import { setTheme } from '$lib/theme';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	let renaming = $state(false);
-	let theme = $state<Theme>('system');
-	onMount(() => (theme = currentTheme()));
+	// svelte-ignore state_referenced_locally
+	let theme = $state<Theme>(data.theme);
 
 	const themes = [
 		{ value: 'light', label: 'Светлая', icon: SunOutline },

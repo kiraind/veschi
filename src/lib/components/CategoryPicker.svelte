@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Card, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
-	import { api, ApiError } from '$lib/api';
+	import { api, errorText } from '$lib/api';
 	import type { CategoryRef, CategorySummary } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
 
@@ -19,11 +19,15 @@
 
 	let categories = $state<CategorySummary[] | null>(null);
 	let query = $state('');
+	let loadError = $state('');
 	let busy = $state(false);
 	let error = $state('');
 
 	$effect(() => {
-		api.get<CategorySummary[]>('/api/categories').then((list) => (categories = list));
+		api
+			.get<CategorySummary[]>('/api/categories')
+			.then((list) => (categories = list))
+			.catch((e) => (loadError = errorText(e)));
 	});
 
 	const q = $derived(normalizeParamKey(query));
@@ -40,7 +44,7 @@
 		try {
 			await action();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : String(e);
+			error = errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -58,8 +62,11 @@
 		placeholder="Найти категорию или ввести новую"
 		aria-label="Категория"
 		autocomplete="off"
+		onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && e.preventDefault()}
 	/>
-	{#if categories === null}
+	{#if loadError}
+		<p class="text-sm text-red-600 dark:text-red-500" role="alert">{loadError}</p>
+	{:else if categories === null}
 		<p class="text-sm text-gray-500 dark:text-gray-400">Загрузка…</p>
 	{:else if matches.length > 0}
 		<ul

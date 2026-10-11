@@ -9,9 +9,15 @@ import { storage } from '$lib/server/storage';
 export async function initApp(): Promise<void> {
 	const c = config();
 	await withRetry('storage', () => storage().ensureBucket());
-	const admin = await ensureAdminUser(c.ADMIN_LOGIN, c.ADMIN_PASSWORD, c.ADMIN_NAME);
+	const admin = await ensureAdminUser(
+		c.ADMIN_LOGIN,
+		c.ADMIN_PASSWORD,
+		c.ADMIN_NAME,
+		c.ADMIN_RESET_PASSWORD
+	);
 	if (admin === 'created') console.info(`Created user "${c.ADMIN_LOGIN}" from ADMIN_LOGIN`);
-	if (admin === 'updated') console.info(`Reset password of "${c.ADMIN_LOGIN}" from ADMIN_PASSWORD`);
+	if (admin === 'updated')
+		console.info(`Reset password of "${c.ADMIN_LOGIN}" from ADMIN_PASSWORD (ADMIN_RESET_PASSWORD)`);
 }
 
 /** Retries a startup step with exponential backoff (MinIO may start later than the app). */
