@@ -12,13 +12,13 @@
 	const list = $derived([
 		...notices.incomplete.map((c) => ({
 			id: c.id,
-			title: `«${c.name}»: не заполнены параметры`,
-			text: `Обязательных значений нет ${incompleteOwners(c.itemCount, c.typeCount)}.`
+			title: `«${c.name}»: ${incompleteOwners(c.itemCount, c.typeCount)} не заполнены параметры`,
+			text: 'Заполните их на карточках типов и вещей из категории.'
 		})),
 		...notices.empty.map((c) => ({
 			id: c.id,
-			title: `«${c.name}» без параметров`,
-			text: 'Добавьте параметры, которые нужно заполнять у типов категории.'
+			title: `В категории «${c.name}» нет параметров`,
+			text: 'Добавьте параметры, обязательные для её типов и вещей.'
 		}))
 	]);
 </script>
