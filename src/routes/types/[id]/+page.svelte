@@ -12,6 +12,7 @@
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import TypeCategories from '$lib/components/TypeCategories.svelte';
+	import InCollections from '$lib/components/InCollections.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
 
@@ -124,6 +125,9 @@
 	categories={data.card.categories}
 	itemRequired={data.card.itemRequired}
 />
+
+<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
+<InCollections target={{ typeId: type.id }} collections={data.collections} />
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 <ParamSection

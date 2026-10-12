@@ -219,4 +219,51 @@ describe('describeEvent', () => {
 		expect(plain(added.title)).toBe('Тип Гречка добавлен в категорию Еда');
 		expect(added.title.at(-1)).toEqual({ text: 'Еда', href: '/categories/c1' });
 	});
+
+	it('describes collections', () => {
+		const added = describeEvent(
+			event({
+				kind: 'collection.entry',
+				subjectKind: 'collection',
+				subjectId: 'col1',
+				subjectName: 'Умные весы',
+				data: { target: { id: 't1', name: 'ESP32', kind: 'type' }, change: 'added', quantity: 3 },
+				live: ['col1', 't1']
+			})
+		);
+		expect(plain(added.title)).toBe('Коллекция Умные весы — добавлено: тип ESP32');
+		expect(added.title[1]).toEqual({ text: 'Умные весы', href: '/collections/col1' });
+		expect(added.title.at(-1)).toEqual({ text: 'ESP32', href: '/types/t1' });
+		expect(added.details.map(plain)).toEqual(['Количество: 3 штуки']);
+
+		const changed = describeEvent(
+			event({
+				kind: 'collection.entry',
+				subjectKind: 'collection',
+				subjectName: 'Умные весы',
+				data: {
+					target: { id: 'i1', name: 'Весы кухонные', kind: 'item' },
+					change: 'quantity',
+					quantity: 2,
+					before: 1
+				}
+			})
+		);
+		expect(plain(changed.title)).toBe('Коллекция Умные весы — изменено количество: Весы кухонные');
+		expect(changed.details.map(plain)).toEqual(['Количество: 1 → 2']);
+
+		const deleted = describeEvent(
+			event({
+				kind: 'collection.deleted',
+				subjectKind: 'collection',
+				subjectName: 'Поход',
+				data: { entries: 4 }
+			})
+		);
+		expect(plain(deleted.title)).toBe('Коллекция Поход удалена');
+		expect(deleted.details.map(plain)).toEqual(['Позиций в ней было: 4']);
+		expect(parseHistoryFilters(new URLSearchParams('subject=collection')).subject).toBe(
+			'collection'
+		);
+	});
 });

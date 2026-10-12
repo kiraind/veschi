@@ -74,7 +74,7 @@ async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void
 /**
  * Can a record be dissolved into an identical one? Not when it is a
  * container or a workbench, or something points at it: a sticker, contents,
- * a REF parameter.
+ * a REF parameter, a collection.
  */
 export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 	const item = await tx.item.findUnique({
@@ -82,7 +82,7 @@ export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 		include: {
 			type: { select: { isContainer: true } },
 			sticker: { select: { id: true } },
-			_count: { select: { children: true, refParams: true } }
+			_count: { select: { children: true, refParams: true, collectionEntries: true } }
 		}
 	});
 	return Boolean(
@@ -91,7 +91,8 @@ export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 		!item.type?.isContainer &&
 		!item.sticker &&
 		item._count.children === 0 &&
-		item._count.refParams === 0
+		item._count.refParams === 0 &&
+		item._count.collectionEntries === 0
 	);
 }
 
@@ -126,7 +127,8 @@ async function findTwin(
 			splitFromId: placement.splitFromId,
 			sticker: null,
 			children: { none: {} },
-			refParams: { none: {} }
+			refParams: { none: {} },
+			collectionEntries: { none: {} }
 		},
 		orderBy: { createdAt: 'asc' }
 	});

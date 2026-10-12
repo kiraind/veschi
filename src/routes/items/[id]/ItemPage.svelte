@@ -5,6 +5,7 @@
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import Description from '$lib/components/Description.svelte';
 	import EditButton from '$lib/components/EditButton.svelte';
+	import InCollections from '$lib/components/InCollections.svelte';
 	import ItemContents from '$lib/components/ItemContents.svelte';
 	import ParamSection from '$lib/components/ParamSection.svelte';
 	import PathTrail from '$lib/components/PathTrail.svelte';
@@ -303,6 +304,16 @@
 			exclude={card.itemParams.map((p) => p.defId)}
 			required={card.typeRequired}
 			missing={active ? card.missingTypeParams : []}
+		/>
+	{/if}
+
+	{#if active || data.collections.length}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
+		<InCollections
+			target={{ itemId: item.id }}
+			collections={data.collections}
+			editable={active}
+			showQuantity={false}
 		/>
 	{/if}
 {/if}

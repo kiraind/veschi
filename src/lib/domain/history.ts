@@ -8,7 +8,8 @@ import { pieces } from './plural';
 import { formatCode } from './sticker-code';
 import { pathNodeName } from './item';
 
-export type SubjectKind = 'item' | 'workbench' | 'type' | 'paramDef' | 'category' | 'batch';
+export type SubjectKind =
+	'item' | 'workbench' | 'type' | 'paramDef' | 'category' | 'collection' | 'batch';
 
 /** A place or another entity as it was at the moment of the event. */
 export interface EntityRef {
@@ -55,6 +56,17 @@ export interface CategoryParamChange {
 	level: 'TYPE' | 'ITEM';
 }
 
+/** A line of a collection added, removed or given another quantity. */
+export interface CollectionEntryChange {
+	/** The type or item of the line. */
+	target: EntityRef;
+	change: 'added' | 'removed' | 'quantity';
+	/** The quantity after the change (before it, for a removed line). */
+	quantity: number;
+	/** The quantity before the change (`quantity`, and `added` to an existing line). */
+	before?: number;
+}
+
 /** Data of each event kind (the `data` column). `backfilled` marks events carried over from the database. */
 export interface HistoryDataMap {
 	'item.created': { quantity?: number; to?: Place };
@@ -98,6 +110,11 @@ export interface HistoryDataMap {
 	'category.params': { changes: CategoryParamChange[] };
 	/** The type was put into (or taken out of) a category. */
 	'type.category': { category: EntityRef; removed: boolean };
+	'collection.created': Record<string, never>;
+	'collection.updated': { changes: Change[] };
+	/** `entries`: how many lines it had. */
+	'collection.deleted': { entries?: number };
+	'collection.entry': CollectionEntryChange;
 	'workbench.created': Record<string, never>;
 	'workbench.updated': { changes: Change[] };
 	'workbench.deleted': Record<string, never>;
@@ -150,6 +167,10 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'category.deleted': 'changes',
 	'category.params': 'changes',
 	'type.category': 'changes',
+	'collection.created': 'changes',
+	'collection.updated': 'changes',
+	'collection.deleted': 'changes',
+	'collection.entry': 'changes',
 	'workbench.created': 'changes',
 	'workbench.updated': 'changes',
 	'workbench.deleted': 'changes',
@@ -169,6 +190,7 @@ export const SUBJECT_LABELS: Record<SubjectKind, string> = {
 	type: 'Типы',
 	paramDef: 'Параметры',
 	category: 'Категории',
+	collection: 'Коллекции',
 	batch: 'Листы наклеек'
 };
 
@@ -180,7 +202,7 @@ export const SUBJECT_LABELS: Record<SubjectKind, string> = {
  * Filters of the history list. In the URL: `?entity=<id>` (events of one
  * item, type, parameter… including where it is only involved, e.g. things put
  * into a container), `?actor=<user id>`, `?group=moves|changes|archive|stickers`,
- * `?subject=item|workbench|type|paramDef|category|batch`.
+ * `?subject=item|workbench|type|paramDef|category|collection|batch`.
  */
 export interface HistoryFilters {
 	entity: string | null;
@@ -271,6 +293,8 @@ export function entityHref(kind: SubjectKind, id: string): string {
 			return `/params/${id}`;
 		case 'category':
 			return `/categories/${id}`;
+		case 'collection':
+			return `/collections/${id}`;
 		case 'batch':
 			return '/stickers';
 	}
@@ -322,6 +346,12 @@ function categoryParamLine(c: CategoryParamChange): string {
 			return `«${c.name}» теперь обязателен ${LEVEL_TEXT[c.level]}`;
 	}
 }
+
+const COLLECTION_CHANGE: Record<CollectionEntryChange['change'], string> = {
+	added: 'добавлено',
+	removed: 'убрано',
+	quantity: 'изменено количество'
+};
 
 const PARAM_CHANGE: Record<ParamChange['change'], string> = {
 	added: 'добавлен',
@@ -508,6 +538,41 @@ export function describeEvent(e: HistoryEventView): EventText {
 					? [t('Тип '), subject, t(' убран из категории '), link(d.category)]
 					: [t('Тип '), subject, t(' добавлен в категорию '), link(d.category)],
 				details: []
+			};
+		}
+		case 'collection.created':
+			return { title: [t('Коллекция '), subject, t(' создана')], details: [] };
+		case 'collection.updated':
+			return {
+				title: [t('Коллекция '), subject, t(' изменена')],
+				details: changes((e.data as HistoryData<'collection.updated'>).changes)
+			};
+		case 'collection.deleted': {
+			const d = e.data as HistoryData<'collection.deleted'>;
+			return {
+				title: [t('Коллекция '), subject, t(' удалена')],
+				details: d.entries ? [[t(`Позиций в ней было: ${d.entries}`)]] : []
+			};
+		}
+		case 'collection.entry': {
+			const d = e.data as HistoryData<'collection.entry'>;
+			const what = d.target.kind === 'type' ? 'тип ' : '';
+			return {
+				title: [
+					t('Коллекция '),
+					subject,
+					t(` — ${COLLECTION_CHANGE[d.change]}: ${what}`),
+					link(d.target)
+				],
+				details: [
+					[
+						t(
+							d.before !== undefined
+								? `Количество: ${d.before} → ${d.quantity}`
+								: `Количество: ${pieces(d.quantity)}`
+						)
+					]
+				]
 			};
 		}
 		case 'workbench.created':
