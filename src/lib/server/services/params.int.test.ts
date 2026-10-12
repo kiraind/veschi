@@ -67,12 +67,12 @@ describe('params', () => {
 			{ key: 'даташит', valueType: 'URL', url: 'https://example.com/ne555.pdf' },
 			{ key: 'инструкция', ...file },
 			{ key: 'гарантия до', valueType: 'DATE', date: '2027-05-01' },
-			{ key: 'зарядка', valueType: 'REF', refItemId: charger.id, refTypeId: null },
-			{ key: 'тип зарядки', valueType: 'REF', refItemId: null, refTypeId: typeId },
+			{ key: 'зарядка', valueType: 'ITEM', refIds: [charger.id] },
+			{ key: 'тип зарядки', valueType: 'TYPE', refIds: [typeId], holder: 'ITEM' },
 			{ key: 'работает', valueType: 'BOOLEAN', value: false }
 		];
 		const saved = await setKeyedParams(actor, { itemId }, inputs);
-		expect(saved).toMatchObject(inputs);
+		expect(saved).toMatchObject(inputs.map(({ holder: _holder, ...p }) => p));
 		expect(saved[4]!.defId).toBe(interfacesDef.id);
 		expect(saved.map(formatParamValue)).toEqual([
 			'DIP-8',
@@ -141,8 +141,8 @@ describe('params', () => {
 		const other = await createTestActor('other');
 		const foreign = await createItem(other, { newTypeName: 'Чужое' });
 		await expect(
-			setKeyedParams(actor, { itemId }, [{ key: 'x2', valueType: 'REF', refItemId: foreign.id }])
-		).rejects.toThrow('не найдены');
+			setKeyedParams(actor, { itemId }, [{ key: 'x2', valueType: 'ITEM', refIds: [foreign.id] }])
+		).rejects.toThrow('вещь не найдена');
 
 		const file = await uploadParamFile(other, {
 			name: 'a.txt',

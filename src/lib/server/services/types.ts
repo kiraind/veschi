@@ -224,20 +224,26 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 }
 
 /**
- * Deletes a type nothing refers to: no items (archived ones count), no REF
- * parameters and no collection lines.
+ * Deletes a type nothing refers to: no items (archived ones count), no links
+ * from parameters (either way) and no collection lines.
  */
 export async function deleteType(actor: Actor, id: string): Promise<void> {
 	const { type, fileKeys } = await writeTransaction(async (tx) => {
 		const type = await findType(actor, id, tx);
 		const [items, refs] = await Promise.all([
 			tx.item.count({ where: { typeId: id } }),
-			tx.param.count({ where: { refTypeId: id } })
+			tx.paramRef.count({
+				where: { typeId: id, param: { OR: [{ typeId: null }, { typeId: { not: id } }] } }
+			})
 		]);
 		if (items > 0) {
 			throw new ConflictError('Нельзя удалить тип: у него есть вещи (в том числе в архиве)');
 		}
-		if (refs > 0) throw new ConflictError('Нельзя удалить тип: на него ссылаются параметры');
+		if (refs > 0) {
+			throw new ConflictError(
+				'Нельзя удалить тип: он связан с вещами или типами через параметры — сначала уберите связи'
+			);
+		}
 		const held = await collectionNamesHolding(tx, { typeId: id });
 		if (held) throw new ConflictError(`Нельзя удалить тип: он есть ${held}`);
 		const fileKeys = (

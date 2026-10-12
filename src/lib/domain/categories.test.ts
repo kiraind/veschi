@@ -19,7 +19,9 @@ function def(id: string, name: string): ParamDefView {
 		multiple: false,
 		options: [],
 		typeCount: 0,
-		itemCount: 0
+		itemCount: 0,
+		holder: null,
+		inverse: null
 	};
 }
 

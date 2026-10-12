@@ -65,7 +65,8 @@
 
 	async function addParam(def: ParamDefView) {
 		addingParam = false;
-		await saveParams([...current(), { defId: def.id, level: 'TYPE' }]);
+		// A link can be required only where it lives.
+		await saveParams([...current(), { defId: def.id, level: def.holder ?? 'TYPE' }]);
 	}
 
 	function removeParam(defId: string) {
@@ -159,7 +160,7 @@
 							type="button"
 							class={levelButton(p.level === level)}
 							aria-pressed={p.level === level}
-							disabled={busy}
+							disabled={busy || (p.def.holder !== null && p.def.holder !== level)}
 							onclick={() => p.level !== level && setLevel(p.def.id, level)}
 							>{PARAM_LEVEL_LABELS[level].replace(/^у/, 'У')}</button
 						>

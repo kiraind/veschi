@@ -292,6 +292,7 @@
 			<ParamDefPicker
 				onpick={pickDef}
 				oncancel={close}
+				holder={target.kind === 'type' ? 'TYPE' : 'ITEM'}
 				exclude={[...params.map((p) => p.defId), ...missing.map((r) => r.def.id), ...exclude]}
 			/>
 		{/if}

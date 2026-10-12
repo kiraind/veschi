@@ -39,7 +39,7 @@ function visibleSql(actor: Actor): Prisma.Sql {
 /**
  * A parameter's value as searchable text: strings and URLs, numbers (with
  * both «.» and «,» decimals) and units, file names, ISO dates, «да»/«нет»,
- * enum option labels and REF target names.
+ * enum option labels and names of linked items and types.
  */
 const PARAM_VALUE_TEXT = Prisma.sql`concat_ws(' ',
 	p."textValue",
@@ -53,9 +53,12 @@ const PARAM_VALUE_TEXT = Prisma.sql`concat_ws(' ',
 	CASE WHEN p."boolValue" THEN 'да' WHEN NOT p."boolValue" THEN 'нет' END,
 	(SELECT string_agg(o.label, ' ') FROM "ParamEnumValue" ev
 		JOIN "EnumOption" o ON o.id = ev."optionId" WHERE ev."paramId" = p.id),
-	(SELECT COALESCE(NULLIF(TRIM(ri.name), ''), rit.name) FROM "Item" ri
-		LEFT JOIN "ItemType" rit ON rit.id = ri."typeId" WHERE ri.id = p."refItemId"),
-	(SELECT rt.name FROM "ItemType" rt WHERE rt.id = p."refTypeId")
+	(SELECT string_agg(COALESCE(NULLIF(TRIM(ri.name), ''), rit.name, rt.name), ' ')
+		FROM "ParamRef" r
+		LEFT JOIN "Item" ri ON ri.id = r."itemId"
+		LEFT JOIN "ItemType" rit ON rit.id = ri."typeId"
+		LEFT JOIN "ItemType" rt ON rt.id = r."typeId"
+		WHERE r."paramId" = p.id)
 )`;
 
 /**

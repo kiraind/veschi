@@ -2,6 +2,7 @@ import type { Item } from '@prisma/client';
 import type { Tx } from '$lib/server/db';
 import { ValidationError } from '$lib/server/errors';
 import { quantityError } from '$lib/domain/workbench';
+import { mirrorLinksOf } from './params';
 
 /** Where a moved part ends up and whether it counts as taken to a workbench. */
 export interface Placement {
@@ -33,7 +34,10 @@ export function partCount(item: Pick<Item, 'quantity'>, quantity: number | undef
 async function paramSignatures(tx: Tx, ids: string[]): Promise<Map<string, string>> {
 	const rows = await tx.param.findMany({
 		where: { itemId: { in: ids } },
-		include: { enumValues: { select: { optionId: true } } },
+		include: {
+			enumValues: { select: { optionId: true } },
+			refs: { select: { itemId: true, typeId: true } }
+		},
 		orderBy: { defId: 'asc' }
 	});
 	const result = new Map<string, string[]>(ids.map((id) => [id, []]));
@@ -49,32 +53,46 @@ async function paramSignatures(tx: Tx, ids: string[]): Promise<Map<string, strin
 					r.dateValue?.toISOString() ?? null,
 					r.boolValue,
 					r.fileKey,
-					r.refItemId,
-					r.refTypeId,
-					r.enumValues.map((v) => v.optionId).sort()
+					r.enumValues.map((v) => v.optionId).sort(),
+					r.refs.map((ref) => ref.itemId ?? ref.typeId).sort()
 				])
 			);
 	}
 	return new Map([...result].map(([id, parts]) => [id, parts.join(';')]));
 }
 
-/** Gives `toId` copies of the own parameter values of `fromId`. */
+/**
+ * Gives `toId` copies of the own parameter values of `fromId`; what its links
+ * point at gets `toId` in the inverse values too.
+ */
 async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void> {
 	const params = await tx.param.findMany({
 		where: { itemId: fromId },
-		include: { enumValues: { select: { optionId: true } } }
+		include: {
+			enumValues: { select: { optionId: true } },
+			refs: { select: { itemId: true, typeId: true } }
+		}
 	});
-	for (const { id: _id, itemId: _item, createdAt: _c, updatedAt: _u, enumValues, ...p } of params) {
+	for (const {
+		id: _id,
+		itemId: _item,
+		createdAt: _c,
+		updatedAt: _u,
+		enumValues,
+		refs,
+		...p
+	} of params) {
 		await tx.param.create({
-			data: { ...p, itemId: toId, enumValues: { create: enumValues } }
+			data: { ...p, itemId: toId, enumValues: { create: enumValues }, refs: { create: refs } }
 		});
 	}
+	await mirrorLinksOf({ itemId: toId }, tx);
 }
 
 /**
  * Can a record be dissolved into an identical one? Not when it is a
  * container or a workbench, or something points at it: a sticker, contents,
- * a REF parameter, a collection.
+ * a link from a parameter, a collection.
  */
 export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 	const item = await tx.item.findUnique({
@@ -82,7 +100,7 @@ export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 		include: {
 			type: { select: { isContainer: true } },
 			sticker: { select: { id: true } },
-			_count: { select: { children: true, refParams: true, collectionEntries: true } }
+			_count: { select: { children: true, paramRefs: true, collectionEntries: true } }
 		}
 	});
 	return Boolean(
@@ -91,7 +109,7 @@ export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 		!item.type?.isContainer &&
 		!item.sticker &&
 		item._count.children === 0 &&
-		item._count.refParams === 0 &&
+		item._count.paramRefs === 0 &&
 		item._count.collectionEntries === 0
 	);
 }
@@ -127,7 +145,7 @@ async function findTwin(
 			splitFromId: placement.splitFromId,
 			sticker: null,
 			children: { none: {} },
-			refParams: { none: {} },
+			paramRefs: { none: {} },
 			collectionEntries: { none: {} }
 		},
 		orderBy: { createdAt: 'asc' }

@@ -23,19 +23,24 @@ describe('drafts', () => {
 				id: '3',
 				defId: DEF,
 				key: 'зарядка',
-				valueType: 'REF',
-				refItemId: 'ctest0000000000000000003',
-				refTypeId: null,
-				ref: {
-					kind: 'item',
-					id: 'ctest0000000000000000003',
-					name: 'БП',
-					archived: false
-				}
+				valueType: 'ITEM',
+				refIds: ['ctest0000000000000000003', 'ctest0000000000000000004'],
+				refs: [
+					{ id: 'ctest0000000000000000003', name: 'БП', archived: false },
+					{ id: 'ctest0000000000000000004', name: 'Кабель', archived: true }
+				]
+			},
+			{
+				id: '4',
+				defId: DEF,
+				key: 'подходит к',
+				valueType: 'TYPE',
+				refIds: ['ctest0000000000000000005'],
+				refs: [{ id: 'ctest0000000000000000005', name: 'Ноутбук', archived: false }]
 			}
 		];
 		for (const view of views) {
-			const { id: _id, key: _key, ref: _ref, unit: _unit, ...input } = view;
+			const { id: _id, key: _key, refs: _refs, unit: _unit, ...input } = view;
 			expect(paramInputSchema.parse(draftToInput(draftFromView(view)))).toEqual(input);
 		}
 	});

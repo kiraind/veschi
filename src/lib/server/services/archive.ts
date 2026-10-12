@@ -190,8 +190,8 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
  * archived inside it. Active items inside (restored on their own earlier)
  * move to the top level. Stickers stay WRITTEN_OFF with no item: codes are
  * never reused. Files of its own parameters are deleted from the storage.
- * Refused while something still counts on it: a parameter «Вещь» of another
- * item pointing at it, a thing on a workbench waiting to go back into it, or
+ * Refused while something still counts on it: a link with another item or a
+ * type (a parameter «Вещь» or «Тип», either way), a thing on a workbench waiting to go back into it, or
  * a collection line.
  */
 export async function purge(actor: Actor, itemId: string): Promise<void> {
@@ -207,11 +207,18 @@ export async function purge(actor: Actor, itemId: string): Promise<void> {
 		const ids = [item.id, ...inside.map((i) => i.id)];
 		const outside = { notIn: ids };
 		const [refs, waiting] = await Promise.all([
-			tx.param.count({ where: { refItemId: { in: ids }, NOT: { itemId: { in: ids } } } }),
+			tx.paramRef.count({
+				where: {
+					itemId: { in: ids },
+					param: { OR: [{ itemId: null }, { itemId: { notIn: ids } }] }
+				}
+			}),
 			tx.item.count({ where: { homeId: { in: ids }, id: outside, status: 'ACTIVE' } })
 		]);
 		if (refs > 0) {
-			throw new ConflictError('Нельзя удалить навсегда: на вещь ссылаются параметры других вещей');
+			throw new ConflictError(
+				'Нельзя удалить навсегда: вещь связана с другими вещами или типами через параметры — сначала уберите связи'
+			);
 		}
 		const held = await collectionNamesHolding(tx, { itemId: { in: ids } });
 		if (held) {

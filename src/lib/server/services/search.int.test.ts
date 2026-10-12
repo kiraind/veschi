@@ -105,7 +105,7 @@ describe('search', () => {
 		await setKeyedParams(actor, { itemId: solderingBox }, [
 			{ key: 'питание', valueType: 'RANGE', min: 4.5, max: 16, unit: 'В' },
 			{ key: 'состояние', valueType: 'ENUM', optionIds: [optionId(condition, 'б/у')] },
-			{ key: 'рядом', valueType: 'REF', refItemId: chipBox }
+			{ key: 'рядом', valueType: 'ITEM', refIds: [chipBox] }
 		]);
 		for (const q of ['4,5', '4.5', 'б/у', 'состояние: б/у', 'микросхемами']) {
 			const found = (await search(actor, q)).flatMap((g) => g.locations.map((l) => l.itemId));

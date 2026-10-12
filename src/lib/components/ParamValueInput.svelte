@@ -6,7 +6,7 @@
 	import { shortenFileName } from '$lib/domain/shorten';
 	import type { FileValue } from '$lib/server/services/files';
 	import DateInput from './DateInput.svelte';
-	import RefPicker from './RefPicker.svelte';
+	import LinkPicker from './LinkPicker.svelte';
 
 	/**
 	 * Value fields of one parameter, depending on its value type. The unit is
@@ -128,8 +128,8 @@
 	{/if}
 {:else if draft.valueType === 'DATE'}
 	<DateInput bind:value={draft.date} aria-label={draft.key} />
-{:else if draft.valueType === 'REF'}
-	<RefPicker bind:value={draft.ref} />
+{:else if draft.valueType === 'ITEM' || draft.valueType === 'TYPE'}
+	<LinkPicker bind:value={draft.refs} kind={draft.valueType} />
 {:else if draft.valueType === 'BOOLEAN'}
 	<div class="flex flex-wrap gap-x-4">
 		<Radio classes={{ label: 'min-h-10' }} bind:group={draft.bool} value={true}>да</Radio>
