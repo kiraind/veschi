@@ -34,8 +34,8 @@ export const PARAM_VALUE_TYPE_LABELS: Record<ParamValueType, string> = {
 	FILE: 'Файл',
 	DATE: 'Дата',
 	BOOLEAN: 'Да / нет',
-	ITEM: 'Вещь',
-	TYPE: 'Тип'
+	ITEM: 'Связь с вещами',
+	TYPE: 'Связь с типами'
 };
 
 /** Value types of links: the value is items (ITEM) or types (TYPE). */
@@ -51,6 +51,11 @@ export const LINK_HOLDER_LABELS: Record<LinkKind, string> = {
 	ITEM: 'у вещей',
 	TYPE: 'у типов'
 };
+
+/** «Название у связанной вещи»: the field with the inverse's name. */
+export function inverseNameLabel(valueType: LinkKind): string {
+	return valueType === 'TYPE' ? 'Название у связанного типа' : 'Название у связанной вещи';
+}
 
 /** Most targets one link value may hold. */
 export const MAX_LINK_TARGETS = 100;
@@ -126,7 +131,7 @@ export const paramDefInputSchema = z
 		inverseName: z
 			.string()
 			.trim()
-			.max(100, 'Обратное название длиннее 100 символов')
+			.max(100, 'Название у связанной вещи длиннее 100 символов')
 			.nullish()
 			.transform((v) => v || null)
 	})
@@ -138,7 +143,7 @@ export const paramDefInputSchema = z
 			if (!v.inverseName) {
 				ctx.addIssue({
 					code: 'custom',
-					message: 'Укажите обратное название',
+					message: `Укажите ${inverseNameLabel(v.valueType).toLocaleLowerCase('ru')}`,
 					path: ['inverseName']
 				});
 			} else if (
@@ -148,7 +153,7 @@ export const paramDefInputSchema = z
 				ctx.addIssue({
 					code: 'custom',
 					message:
-						'Обратное название совпадает с названием — так можно только у связи вещи с вещью или типа с типом',
+						'Названия с двух сторон совпадают — так можно только у связи вещи с вещью или типа с типом',
 					path: ['inverseName']
 				});
 			}

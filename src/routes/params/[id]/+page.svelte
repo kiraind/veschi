@@ -108,7 +108,7 @@
 			{#if symmetric}
 				Симметричная связь: одно название в обе стороны.
 			{:else}
-				Обратная связь —
+				У связанной {def.valueType === 'TYPE' ? 'типа' : 'вещи'} —
 				<a
 					class="text-primary-700 hover:underline dark:text-primary-400"
 					href="/params/{def.inverse.id}">«{def.inverse.name}»</a

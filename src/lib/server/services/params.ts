@@ -488,7 +488,7 @@ async function assertValueValid(
 		}
 	}
 	if (p.valueType === 'ITEM' || p.valueType === 'TYPE') {
-		if (!def.inverse) throw new ValidationError(`«${def.name}»: у связи нет обратной`);
+		if (!def.inverse) throw new ValidationError(`«${def.name}»: у связи нет второй стороны`);
 		if (def.inverse.valueType !== kindOf(target)) {
 			throw new ValidationError(
 				`«${def.name}» задаётся только ${LINK_HOLDER_LABELS[def.inverse.valueType as LinkKind]}`
@@ -1001,8 +1001,8 @@ function assertLinkKept(
 	if (isSymmetric(next) !== symmetric) {
 		throw new ConflictError(
 			symmetric
-				? 'У симметричной связи обратное название совпадает с названием'
-				: `${fixed}: обратное название не может совпадать с названием`
+				? 'У симметричной связи название у связанной вещи совпадает с названием'
+				: `${fixed}: название у связанной вещи не может совпадать с названием`
 		);
 	}
 }

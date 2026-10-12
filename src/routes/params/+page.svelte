@@ -84,7 +84,7 @@
 						<span class="w-full text-sm break-words text-gray-500 dark:text-gray-400">
 							{LINK_HOLDER_LABELS[d.holder].replace(/^у/, 'У')} · {d.inverse.id === d.id
 								? 'в обе стороны'
-								: `обратно «${d.inverse.name}»`}
+								: `у связанной: «${d.inverse.name}»`}
 						</span>
 					{/if}
 				</a>
