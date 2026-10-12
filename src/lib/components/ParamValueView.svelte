@@ -33,7 +33,7 @@
 		{#each param.refs ?? [] as ref (ref.id)}
 			<span
 				><a class="text-primary-700 hover:underline dark:text-primary-400" href="/{path}/{ref.id}"
-					>→ {ref.name}</a
+					>{ref.name}</a
 				>{#if ref.archived}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
 						>в архиве</Badge
 					>{/if}</span

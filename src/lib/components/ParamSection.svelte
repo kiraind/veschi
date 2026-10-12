@@ -24,12 +24,14 @@
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { inCategories, type RequiredParam } from '$lib/domain/categories';
 	import ParamDefPicker from './ParamDefPicker.svelte';
+	import Sheet from './Sheet.svelte';
 	import ParamValueInput from './ParamValueInput.svelte';
 	import ParamValueView from './ParamValueView.svelte';
 
 	/**
-	 * The parameter list of a type or an item, edited in place: a pen on each
-	 * row edits its value, «Параметр» adds one. An item card shows two of
+	 * The parameter list of a type or an item: a pen on each row opens its
+	 * value in a bottom sheet, «Параметр» opens a sheet to pick (or create) a
+	 * parameter and fill its value. An item card shows two of
 	 * these: the item's own values and its type's (changing those changes the
 	 * type, so every item of it). Values the type's categories require cannot
 	 * be removed; required values not filled yet are listed as «не заполнено».
@@ -66,6 +68,15 @@
 	let busy = $state(false);
 	let error = $state('');
 
+	/** The sheet is open while a value is edited or added. */
+	let sheetOpen = $state(false);
+	$effect(() => {
+		// Closed by its cross or a tap outside: forget the draft.
+		if (!sheetOpen && (adding || editingId)) close();
+	});
+	const editing = $derived(params.findIndex((p) => p.id === editingId));
+	const sheetTitle = $derived(draft ? draft.key : adding ? 'Новый параметр' : '');
+
 	$effect(() => {
 		const defId = draft?.valueType === 'ENUM' ? draft.defId : null;
 		if (!defId || def?.id === defId) return;
@@ -82,24 +93,32 @@
 		adding = false;
 		draft = null;
 		error = '';
+		sheetOpen = false;
 	}
 
 	function edit(param: ParamView) {
 		close();
 		editingId = param.id;
 		draft = draftFromView(param);
+		sheetOpen = true;
 	}
 
 	function startAdding() {
 		close();
 		adding = true;
+		sheetOpen = true;
 	}
 
-	/** Opens the editor of a required value not filled yet, in place of its row. */
+	/** Opens the editor of a required value not filled yet. */
 	function fill(r: RequiredParam) {
-		close();
-		adding = true;
+		startAdding();
 		pickDef(r.def);
+	}
+
+	/** Back from a picked parameter's value to the list of parameters. */
+	function backToPicker() {
+		draft = null;
+		error = '';
 	}
 
 	function pickDef(picked: ParamDefView) {
@@ -169,134 +188,52 @@
 	}
 </script>
 
-{#snippet editor(onsave: () => void, ondelete: (() => void) | null, index: number | null)}
-	{#if draft}
-		<div class="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-			<div class="flex flex-wrap items-baseline justify-between gap-2">
-				<span class="font-medium break-words">{draft.key}</span>
-				<span class="text-sm text-gray-500 dark:text-gray-400">
-					{PARAM_VALUE_TYPE_LABELS[draft.valueType]}
-				</span>
-			</div>
-			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} />
-			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
-			<div class="flex flex-wrap items-center gap-2">
-				<Button type="button" onclick={onsave} disabled={busy}>Сохранить</Button>
-				<Button type="button" color="alternative" onclick={close} disabled={busy}>Отмена</Button>
-				{#if index !== null && params[index]}
-					{@const param = params[index]}
-					<Button
-						type="button"
-						color="alternative"
-						class="h-10 w-10 p-0"
-						onclick={() => move(param, -1)}
-						disabled={busy || !canMove(index, -1)}
-						title="Выше"
-						aria-label="Выше"><ArrowUpOutline class="h-4 w-4" /></Button
-					>
-					<Button
-						type="button"
-						color="alternative"
-						class="h-10 w-10 p-0"
-						onclick={() => move(param, 1)}
-						disabled={busy || !canMove(index, 1)}
-						title="Ниже"
-						aria-label="Ниже"><ArrowDownOutline class="h-4 w-4" /></Button
-					>
-				{/if}
-				{#if ondelete && requiredBy.has(draft.defId)}
-					<span class="ms-auto text-sm text-gray-500 dark:text-gray-400">
-						Обязателен {inCategories(requiredBy.get(draft.defId) ?? [])}
-					</span>
-				{:else if ondelete}
-					<Button
-						type="button"
-						color="red"
-						outline
-						class="ms-auto h-10 w-10 p-0"
-						onclick={ondelete}
-						disabled={busy}
-						title="Удалить"
-						aria-label="Удалить"><TrashBinOutline class="h-5 w-5" /></Button
-					>
-				{/if}
-			</div>
-		</div>
-	{/if}
-{/snippet}
-
 <div class="flex flex-col gap-2">
 	{#each missing as r (r.def.id)}
-		{#if adding && draft?.defId === r.def.id}
-			{@render editor(saveNew, null, null)}
-		{:else}
-			<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
-				<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{r.def.name}</div>
-				<div class="min-w-0 text-amber-700 dark:text-amber-400">
-					не заполнено
-					<span class="block text-xs text-gray-500 dark:text-gray-400">
-						обязателен {inCategories(r.categories)}
-					</span>
-				</div>
-				{#if editable}
-					<div class="flex">
-						<button
-							type="button"
-							class="flex h-10 w-10 items-center justify-center rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-gray-700"
-							onclick={() => fill(r)}
-							title="Заполнить"
-							aria-label="Заполнить «{r.def.name}»"><PenOutline class="h-5 w-5" /></button
-						>
-					</div>
-				{/if}
+		<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
+			<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{r.def.name}</div>
+			<div class="min-w-0 text-amber-700 dark:text-amber-400">
+				не заполнено
+				<span class="block text-xs text-gray-500 dark:text-gray-400">
+					обязателен {inCategories(r.categories)}
+				</span>
 			</div>
-		{/if}
+			{#if editable}
+				<div class="flex">
+					<button
+						type="button"
+						class="flex h-10 w-10 items-center justify-center rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-gray-700"
+						onclick={() => fill(r)}
+						title="Заполнить"
+						aria-label="Заполнить «{r.def.name}»"><PenOutline class="h-5 w-5" /></button
+					>
+				</div>
+			{/if}
+		</div>
 	{/each}
-	{#if params.length === 0 && missing.length === 0 && !adding && emptyText}
+	{#if params.length === 0 && missing.length === 0 && emptyText}
 		<p class="text-sm text-gray-500 dark:text-gray-400">{emptyText}</p>
 	{/if}
-	{#each params as param, i (param.id)}
-		{#if editingId === param.id}
-			{@render editor(
-				() => save(param),
-				() => remove(param),
-				i
-			)}
-		{:else}
-			<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
-				<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-					{param.key}
-				</div>
-				<div class="min-w-0 [overflow-wrap:anywhere]"><ParamValueView {param} /></div>
-				{#if editable}
-					<div class="flex">
-						<button
-							type="button"
-							class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-							onclick={() => edit(param)}
-							title="Изменить"
-							aria-label="Изменить «{param.key}»"><PenOutline class="h-5 w-5" /></button
-						>
-					</div>
-				{/if}
+	{#each params as param (param.id)}
+		<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
+			<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
+				{param.key}
 			</div>
-		{/if}
+			<div class="min-w-0 [overflow-wrap:anywhere]"><ParamValueView {param} /></div>
+			{#if editable}
+				<div class="flex">
+					<button
+						type="button"
+						class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+						onclick={() => edit(param)}
+						title="Изменить"
+						aria-label="Изменить «{param.key}»"><PenOutline class="h-5 w-5" /></button
+					>
+				</div>
+			{/if}
+		</div>
 	{/each}
-
-	{#if adding}
-		{#if missing.some((r) => r.def.id === draft?.defId)}
-			<!-- Filled in place of its «не заполнено» row above. -->
-		{:else if draft}
-			{@render editor(saveNew, null, null)}
-		{:else}
-			<ParamDefPicker
-				onpick={pickDef}
-				oncancel={close}
-				holder={target.kind === 'type' ? 'TYPE' : 'ITEM'}
-				exclude={[...params.map((p) => p.defId), ...missing.map((r) => r.def.id), ...exclude]}
-			/>
-		{/if}
-	{:else if editable}
+	{#if editable}
 		<div>
 			<Button color="alternative" size="sm" class="h-10" onclick={startAdding}>
 				<PlusOutline class="me-1 h-4 w-4" />Параметр
@@ -304,3 +241,72 @@
 		</div>
 	{/if}
 </div>
+
+<Sheet bind:open={sheetOpen} title={sheetTitle}>
+	{#if draft}
+		{@const param = editing >= 0 ? params[editing] : undefined}
+		<div class="flex flex-col gap-3">
+			<span class="-mt-2 text-sm text-gray-500 dark:text-gray-400">
+				{PARAM_VALUE_TYPE_LABELS[draft.valueType]}
+			</span>
+			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} />
+			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
+			<div class="flex flex-wrap items-center gap-2">
+				<Button type="button" onclick={() => (param ? save(param) : saveNew())} disabled={busy}
+					>Сохранить</Button
+				>
+				{#if param}
+					<Button type="button" color="alternative" onclick={close} disabled={busy}>Отмена</Button>
+				{:else if !missing.some((r) => r.def.id === draft?.defId)}
+					<Button type="button" color="alternative" onclick={backToPicker} disabled={busy}
+						>Назад</Button
+					>
+				{/if}
+			</div>
+			{#if param}
+				<div
+					class="flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700"
+				>
+					<Button
+						type="button"
+						color="alternative"
+						class="h-10"
+						onclick={() => move(param, -1)}
+						disabled={busy || !canMove(editing, -1)}
+						><ArrowUpOutline class="me-1 h-4 w-4" />Выше</Button
+					>
+					<Button
+						type="button"
+						color="alternative"
+						class="h-10"
+						onclick={() => move(param, 1)}
+						disabled={busy || !canMove(editing, 1)}
+						><ArrowDownOutline class="me-1 h-4 w-4" />Ниже</Button
+					>
+					{#if requiredBy.has(draft.defId)}
+						<span class="ms-auto text-sm text-gray-500 dark:text-gray-400">
+							Обязателен {inCategories(requiredBy.get(draft.defId) ?? [])}
+						</span>
+					{:else}
+						<Button
+							type="button"
+							color="red"
+							outline
+							class="ms-auto h-10"
+							onclick={() => remove(param)}
+							disabled={busy}><TrashBinOutline class="me-1 h-4 w-4" />Удалить</Button
+						>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{:else if adding}
+		<ParamDefPicker
+			bare
+			onpick={pickDef}
+			oncancel={close}
+			holder={target.kind === 'type' ? 'TYPE' : 'ITEM'}
+			exclude={[...params.map((p) => p.defId), ...missing.map((r) => r.def.id), ...exclude]}
+		/>
+	{/if}
+</Sheet>

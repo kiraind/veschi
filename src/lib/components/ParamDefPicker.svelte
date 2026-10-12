@@ -20,7 +20,8 @@
 		onpick,
 		oncancel,
 		exclude = [],
-		holder
+		holder,
+		bare = false
 	}: {
 		onpick: (def: ParamDefView) => void;
 		oncancel: () => void;
@@ -28,6 +29,8 @@
 		exclude?: string[];
 		/** The value goes to a type or an item: links living elsewhere are not offered. */
 		holder?: LinkKind;
+		/** Without the card frame (inside a sheet). */
+		bare?: boolean;
 	} = $props();
 
 	let defs = $state<ParamDefView[] | null>(null);
@@ -56,7 +59,7 @@
 	const exact = $derived((defs ?? []).find((d) => normalizeParamKey(d.name) === q));
 </script>
 
-<Card class="max-w-none gap-3 p-3">
+{#snippet body()}
 	{#if !creating}
 		<Input
 			type="search"
@@ -121,4 +124,10 @@
 			cancelLabel="Назад"
 		/>
 	{/if}
-</Card>
+{/snippet}
+
+{#if bare}
+	<div class="flex flex-col gap-3">{@render body()}</div>
+{:else}
+	<Card class="max-w-none gap-3 p-3">{@render body()}</Card>
+{/if}

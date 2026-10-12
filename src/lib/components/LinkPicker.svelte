@@ -82,7 +82,7 @@
 			{#each value as target (target.id)}
 				<li class="flex items-center gap-2">
 					<span class="min-w-0 flex-1 break-words"
-						>→ {target.name}{#if target.archived}<span
+						>{target.name}{#if target.archived}<span
 								class="ms-1 text-sm text-gray-500 dark:text-gray-400">(в архиве)</span
 							>{/if}</span
 					>
