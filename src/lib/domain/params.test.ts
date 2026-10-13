@@ -81,6 +81,13 @@ describe('paramInputSchema', () => {
 		).toEqual({ defId: DEF, valueType: 'NUMBER', value: 3 });
 	});
 
+	it('explains errors without a custom message in Russian (zod/mini has no default locale)', () => {
+		const r = paramInputSchema.safeParse({ defId: DEF, valueType: 'NUMBER', value: 'три' });
+		expect(r.error?.issues[0]?.path).toEqual(['value']);
+		expect(r.error?.issues[0]?.message).toMatch(/[а-я]/);
+		expect(r.error?.issues[0]?.message).not.toMatch(/Invalid/);
+	});
+
 	it('rejects the same parameter twice in one list', () => {
 		const r = paramListSchema.safeParse([
 			{ defId: DEF, valueType: 'STRING', text: 'красный' },

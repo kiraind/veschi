@@ -42,19 +42,19 @@ export const STICKER_QUANTITY =
 
 export const createItemSchema = z
 	.object({
-		typeId: idSchema.optional(),
+		typeId: z.optional(idSchema),
 		newTypeName: z.string().trim().min(1).max(200).optional(),
 		name: ownName,
 		quantity: quantity.default(1),
-		parentId: idSchema.nullish(),
+		parentId: z.nullish(idSchema),
 		/** Put on this workbench instead of into a container (as if taken from the top level). */
-		workbenchId: idSchema.optional(),
+		workbenchId: z.optional(idSchema),
 		/** A new type (newTypeName) is a container type. */
 		newTypeIsContainer: z.boolean().default(false),
 		/** Categories of a new type (newTypeName). */
 		newTypeCategoryIds: z.array(idSchema).max(50).default([]),
 		stickerCode: z.string().trim().min(1).optional(),
-		params: paramListSchema.optional()
+		params: z.optional(paramListSchema)
 	})
 	.refine((v) => Boolean(v.typeId) !== Boolean(v.newTypeName), {
 		message: 'Выберите тип или введите название нового',
@@ -72,7 +72,7 @@ export const updateItemSchema = z.object({
 });
 
 export const moveItemSchema = z.object({
-	parentId: idSchema.nullable(),
+	parentId: z.nullable(idSchema),
 	/** Part of the quantity; omitted → the whole record. */
 	quantity: z.number().int().positive().optional()
 });

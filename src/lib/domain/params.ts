@@ -7,7 +7,7 @@
  * display formatting and the rule for the item card. Pure functions, shared
  * by the server and the browser.
  */
-import { z } from 'zod';
+import { z } from './zod';
 import { idSchema } from './id';
 
 export const PARAM_VALUE_TYPES = [
@@ -66,14 +66,13 @@ export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_PARAMS = 100;
 const MAX_OPTIONS = 200;
 
-const unit = z
-	.string()
-	.trim()
-	.max(20, 'Единица длиннее 20 символов')
-	.nullish()
-	.transform((v) => v || null);
-const optionLabel = z.string().trim().min(1, 'Пустой вариант').max(100);
-const finite = z.number().finite('Нужно число');
+const unit = z.pipe(
+	z.nullish(z.string().check(z.trim(), z.maxLength(20, 'Единица длиннее 20 символов'))),
+	z.transform((v) => v || null)
+);
+const optionLabel = z.string().check(z.trim(), z.minLength(1, 'Пустой вариант'), z.maxLength(100));
+// z.number() rejects NaN and ±Infinity by itself.
+const finite = z.number();
 
 // ---------------------------------------------------------------------------
 // Definitions
@@ -81,9 +80,11 @@ const finite = z.number().finite('Нужно число');
 
 export const paramNameSchema = z
 	.string()
-	.trim()
-	.min(1, 'Укажите название параметра')
-	.max(100, 'Название длиннее 100 символов');
+	.check(
+		z.trim(),
+		z.minLength(1, 'Укажите название параметра'),
+		z.maxLength(100, 'Название длиннее 100 символов')
+	);
 
 /** Value types with a unit («мм», «В»). */
 export function hasUnit(valueType: ParamValueType): boolean {
@@ -114,71 +115,83 @@ export function isSymmetric(v: {
  * it lives (`holder`: on items or on types) and names its inverse; the same
  * name both ways makes a symmetric link (item ↔ item or type ↔ type only).
  */
-export const paramDefInputSchema = z
-	.object({
-		name: paramNameSchema,
-		valueType: z.enum(PARAM_VALUE_TYPES),
-		unit,
-		multiple: z.boolean().default(false),
-		options: z
-			.array(z.object({ id: idSchema.optional(), label: optionLabel }))
-			.max(MAX_OPTIONS, `Не больше ${MAX_OPTIONS} вариантов`)
-			.default([]),
-		holder: z
-			.enum(['ITEM', 'TYPE'])
-			.nullish()
-			.transform((v) => v ?? null),
-		inverseName: z
-			.string()
-			.trim()
-			.max(100, 'Параметр у связанной вещи длиннее 100 символов')
-			.nullish()
-			.transform((v) => v || null)
-	})
-	.superRefine((v, ctx) => {
-		if (isLink(v.valueType)) {
-			if (!v.holder) {
-				ctx.addIssue({ code: 'custom', message: 'Укажите, где задаётся связь', path: ['holder'] });
-			}
-			if (!v.inverseName) {
-				ctx.addIssue({
-					code: 'custom',
-					message: `Укажите ${inverseNameLabel(v.valueType).toLocaleLowerCase('ru')}`,
-					path: ['inverseName']
+export const paramDefInputSchema = z.pipe(
+	z
+		.object({
+			name: paramNameSchema,
+			valueType: z.enum(PARAM_VALUE_TYPES),
+			unit,
+			multiple: z._default(z.boolean(), false),
+			options: z._default(
+				z
+					.array(z.object({ id: z.optional(idSchema), label: optionLabel }))
+					.check(z.maxLength(MAX_OPTIONS, `Не больше ${MAX_OPTIONS} вариантов`)),
+				[]
+			),
+			holder: z.pipe(
+				z.nullish(z.enum(['ITEM', 'TYPE'])),
+				z.transform((v) => v ?? null)
+			),
+			inverseName: z.pipe(
+				z.nullish(
+					z
+						.string()
+						.check(z.trim(), z.maxLength(100, 'Параметр у связанной вещи длиннее 100 символов'))
+				),
+				z.transform((v) => v || null)
+			)
+		})
+		.check(
+			z.superRefine((v, ctx) => {
+				if (isLink(v.valueType)) {
+					if (!v.holder) {
+						ctx.addIssue({
+							code: 'custom',
+							message: 'Укажите, где задаётся связь',
+							path: ['holder']
+						});
+					}
+					if (!v.inverseName) {
+						ctx.addIssue({
+							code: 'custom',
+							message: `Укажите ${inverseNameLabel(v.valueType).toLocaleLowerCase('ru')}`,
+							path: ['inverseName']
+						});
+					} else if (
+						normalizeParamKey(v.name) === normalizeParamKey(v.inverseName) &&
+						v.holder !== v.valueType
+					) {
+						ctx.addIssue({
+							code: 'custom',
+							message:
+								'Названия с двух сторон совпадают — так можно только у связи вещи с вещью или типа с типом',
+							path: ['inverseName']
+						});
+					}
+				}
+				const seen = new Set<string>();
+				v.options.forEach((o, i) => {
+					const k = o.label.toLocaleLowerCase('ru');
+					if (seen.has(k)) {
+						ctx.addIssue({
+							code: 'custom',
+							message: `Вариант «${o.label}» повторяется`,
+							path: ['options', i, 'label']
+						});
+					}
+					seen.add(k);
 				});
-			} else if (
-				normalizeParamKey(v.name) === normalizeParamKey(v.inverseName) &&
-				v.holder !== v.valueType
-			) {
-				ctx.addIssue({
-					code: 'custom',
-					message:
-						'Названия с двух сторон совпадают — так можно только у связи вещи с вещью или типа с типом',
-					path: ['inverseName']
-				});
-			}
-		}
-		const seen = new Set<string>();
-		v.options.forEach((o, i) => {
-			const k = o.label.toLocaleLowerCase('ru');
-			if (seen.has(k)) {
-				ctx.addIssue({
-					code: 'custom',
-					message: `Вариант «${o.label}» повторяется`,
-					path: ['options', i, 'label']
-				});
-			}
-			seen.add(k);
-		});
-	})
-	.transform((v) => ({
+			})
+		),
+	z.transform((v) => ({
 		...v,
 		unit: hasUnit(v.valueType) ? v.unit : null,
 		multiple: v.valueType === 'ENUM' ? v.multiple : false,
 		options: v.valueType === 'ENUM' ? v.options : [],
 		holder: isLink(v.valueType) ? v.holder : null,
 		inverseName: isLink(v.valueType) ? v.inverseName : null
-	}));
+	}))
+);
 
 export type ParamDefInput = z.input<typeof paramDefInputSchema>;
 
@@ -218,18 +231,24 @@ export function fitsHolder(def: Pick<ParamDefView, 'holder'>, holder: LinkKind):
 // ---------------------------------------------------------------------------
 
 const valueVariants = {
-	STRING: { text: z.string().trim().min(1, 'Пустое значение').max(1000) },
+	STRING: {
+		text: z.string().check(z.trim(), z.minLength(1, 'Пустое значение'), z.maxLength(1000))
+	},
 	NUMBER: { value: finite },
 	RANGE: { min: finite, max: finite },
-	ENUM: { optionIds: z.array(idSchema).min(1, 'Выберите вариант') },
-	URL: { url: z.string().trim().max(2000).refine(isHttpUrl, 'Нужна ссылка вида https://…') },
-	FILE: {
-		fileKey: z.string().min(1).max(500),
-		fileName: z.string().min(1).max(255),
-		fileMime: z.string().min(1).max(255),
-		fileSize: z.number().int().min(0).max(MAX_PARAM_FILE_SIZE)
+	ENUM: { optionIds: z.array(idSchema).check(z.minLength(1, 'Выберите вариант')) },
+	URL: {
+		url: z
+			.string()
+			.check(z.trim(), z.maxLength(2000), z.refine(isHttpUrl, 'Нужна ссылка вида https://…'))
 	},
-	DATE: { date: z.string().refine(isIsoDate, 'Нужна дата ГГГГ-ММ-ДД') },
+	FILE: {
+		fileKey: z.string().check(z.minLength(1), z.maxLength(500)),
+		fileName: z.string().check(z.minLength(1), z.maxLength(255)),
+		fileMime: z.string().check(z.minLength(1), z.maxLength(255)),
+		fileSize: z.number().check(z.int(), z.gte(0), z.lte(MAX_PARAM_FILE_SIZE))
+	},
+	DATE: { date: z.string().check(z.refine(isIsoDate, 'Нужна дата ГГГГ-ММ-ДД')) },
 	BOOLEAN: { value: z.boolean() },
 	ITEM: { refIds: linkTargets('Выберите вещь') },
 	TYPE: { refIds: linkTargets('Выберите тип') }
@@ -237,11 +256,15 @@ const valueVariants = {
 
 /** Targets of a link value: at least one, each once (repeats are dropped). */
 function linkTargets(empty: string) {
-	return z
-		.array(idSchema)
-		.min(1, empty)
-		.max(MAX_LINK_TARGETS, `Не больше ${MAX_LINK_TARGETS} ссылок`)
-		.transform((ids) => [...new Set(ids)]);
+	return z.pipe(
+		z
+			.array(idSchema)
+			.check(
+				z.minLength(1, empty),
+				z.maxLength(MAX_LINK_TARGETS, `Не больше ${MAX_LINK_TARGETS} ссылок`)
+			),
+		z.transform((ids: string[]) => [...new Set(ids)])
+	);
 }
 
 /** The value of one parameter, given with the definition it belongs to. */
@@ -258,21 +281,22 @@ export const paramInputSchema = z
 		z.object({ defId: idSchema, valueType: z.literal('ITEM'), ...valueVariants.ITEM }),
 		z.object({ defId: idSchema, valueType: z.literal('TYPE'), ...valueVariants.TYPE })
 	])
-	.superRefine((v, ctx) => {
-		if (v.valueType === 'RANGE' && v.min > v.max) {
-			ctx.addIssue({ code: 'custom', message: 'Минимум больше максимума', path: ['max'] });
-		}
-	});
+	.check(
+		z.superRefine((v, ctx) => {
+			if (v.valueType === 'RANGE' && v.min > v.max) {
+				ctx.addIssue({ code: 'custom', message: 'Минимум больше максимума', path: ['max'] });
+			}
+		})
+	);
 
 export type ParamInput = z.infer<typeof paramInputSchema>;
 export type ParamValue = DistributiveOmit<ParamInput, 'defId'>;
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** A whole parameter list; each definition at most once. */
-export const paramListSchema = z
-	.array(paramInputSchema)
-	.max(MAX_PARAMS, `Не больше ${MAX_PARAMS} параметров`)
-	.superRefine((params, ctx) => {
+export const paramListSchema = z.array(paramInputSchema).check(
+	z.maxLength(MAX_PARAMS, `Не больше ${MAX_PARAMS} параметров`),
+	z.superRefine((params, ctx) => {
 		const seen = new Set<string>();
 		params.forEach((p, i) => {
 			if (seen.has(p.defId)) {
@@ -280,7 +304,8 @@ export const paramListSchema = z
 			}
 			seen.add(p.defId);
 		});
-	});
+	})
+);
 
 /**
  * A stored parameter as shown to the user: the value plus what the server

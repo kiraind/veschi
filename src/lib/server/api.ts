@@ -32,7 +32,8 @@ export function errorResponse(e: unknown): Response {
 		const body: ApiErrorBody = { error: { code: e.code, message: e.message, details: e.details } };
 		return json(body, { status: e.status });
 	}
-	if (e instanceof z.ZodError) {
+	// The core class: errors of classic `zod` and of `zod/mini` ($lib/domain) alike.
+	if (e instanceof z.core.$ZodError) {
 		const body: ApiErrorBody = {
 			error: {
 				code: 'validation',
@@ -97,17 +98,17 @@ export function actorOrError(event: Pick<RequestEvent, 'locals'>): Actor {
 }
 
 /** Parses and validates a JSON request body. */
-export async function parseBody<S extends z.ZodType>(
+export async function parseBody<S extends z.core.$ZodType>(
 	request: Request,
 	schema: S
-): Promise<z.infer<S>> {
+): Promise<z.output<S>> {
 	let raw: unknown;
 	try {
 		raw = await request.json();
 	} catch {
 		throw new ValidationError('Тело запроса должно быть JSON');
 	}
-	return schema.parse(raw);
+	return z.parse(schema, raw);
 }
 
 /**
