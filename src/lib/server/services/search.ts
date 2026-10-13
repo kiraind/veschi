@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { db } from '$lib/server/db';
-import { visibleTo, type Actor } from '$lib/server/scope';
+import { visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
 import { likePattern, parseSearchQuery } from '$lib/domain/search';
 import { codeQuery } from '$lib/domain/sticker-code';
@@ -29,11 +29,6 @@ export interface SearchGroup {
 	isContainer: boolean;
 	total: number;
 	locations: SearchLocation[];
-}
-
-/** SQL counterpart of `visibleTo(actor)` for an item alias. */
-function visibleSql(actor: Actor): Prisma.Sql {
-	return Prisma.sql`(i."ownerId" = ${actor.userId}::text OR i."householdId" = ANY(${actor.householdIds}::text[]))`;
 }
 
 /**

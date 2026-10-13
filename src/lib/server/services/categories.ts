@@ -1,9 +1,10 @@
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { escapeLike } from '$lib/domain/search';
 import { idSchema } from '$lib/domain/id';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
-import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
+import { ownedBy, visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import {
 	categoryInputSchema,
@@ -236,6 +237,31 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 }
 
 /**
+ * Per category: active items of its types that lack a value of at least one of
+ * its «у каждой вещи» parameters. One query for all categories.
+ */
+async function incompleteItemCounts(
+	actor: Actor,
+	categoryIds: string[]
+): Promise<Map<string, number>> {
+	if (categoryIds.length === 0) return new Map();
+	const rows = await db.$queryRaw<{ category_id: string; count: number }[]>`
+		SELECT tc."categoryId" AS category_id, count(*)::int AS count
+		FROM "TypeCategory" tc
+		JOIN "Item" i ON i."typeId" = tc."typeId"
+		WHERE tc."categoryId" IN (${Prisma.join(categoryIds)})
+			AND i.status = 'ACTIVE' AND ${visibleSql(actor)}
+			AND EXISTS (
+				SELECT 1 FROM "CategoryParam" cp
+				WHERE cp."categoryId" = tc."categoryId" AND cp.level = 'ITEM'
+					AND NOT EXISTS (SELECT 1 FROM "Param" p WHERE p."itemId" = i.id AND p."defId" = cp."defId")
+			)
+		GROUP BY tc."categoryId"
+	`;
+	return new Map(rows.map((r) => [r.category_id, r.count]));
+}
+
+/**
  * What the search page warns about: categories with types or active items
  * lacking a required value, and categories without required parameters.
  */
@@ -248,32 +274,18 @@ export async function categoryNotices(actor: Actor): Promise<CategoryNotices> {
 		},
 		orderBy: { name: 'asc' }
 	});
-	const notices: CategoryNotices = { incomplete: [], empty: [] };
-	const counted = await Promise.all(
-		categories.map(async (c) => {
-			const at = (level: ParamLevel) =>
-				c.params.filter((p) => p.level === level).map((p) => p.defId);
-			const perType = at('TYPE');
-			const perItem = at('ITEM');
-			const typeCount = c.types.filter(({ type }) => {
-				const own = new Set(type.params.map((p) => p.defId));
-				return perType.some((d) => !own.has(d));
-			}).length;
-			const itemCount =
-				perItem.length && c.types.length
-					? await db.item.count({
-							where: {
-								typeId: { in: c.types.map((t) => t.typeId) },
-								status: 'ACTIVE',
-								...visibleTo(actor),
-								OR: perItem.map((defId) => ({ params: { none: { defId } } }))
-							}
-						})
-					: 0;
-			return { c, typeCount, itemCount };
-		})
+	const itemCounts = await incompleteItemCounts(
+		actor,
+		categories.map((c) => c.id)
 	);
-	for (const { c, typeCount, itemCount } of counted) {
+	const notices: CategoryNotices = { incomplete: [], empty: [] };
+	for (const c of categories) {
+		const perType = c.params.filter((p) => p.level === 'TYPE').map((p) => p.defId);
+		const typeCount = c.types.filter(({ type }) => {
+			const own = new Set(type.params.map((p) => p.defId));
+			return perType.some((d) => !own.has(d));
+		}).length;
+		const itemCount = itemCounts.get(c.id) ?? 0;
 		const ref = { id: c.id, name: c.name };
 		if (c.params.length === 0) notices.empty.push(ref);
 		else if (typeCount || itemCount) notices.incomplete.push({ ...ref, typeCount, itemCount });
