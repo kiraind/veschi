@@ -7,17 +7,19 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = pageLoad(async (event) => {
 	const { actor } = event;
 	const q = event.url.searchParams.get('q') ?? '';
+	const empty = !q.trim();
 	const [{ groups, truncated }, examples, notices] = await Promise.all([
 		searchWithLimit(actor, q),
-		searchExamples(actor),
-		// Shown only while nothing is typed.
-		q.trim() ? null : categoryNotices(actor)
+		// The placeholder and the notices show only while nothing is typed, so the
+		// search that reruns this load on every keystroke skips them.
+		empty ? searchExamples(actor) : null,
+		empty ? categoryNotices(actor) : null
 	]);
 	return {
 		q,
 		groups,
 		truncated,
 		notices,
-		placeholder: searchPlaceholder(examples.names, examples.params)
+		placeholder: examples && searchPlaceholder(examples.names, examples.params)
 	};
 });

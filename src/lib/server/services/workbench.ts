@@ -285,10 +285,11 @@ export async function listWorkbench(
 			home: {
 				select: {
 					id: true,
+					name: true,
 					status: true,
 					takenById: true,
 					isWorkbench: true,
-					type: { select: { isContainer: true } }
+					type: { select: { name: true, isContainer: true } }
 				}
 			},
 			_count: { select: { children: { where: { status: 'ACTIVE' } } } }
@@ -301,12 +302,16 @@ export async function listWorkbench(
 		getPaths(homeIds)
 	]);
 	const homeNames = new Map(
-		(
-			await db.item.findMany({
-				where: { id: { in: homeIds } },
-				include: { type: { select: { name: true } } }
-			})
-		).map((h) => [h.id, { id: h.id, name: itemDisplayName(h), isWorkbench: h.isWorkbench }])
+		items.flatMap((i) =>
+			i.home
+				? [
+						[
+							i.home.id,
+							{ id: i.home.id, name: itemDisplayName(i.home), isWorkbench: i.home.isWorkbench }
+						]
+					]
+				: []
+		)
 	);
 	const pathIds = [
 		...new Set(

@@ -288,6 +288,15 @@ export async function listContents(
 	tx: Tx = db
 ): Promise<ContentEntry[]> {
 	if (parentId) await findItem(actor, parentId, tx);
+	return contentsOf(actor, parentId, tx);
+}
+
+/** listContents for a parent that is already checked to be visible. */
+async function contentsOf(
+	actor: Actor,
+	parentId: string | null,
+	tx: Tx = db
+): Promise<ContentEntry[]> {
 	const items = await tx.item.findMany({
 		where: { parentId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) },
 		include: {
@@ -324,6 +333,22 @@ export async function listContents(
 		);
 }
 
+/** Name and path of an item, without the rest of its card (the container of a new item). */
+export async function getItemSummary(
+	actor: Actor,
+	id: string
+): Promise<{ id: string; name: string; path: PathNode[] }> {
+	const [item, path] = await Promise.all([
+		db.item.findFirst({
+			where: { id, ...visibleTo(actor) },
+			include: { type: { select: { name: true } } }
+		}),
+		getPath(id)
+	]);
+	if (!item) throw new NotFoundError('Вещь не найдена');
+	return { id: item.id, name: itemDisplayName(item), path };
+}
+
 /** Everything the item card shows. Archived items and workbenches have cards too. */
 export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 	const item = await db.item.findFirst({
@@ -335,7 +360,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		getPath(id),
 		item.typeId ? getParamsOf(actor, 'typeId', [item.typeId]) : null,
 		getParamsOf(actor, 'itemId', [id]),
-		isContainerItem(item) ? listContents(actor, id) : [],
+		isContainerItem(item) ? contentsOf(actor, id) : [],
 		item.typeId ? categoryInfoOf(item.typeId) : null
 	]);
 	const own = itemParams.get(id) ?? [];

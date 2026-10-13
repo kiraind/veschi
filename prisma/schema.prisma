@@ -7,8 +7,11 @@
 // migration SQL and by the service layer.
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  // `include` / nested `select` load relations in the same SQL query (a JOIN)
+  // instead of one extra round-trip per relation.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -135,6 +138,8 @@ model ItemType {
 
   @@index([ownerId])
   @@index([householdId])
+  // Access check of every photo request (/files).
+  @@index([photoKey])
 }
 
 enum ItemStatus {
@@ -225,6 +230,8 @@ model StickerBatch {
   owner     User?      @relation("StickerBatchOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
   stickers  Sticker[]
+
+  @@index([ownerId, createdAt])
 }
 
 model Sticker {
@@ -381,6 +388,8 @@ model Param {
   @@unique([itemId, defId])
   @@index([defId])
   @@index([fileKey])
+  // Deleting a dropdown list checks that no value uses it (onDelete: Restrict).
+  @@index([dictionaryId])
 }
 
 // One target of a link value (ITEM, TYPE): an item or a type, exactly one
@@ -552,6 +561,8 @@ model HistoryEvent {
 
   @@index([ownerId, createdAt])
   @@index([householdId, createdAt])
+  // The «Кто» filter of «История».
+  @@index([ownerId, actorId])
   @@index([subjectId])
   @@index([refIds], type: Gin)
 }
