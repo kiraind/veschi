@@ -178,6 +178,36 @@ describe('categories', () => {
 		});
 	});
 
+	it('counts unfilled items per category, each by its own parameters', async () => {
+		const color = await defIdFor(actor, 'Цвет', 'STRING');
+		const paint = await createCategory(actor, { name: 'Краска' });
+		await setCategoryParams(actor, paint.id, [{ defId: color, level: 'ITEM' }]);
+		const milk = await createType(actor, { name: 'Молоко' });
+		await addParam(
+			actor,
+			{ typeId: milk.id },
+			(
+				await keyed(actor, [{ key: 'Калорийность', valueType: 'NUMBER', value: 60, unit: 'ккал' }])
+			)[0]
+		);
+		const withValues = (values: Parameters<typeof keyed>[1]) =>
+			keyed(actor, values).then((params) => createItem(actor, { typeId: milk.id, params }));
+		await withValues([{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-20' }]);
+		await withValues([{ key: 'Цвет', valueType: 'STRING', text: 'белый' }]);
+		await withValues([{ key: 'Цвет', valueType: 'STRING', text: 'жёлтый' }]);
+		await withValues([
+			{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-20' },
+			{ key: 'Цвет', valueType: 'STRING', text: 'белый' }
+		]);
+		await addTypeToCategory(actor, milk.id, food.id);
+		await addTypeToCategory(actor, milk.id, paint.id);
+
+		expect((await categoryNotices(actor)).incomplete).toEqual([
+			{ ...food, typeCount: 0, itemCount: 2 },
+			{ ...paint, typeCount: 0, itemCount: 1 }
+		]);
+	});
+
 	it('puts a new type into categories when an item is created with it', async () => {
 		await expect(
 			createItem(actor, { newTypeName: 'Кефир', newTypeCategoryIds: [food.id] })

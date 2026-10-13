@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 /**
  * Ownership scope. Every catalog record is personal (ownerId) or shared
  * (householdId). Services receive an Actor and must filter every query with
@@ -21,4 +23,9 @@ export function visibleTo(actor: Actor) {
 /** Ownership columns for a record the actor creates (personal in the MVP). */
 export function ownedBy(actor: Actor): { ownerId: string; householdId: null } {
 	return { ownerId: actor.userId, householdId: null };
+}
+
+/** SQL counterpart of `visibleTo(actor)` for raw queries over items aliased `i`. */
+export function visibleSql(actor: Actor): Prisma.Sql {
+	return Prisma.sql`(i."ownerId" = ${actor.userId}::text OR i."householdId" = ANY(${actor.householdIds}::text[]))`;
 }
