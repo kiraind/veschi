@@ -334,19 +334,16 @@ describe('items', () => {
 			expect(card.item.isContainer).toBe(true);
 		});
 
-		it('marks REF targets in the archive', async () => {
+		it('marks link targets in the archive', async () => {
 			const charger = await createItem(actor, { newTypeName: 'Блок питания 12 В' });
 			const { id } = await createItem(actor, { newTypeName: 'Паяльник' });
 			await setKeyedParams(actor, { itemId: id }, [
-				{ key: 'зарядка', valueType: 'REF', refItemId: charger.id }
+				{ key: 'зарядка', valueType: 'ITEM', refIds: [charger.id] }
 			]);
 			await db.item.update({ where: { id: charger.id }, data: { status: 'ARCHIVED' } });
-			expect((await getItemCard(actor, id)).itemParams[0]!.ref).toEqual({
-				kind: 'item',
-				id: charger.id,
-				name: 'Блок питания 12 В',
-				archived: true
-			});
+			expect((await getItemCard(actor, id)).itemParams[0]!.refs).toEqual([
+				{ id: charger.id, name: 'Блок питания 12 В', archived: true }
+			]);
 		});
 
 		it('includes the sticker and is hidden from other users', async () => {
@@ -614,7 +611,7 @@ describe('items', () => {
 			).id;
 			const { id: user } = await createItem(actor, { newTypeName: 'Плата' });
 			await setKeyedParams(actor, { itemId: user }, [
-				{ key: 'микросхема', valueType: 'REF', refItemId: referenced }
+				{ key: 'микросхема', valueType: 'ITEM', refIds: [referenced] }
 			]);
 			expect(await moveItem(actor, referenced, drawer)).toEqual({ itemId: referenced });
 			expect((await db.item.findUniqueOrThrow({ where: { id: plainPart } })).quantity).toBe(3);

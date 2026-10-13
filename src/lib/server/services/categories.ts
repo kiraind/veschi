@@ -9,6 +9,7 @@ import {
 	categoryInputSchema,
 	categoryParamsSchema,
 	categoryUpdateSchema,
+	PARAM_LEVEL_LABELS,
 	inCategories,
 	missingParams,
 	requiredAt,
@@ -19,7 +20,13 @@ import {
 	type ParamLevel,
 	type RequiredParam
 } from '$lib/domain/categories';
-import { normalizeParamKey, type ParamDefView, type ParamInput } from '$lib/domain/params';
+import {
+	LINK_HOLDER_LABELS,
+	normalizeParamKey,
+	type LinkKind,
+	type ParamDefView,
+	type ParamInput
+} from '$lib/domain/params';
 import { diffFields, type CategoryParamChange } from '$lib/domain/history';
 import { categoryRef, recordEvent, typeRef } from './history';
 import { defInclude, defViews } from './params';
@@ -340,10 +347,20 @@ export async function setCategoryParams(
 		const category = await findCategory(actor, id, tx);
 		const defs = await tx.paramDef.findMany({
 			where: { id: { in: list.map((p) => p.defId) }, ...visibleTo(actor) },
-			select: { id: true, name: true }
+			select: { id: true, name: true, inverse: { select: { valueType: true } } }
 		});
 		const names = new Map(defs.map((d) => [d.id, d.name]));
 		if (list.some((p) => !names.has(p.defId))) throw new ValidationError('Параметр не найден');
+		// A link lives only on items or only on types: it can be required only there.
+		const holders = new Map(defs.map((d) => [d.id, d.inverse?.valueType]));
+		for (const p of list) {
+			const holder = holders.get(p.defId);
+			if (holder && holder !== p.level) {
+				throw new ValidationError(
+					`«${names.get(p.defId)}» — связь ${LINK_HOLDER_LABELS[holder as LinkKind]}: её можно требовать только ${PARAM_LEVEL_LABELS[holder as ParamLevel]}`
+				);
+			}
+		}
 
 		const before = await tx.categoryParam.findMany({
 			where: { categoryId: id },

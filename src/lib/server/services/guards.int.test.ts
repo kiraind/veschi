@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
+import { linkDef } from '$lib/server/testing/params';
 import { discard } from './archive';
 import { listHistory } from './history';
 import { createItem } from './items';
@@ -38,12 +39,7 @@ describe('service guards', () => {
 		(await createItem(actor, { typeId: boxTypeId, parentId })).id;
 	const screws = async (quantity: number, parentId: string | null = null) =>
 		(await createItem(actor, { typeId, quantity, parentId })).id;
-	const refDef = async () =>
-		(
-			await db.paramDef.create({
-				data: { ownerId: actor.userId, name: 'Запчасть для', valueType: 'REF' }
-			})
-		).id;
+	const refDef = async () => (await linkDef(actor, 'Запчасть для', 'ITEM', 'ITEM', 'Запчасти')).id;
 
 	it('does not use up a container with things inside', async () => {
 		const outer = await box();
@@ -113,10 +109,10 @@ describe('service guards', () => {
 		const old = await screws(1);
 		await discard(actor, old);
 		await expect(
-			addParam(actor, { itemId: id }, { defId, valueType: 'REF', refItemId: id })
+			addParam(actor, { itemId: id }, { defId, valueType: 'ITEM', refIds: [id] })
 		).rejects.toThrow('саму себя');
 		await expect(
-			addParam(actor, { itemId: id }, { defId, valueType: 'REF', refItemId: old })
+			addParam(actor, { itemId: id }, { defId, valueType: 'ITEM', refIds: [old] })
 		).rejects.toThrow('в архиве');
 	});
 

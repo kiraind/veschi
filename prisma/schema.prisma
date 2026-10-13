@@ -129,7 +129,7 @@ model ItemType {
   household         Household?        @relation(fields: [householdId], references: [id], onDelete: Cascade)
   items             Item[]
   params            Param[]           @relation("TypeParams")
-  refParams         Param[]           @relation("ParamRefType")
+  paramRefs         ParamRef[]        @relation("ParamRefType")
   categories        TypeCategory[]
   collectionEntries CollectionEntry[]
 
@@ -192,7 +192,7 @@ model Item {
 
   sticker            Sticker?
   params             Param[]           @relation("ItemParams")
-  refParams          Param[]           @relation("ParamRefItem")
+  paramRefs          ParamRef[]        @relation("ParamRefItem")
   lastWorkbenchUsers User[]            @relation("UserLastWorkbench")
   collectionEntries  CollectionEntry[]
 
@@ -300,13 +300,23 @@ enum ParamValueType {
   URL
   FILE
   DATE
-  REF
   BOOLEAN
+  // Links: the value is one or more items (ITEM) or types (TYPE). Every link
+  // parameter has an inverse (ParamDef.inverseId); see ParamRef.
+  ITEM
+  TYPE
 }
 
 // A parameter («Параметры» page): its name, value type, unit (numbers) and
 // option list (ENUM), shared by every type and item that has a value for it.
 // Names are unique per owner (case-insensitive, checked by the service layer).
+//
+// A link (ITEM, TYPE) always comes with its inverse: «Содержит деталь» ↔
+// «Является деталью». Each points at the other (inverseId); a symmetric link
+// («Совместим с») is its own inverse. A link value on A pointing at B is
+// mirrored by an inverse value on B pointing at A (services/params.ts). So a
+// link lives only on holders of one kind: the inverse's value type (ITEM →
+// on items, TYPE → on types). See docs/decisions.md, «Связи».
 model ParamDef {
   id           String         @id @default(cuid())
   ownerId      String?
@@ -317,12 +327,16 @@ model ParamDef {
   unit         String?
   // ENUM: the parameter's own option list.
   dictionaryId String?        @unique
+  // ITEM, TYPE: the inverse link (itself when symmetric).
+  inverseId    String?        @unique
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   owner      User?           @relation("ParamDefOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   household  Household?      @relation(fields: [householdId], references: [id], onDelete: Cascade)
   dictionary EnumDictionary? @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
+  inverse    ParamDef?       @relation("ParamDefInverse", fields: [inverseId], references: [id], onDelete: NoAction)
+  inverseOf  ParamDef?       @relation("ParamDefInverse")
   values     Param[]
   categories CategoryParam[]
 
@@ -351,8 +365,6 @@ model Param {
   fileName     String? // FILE: original file name
   fileMime     String? // FILE: content type
   fileSize     Int? // FILE: bytes
-  refItemId    String? // REF to an item
-  refTypeId    String? // REF to a type
   dictionaryId String? // ENUM
 
   createdAt DateTime @default(now())
@@ -361,17 +373,32 @@ model Param {
   def        ParamDef         @relation(fields: [defId], references: [id], onDelete: Restrict)
   type       ItemType?        @relation("TypeParams", fields: [typeId], references: [id], onDelete: Cascade)
   item       Item?            @relation("ItemParams", fields: [itemId], references: [id], onDelete: Cascade)
-  refItem    Item?            @relation("ParamRefItem", fields: [refItemId], references: [id], onDelete: SetNull)
-  refType    ItemType?        @relation("ParamRefType", fields: [refTypeId], references: [id], onDelete: SetNull)
   dictionary EnumDictionary?  @relation(fields: [dictionaryId], references: [id], onDelete: Restrict)
   enumValues ParamEnumValue[]
+  refs       ParamRef[]
 
   @@unique([typeId, defId])
   @@unique([itemId, defId])
   @@index([defId])
-  @@index([refItemId])
-  @@index([refTypeId])
   @@index([fileKey])
+}
+
+// One target of a link value (ITEM, TYPE): an item or a type, exactly one
+// (CHECK ParamRef_target_xor). A link value has one or more.
+model ParamRef {
+  id      String  @id @default(cuid())
+  paramId String
+  itemId  String?
+  typeId  String?
+
+  param Param     @relation(fields: [paramId], references: [id], onDelete: Cascade)
+  item  Item?     @relation("ParamRefItem", fields: [itemId], references: [id], onDelete: Cascade)
+  type  ItemType? @relation("ParamRefType", fields: [typeId], references: [id], onDelete: Cascade)
+
+  @@unique([paramId, itemId])
+  @@unique([paramId, typeId])
+  @@index([itemId])
+  @@index([typeId])
 }
 
 model ParamEnumValue {

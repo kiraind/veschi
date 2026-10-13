@@ -27,14 +27,19 @@
 		title={param.fileName}>{shortenFileName(param.fileName)}</a
 	>
 	<span class="text-sm text-gray-500 dark:text-gray-400">{formatFileSize(param.fileSize)}</span>
-{:else if param.valueType === 'REF' && param.ref}
-	<a
-		class="text-primary-700 hover:underline dark:text-primary-400"
-		href="/{param.ref.kind === 'item' ? 'items' : 'types'}/{param.ref.id}">→ {param.ref.name}</a
-	>
-	{#if param.ref.archived}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
-			>в архиве</Badge
-		>{/if}
+{:else if param.valueType === 'ITEM' || param.valueType === 'TYPE'}
+	{@const path = param.valueType === 'ITEM' ? 'items' : 'types'}
+	<span class="flex flex-col">
+		{#each param.refs ?? [] as ref (ref.id)}
+			<span
+				><a class="text-primary-700 hover:underline dark:text-primary-400" href="/{path}/{ref.id}"
+					>{ref.name}</a
+				>{#if ref.archived}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200 ms-1"
+						>в архиве</Badge
+					>{/if}</span
+			>
+		{/each}
+	</span>
 {:else}
 	{formatParamValue(param)}
 {/if}

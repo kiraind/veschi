@@ -1,4 +1,4 @@
-import type { Param, ParamDef, ParamEnumValue, Prisma } from '@prisma/client';
+import type { Param, ParamDef, ParamEnumValue, ParamRef, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { escapeLike } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
@@ -6,12 +6,16 @@ import { ConflictError, NotFoundError, ValidationError } from '$lib/server/error
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import {
+	LINK_HOLDER_LABELS,
 	PARAM_VALUE_TYPE_LABELS,
 	hasUnit,
+	isLink,
+	isSymmetric,
 	normalizeParamKey,
 	paramDefInputSchema,
 	paramInputSchema,
 	paramListSchema,
+	type LinkKind,
 	type ParamDefView,
 	type ParamInput,
 	type ParamView
@@ -28,10 +32,32 @@ export const paramsBodySchema = z.object({ params: paramListSchema });
 /** Whose parameter list: a type's (shared by its items) or one item's. */
 export type ParamTarget = { typeId: string } | { itemId: string };
 
-type ParamRow = Param & { enumValues: ParamEnumValue[]; def: ParamDef };
+type ParamRow = Param & { enumValues: ParamEnumValue[]; refs: ParamRef[]; def: ParamDef };
+
+/** A definition with its inverse (links). */
+type DefRow = ParamDef & { inverse: ParamDef | null };
 
 function targetWhere(target: ParamTarget) {
 	return 'typeId' in target ? { typeId: target.typeId } : { itemId: target.itemId };
+}
+
+/** Is the target a type or an item. */
+function kindOf(target: ParamTarget): LinkKind {
+	return 'typeId' in target ? 'TYPE' : 'ITEM';
+}
+
+function idOf(target: ParamTarget): string {
+	return 'typeId' in target ? target.typeId : target.itemId;
+}
+
+/** The type or item a link of this kind points at. */
+function linkTarget(kind: LinkKind, id: string): ParamTarget {
+	return kind === 'TYPE' ? { typeId: id } : { itemId: id };
+}
+
+/** Id of a link target row. */
+function refId(r: Pick<ParamRef, 'itemId' | 'typeId'>): string {
+	return r.itemId ?? r.typeId ?? '';
 }
 
 /** Values change only at a type or an active ordinary item (not in the archive, not a workbench). */
@@ -54,8 +80,12 @@ async function assertTargetVisible(actor: Actor, target: ParamTarget, tx: Tx): P
 	if (!found) throw new NotFoundError('typeId' in target ? 'Тип не найден' : 'Вещь не найдена');
 }
 
+type RefCols = { itemId: string | null; typeId: string | null };
+
 /** Stored value of a row as a comparable string (to tell changed values in the history). */
-function valueSignature(r: Param & { enumValues: { optionId: string }[] }): string {
+export function valueSignature(
+	r: Param & { enumValues: { optionId: string }[]; refs: RefCols[] }
+): string {
 	return JSON.stringify([
 		r.textValue,
 		r.numberValue,
@@ -63,19 +93,111 @@ function valueSignature(r: Param & { enumValues: { optionId: string }[] }): stri
 		r.dateValue?.toISOString() ?? null,
 		r.boolValue,
 		r.fileKey,
-		r.refItemId,
-		r.refTypeId,
-		r.enumValues.map((v) => v.optionId).sort()
+		r.enumValues.map((v) => v.optionId).sort(),
+		r.refs.map(refId).sort()
 	]);
 }
 
-type SignedRow = Param & { enumValues: { optionId: string }[]; def: { name: string } };
+type SignedRow = Param & {
+	enumValues: { optionId: string }[];
+	refs: RefCols[];
+	def: { name: string };
+};
 
 function signedRows(target: ParamTarget, tx: Tx): Promise<SignedRow[]> {
 	return tx.param.findMany({
 		where: targetWhere(target),
-		include: { enumValues: { select: { optionId: true } }, def: { select: { name: true } } }
+		include: {
+			enumValues: { select: { optionId: true } },
+			refs: { select: { itemId: true, typeId: true } },
+			def: { select: { name: true } }
+		}
 	});
+}
+
+/** Link targets of a holder's values, by definition. */
+function linksOf(rows: { defId: string; refs: RefCols[] }[]): Map<string, Set<string>> {
+	return new Map(
+		rows.filter((r) => r.refs.length > 0).map((r) => [r.defId, new Set(r.refs.map(refId))])
+	);
+}
+
+/**
+ * Keeps links two-way: `holder` now points through each link definition at
+ * `after` instead of `before` (by definition id), so every newly pointed-at
+ * type or item gets `holder` in its inverse value (created at the end of its
+ * list when missing), and every one no longer pointed at loses it (an
+ * inverse value left without targets is deleted, even when a category
+ * requires it: such a gap shows as «не заполнено»). With an actor the
+ * changes of each touched type or item go to the history.
+ */
+async function syncMirrors(
+	actor: Actor | null,
+	holder: ParamTarget,
+	before: Map<string, Set<string>>,
+	after: Map<string, Set<string>>,
+	tx: Tx
+): Promise<void> {
+	const defIds = [...new Set([...before.keys(), ...after.keys()])];
+	if (defIds.length === 0) return;
+	const defs = await tx.paramDef.findMany({
+		where: { id: { in: defIds } },
+		include: { inverse: true }
+	});
+	const touched = new Map<string, { target: ParamTarget; before: SignedRow[] }>();
+	const back = kindOf(holder) === 'TYPE' ? { typeId: idOf(holder) } : { itemId: idOf(holder) };
+	for (const def of defs) {
+		const inverse = def.inverse;
+		if (!inverse || !isLink(def.valueType)) continue;
+		const was = before.get(def.id) ?? new Set<string>();
+		const now = after.get(def.id) ?? new Set<string>();
+		const changes = [
+			...[...now].filter((id) => !was.has(id)).map((id) => [id, true] as const),
+			...[...was].filter((id) => !now.has(id)).map((id) => [id, false] as const)
+		];
+		for (const [id, add] of changes) {
+			const mirror = linkTarget(def.valueType, id);
+			const key = `${kindOf(mirror)}:${id}`;
+			if (!touched.has(key))
+				touched.set(key, { target: mirror, before: await signedRows(mirror, tx) });
+			const where = { ...targetWhere(mirror), defId: inverse.id };
+			const value = await tx.param.findFirst({ where, include: { refs: true } });
+			if (add && !value) {
+				const last = await tx.param.aggregate({
+					where: targetWhere(mirror),
+					_max: { position: true }
+				});
+				await tx.param.create({
+					data: {
+						...where,
+						valueType: inverse.valueType,
+						position: (last._max.position ?? -1) + 1,
+						refs: { create: [back] }
+					}
+				});
+			} else if (add && value) {
+				if (!value.refs.some((r) => refId(r) === idOf(holder))) {
+					await tx.paramRef.create({ data: { paramId: value.id, ...back } });
+				}
+			} else if (value) {
+				const rest = value.refs.filter((r) => refId(r) !== idOf(holder));
+				if (rest.length === 0) await tx.param.delete({ where: { id: value.id } });
+				else await tx.paramRef.deleteMany({ where: { paramId: value.id, ...back } });
+			}
+		}
+	}
+	if (!actor) return;
+	for (const { target, before } of touched.values()) {
+		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
+	}
+}
+
+/**
+ * Gives the types and items a holder's link values point at their inverse
+ * values (for values copied without them: a part split off a record).
+ */
+export async function mirrorLinksOf(holder: ParamTarget, tx: Tx): Promise<void> {
+	await syncMirrors(null, holder, new Map(), linksOf(await signedRows(holder, tx)), tx);
 }
 
 /** Records which parameter values of a type or item were added, changed or removed. */
@@ -183,10 +305,11 @@ function toColumns(
 			};
 		case 'DATE':
 			return { valueType: p.valueType, dateValue: new Date(`${p.date}T00:00:00Z`) };
-		case 'REF':
-			return { valueType: p.valueType, refItemId: p.refItemId, refTypeId: p.refTypeId };
 		case 'BOOLEAN':
 			return { valueType: p.valueType, boolValue: p.value };
+		case 'ITEM':
+		case 'TYPE':
+			return { valueType: p.valueType };
 	}
 }
 
@@ -223,21 +346,23 @@ function fromRow(row: ParamRow): ParamInput {
 			};
 		case 'DATE':
 			return { ...base, valueType: 'DATE', date: row.dateValue?.toISOString().slice(0, 10) ?? '' };
-		case 'REF':
-			return { ...base, valueType: 'REF', refItemId: row.refItemId, refTypeId: row.refTypeId };
 		case 'BOOLEAN':
 			return { ...base, valueType: 'BOOLEAN', value: row.boolValue ?? false };
+		case 'ITEM':
+		case 'TYPE':
+			return { ...base, valueType: row.valueType, refIds: row.refs.map(refId) };
 	}
 }
 
 /**
  * Stored parameters → views: units, enum options (current labels, list order)
- * and REF targets (name, archived mark) are resolved in two batched queries.
+ * and link targets (name, archived mark; sorted by name) are resolved in
+ * batched queries.
  */
 async function toViews(actor: Actor, rows: ParamRow[], tx: Tx): Promise<ParamView[]> {
 	const optionIds = rows.flatMap((r) => r.enumValues.map((v) => v.optionId));
-	const refItemIds = rows.flatMap((r) => (r.refItemId ? [r.refItemId] : []));
-	const refTypeIds = rows.flatMap((r) => (r.refTypeId ? [r.refTypeId] : []));
+	const refItemIds = rows.flatMap((r) => r.refs.flatMap((ref) => (ref.itemId ? [ref.itemId] : [])));
+	const refTypeIds = rows.flatMap((r) => r.refs.flatMap((ref) => (ref.typeId ? [ref.typeId] : [])));
 	const [options, refItems, refTypes] = await Promise.all([
 		optionIds.length
 			? tx.enumOption.findMany({ where: { id: { in: optionIds } }, orderBy: { position: 'asc' } })
@@ -265,19 +390,19 @@ async function toViews(actor: Actor, rows: ParamRow[], tx: Tx): Promise<ParamVie
 				.map((o) => ({ id: o.id, label: o.label }));
 			view.optionIds = view.options.map((o) => o.id);
 		}
-		if (view.valueType === 'REF') {
-			const item = row.refItemId ? itemsById.get(row.refItemId) : undefined;
-			const type = row.refTypeId ? typesById.get(row.refTypeId) : undefined;
-			view.ref = item
-				? {
-						kind: 'item',
-						id: item.id,
-						name: itemDisplayName(item),
-						archived: item.status === 'ARCHIVED'
+		if (view.valueType === 'ITEM' || view.valueType === 'TYPE') {
+			view.refs = row.refs
+				.flatMap((ref) => {
+					const item = ref.itemId ? itemsById.get(ref.itemId) : undefined;
+					const type = ref.typeId ? typesById.get(ref.typeId) : undefined;
+					if (item) {
+						const name = itemDisplayName(item);
+						return [{ id: item.id, name, archived: item.status === 'ARCHIVED' }];
 					}
-				: type
-					? { kind: 'type', id: type.id, name: type.name, archived: false }
-					: null;
+					return type ? [{ id: type.id, name: type.name, archived: false }] : [];
+				})
+				.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+			view.refIds = view.refs.map((r) => r.id);
 		}
 		return view;
 	});
@@ -294,7 +419,7 @@ export async function getParamsOf(
 	if (ids.length === 0) return result;
 	const rows = await tx.param.findMany({
 		where: { [kind]: { in: ids } },
-		include: { enumValues: true, def: true },
+		include: { enumValues: true, refs: true, def: true },
 		orderBy: { position: 'asc' }
 	});
 	const views = await toViews(actor, rows, tx);
@@ -317,8 +442,11 @@ export async function listParams(
 }
 
 /** Visible definitions by id; a missing one is an error. */
-async function findDefs(actor: Actor, ids: string[], tx: Tx): Promise<Map<string, ParamDef>> {
-	const defs = await tx.paramDef.findMany({ where: { id: { in: ids }, ...visibleTo(actor) } });
+async function findDefs(actor: Actor, ids: string[], tx: Tx): Promise<Map<string, DefRow>> {
+	const defs = await tx.paramDef.findMany({
+		where: { id: { in: ids }, ...visibleTo(actor) },
+		include: { inverse: true }
+	});
 	const byId = new Map(defs.map((d) => [d.id, d]));
 	if (ids.some((id) => !byId.has(id))) throw new ValidationError('Параметр не найден');
 	return byId;
@@ -326,14 +454,15 @@ async function findDefs(actor: Actor, ids: string[], tx: Tx): Promise<Map<string
 
 /**
  * Checks one value against its definition and the references inside it:
- * value type, drop-down options, REF targets, uploaded files. A new REF
- * points at an active item other than the target itself; `kept` are items
- * the target already points at (a value kept as is stays valid after its
- * item went to the archive).
+ * value type, drop-down options, link targets, uploaded files. A link lives
+ * on one kind of holder (its inverse's value type) and points at visible
+ * types or ordinary items other than the holder itself; a newly linked item
+ * must be active, `kept` are items the holder already points at (a link
+ * kept as is stays valid after its item went to the archive).
  */
 async function assertValueValid(
 	actor: Actor,
-	def: ParamDef,
+	def: DefRow,
 	p: ParamInput,
 	tx: Tx,
 	target: ParamTarget,
@@ -358,18 +487,34 @@ async function assertValueValid(
 			throw new ValidationError(`«${def.name}»: можно выбрать только один вариант`);
 		}
 	}
-	if (p.valueType === 'REF') {
-		const found = p.refItemId
-			? await tx.item.findFirst({
-					where: { id: p.refItemId, isWorkbench: false, ...visibleTo(actor) }
-				})
-			: await tx.itemType.findFirst({ where: { id: p.refTypeId ?? '', ...visibleTo(actor) } });
-		if (!found) throw new ValidationError(`«${def.name}»: вещь или тип не найдены`);
-		if (p.refItemId && 'itemId' in target && p.refItemId === target.itemId) {
-			throw new ValidationError(`«${def.name}»: вещь не может ссылаться на саму себя`);
+	if (p.valueType === 'ITEM' || p.valueType === 'TYPE') {
+		if (!def.inverse) throw new ValidationError(`«${def.name}»: у связи нет второй стороны`);
+		if (def.inverse.valueType !== kindOf(target)) {
+			throw new ValidationError(
+				`«${def.name}» задаётся только ${LINK_HOLDER_LABELS[def.inverse.valueType as LinkKind]}`
+			);
 		}
-		if (p.refItemId && 'status' in found && found.status !== 'ACTIVE' && !kept.has(p.refItemId)) {
-			throw new ValidationError(`«${def.name}»: вещь в архиве`);
+		if (p.refIds.includes(idOf(target))) {
+			throw new ValidationError(
+				`«${def.name}»: ${p.valueType === 'ITEM' ? 'вещь' : 'тип'} не может ссылаться на ${p.valueType === 'ITEM' ? 'саму' : 'самого'} себя`
+			);
+		}
+		if (p.valueType === 'ITEM') {
+			const items = await tx.item.findMany({
+				where: { id: { in: p.refIds }, isWorkbench: false, ...visibleTo(actor) }
+			});
+			if (items.length !== p.refIds.length) {
+				throw new ValidationError(`«${def.name}»: вещь не найдена`);
+			}
+			const archived = items.find((i) => i.status !== 'ACTIVE' && !kept.has(i.id));
+			if (archived) {
+				throw new ValidationError(`«${def.name}»: «${itemDisplayName(archived)}» в архиве`);
+			}
+		} else {
+			const found = await tx.itemType.count({
+				where: { id: { in: p.refIds }, ...visibleTo(actor) }
+			});
+			if (found !== p.refIds.length) throw new ValidationError(`«${def.name}»: тип не найден`);
 		}
 	}
 	if (p.valueType === 'FILE' && !isOwnUpload(actor, p.fileKey)) {
@@ -383,8 +528,9 @@ async function assertValueValid(
 	}
 }
 
-function refsOf(rows: Pick<Param, 'refItemId'>[]): Set<string> {
-	return new Set(rows.flatMap((r) => (r.refItemId ? [r.refItemId] : [])));
+/** Items the rows already link to (kept links stay valid when the item is archived). */
+function refsOf(rows: { refs: RefCols[] }[]): Set<string> {
+	return new Set(rows.flatMap((r) => r.refs.flatMap((ref) => (ref.itemId ? [ref.itemId] : []))));
 }
 
 /** Row data of a value: value columns plus the definition's type and list. */
@@ -396,6 +542,21 @@ function enumValues(p: ParamInput) {
 	return p.valueType === 'ENUM'
 		? { create: [...new Set(p.optionIds)].map((optionId) => ({ optionId })) }
 		: undefined;
+}
+
+function linkRefs(p: ParamInput) {
+	if (p.valueType === 'ITEM') return { create: p.refIds.map((itemId) => ({ itemId })) };
+	if (p.valueType === 'TYPE') return { create: p.refIds.map((typeId) => ({ typeId })) };
+	return undefined;
+}
+
+/** Link targets of inputs, by definition. */
+function inputLinks(params: ParamInput[]): Map<string, Set<string>> {
+	return new Map(
+		params.flatMap((p) =>
+			p.valueType === 'ITEM' || p.valueType === 'TYPE' ? [[p.defId, new Set(p.refIds)]] : []
+		)
+	);
 }
 
 /**
@@ -430,10 +591,17 @@ export async function replaceParams(
 	await tx.param.deleteMany({ where });
 	for (const [position, p] of params.entries()) {
 		await tx.param.create({
-			data: { ...where, ...rowData(defs.get(p.defId)!, p), position, enumValues: enumValues(p) }
+			data: {
+				...where,
+				...rowData(defs.get(p.defId)!, p),
+				position,
+				enumValues: enumValues(p),
+				refs: linkRefs(p)
+			}
 		});
 	}
 	if (record) await recordParamChanges(actor, target, old, await signedRows(target, tx), tx);
+	await syncMirrors(actor, target, linksOf(old), inputLinks(params), tx);
 	const keptFiles = new Set(params.flatMap((p) => (p.valueType === 'FILE' ? [p.fileKey] : [])));
 	return old.flatMap((r) => (r.fileKey && !keptFiles.has(r.fileKey) ? [r.fileKey] : []));
 }
@@ -471,10 +639,12 @@ export async function addParam(
 				...where,
 				...rowData(def, p),
 				position: (last._max.position ?? -1) + 1,
-				enumValues: enumValues(p)
+				enumValues: enumValues(p),
+				refs: linkRefs(p)
 			}
 		});
 		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
+		await syncMirrors(actor, target, new Map(), inputLinks([p]), tx);
 		return row.id;
 	});
 	return getParam(actor, id);
@@ -488,7 +658,7 @@ function paramTarget(param: Pick<Param, 'typeId' | 'itemId'>): ParamTarget {
 async function findParam(actor: Actor, id: string, tx: Tx = db) {
 	const param = await tx.param.findFirst({
 		where: { id, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] },
-		include: { def: true }
+		include: { def: { include: { inverse: true } }, refs: true }
 	});
 	if (!param) throw new NotFoundError('Параметр не найден');
 	return param;
@@ -497,7 +667,7 @@ async function findParam(actor: Actor, id: string, tx: Tx = db) {
 export async function getParam(actor: Actor, id: string, tx: Tx = db): Promise<ParamView> {
 	const row = await tx.param.findFirstOrThrow({
 		where: { id: (await findParam(actor, id, tx)).id },
-		include: { enumValues: true, def: true }
+		include: { enumValues: true, refs: true, def: true }
 	});
 	return (await toViews(actor, [row], tx))[0]!;
 }
@@ -513,6 +683,7 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 		await assertValueValid(actor, param.def, p, tx, target, refsOf([param]));
 		const before = await signedRows(target, tx);
 		await tx.paramEnumValue.deleteMany({ where: { paramId: id } });
+		await tx.paramRef.deleteMany({ where: { paramId: id } });
 		const cleared = {
 			textValue: null,
 			numberValue: null,
@@ -522,15 +693,14 @@ export async function updateParam(actor: Actor, id: string, input: unknown): Pro
 			fileKey: null,
 			fileName: null,
 			fileMime: null,
-			fileSize: null,
-			refItemId: null,
-			refTypeId: null
+			fileSize: null
 		};
 		await tx.param.update({
 			where: { id },
-			data: { ...cleared, ...rowData(param.def, p), enumValues: enumValues(p) }
+			data: { ...cleared, ...rowData(param.def, p), enumValues: enumValues(p), refs: linkRefs(p) }
 		});
 		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
+		await syncMirrors(actor, target, linksOf([param]), inputLinks([p]), tx);
 		const keep = p.valueType === 'FILE' ? p.fileKey : null;
 		return param.fileKey && param.fileKey !== keep ? [param.fileKey] : [];
 	});
@@ -547,6 +717,7 @@ export async function deleteParam(actor: Actor, id: string): Promise<void> {
 		const before = await signedRows(target, tx);
 		await tx.param.delete({ where: { id } });
 		await recordParamChanges(actor, target, before, await signedRows(target, tx), tx);
+		await syncMirrors(actor, target, linksOf([param]), new Map(), tx);
 		return param;
 	});
 	if (param.fileKey) await deleteUnreferencedFiles([param.fileKey]);
@@ -585,7 +756,8 @@ export const defInclude = {
 				include: { _count: { select: { values: true } } }
 			}
 		}
-	}
+	},
+	inverse: { select: { id: true, name: true, valueType: true, ownerId: true, householdId: true } }
 } satisfies Prisma.ParamDefInclude;
 
 export async function defViews(
@@ -612,7 +784,9 @@ export async function defViews(
 			usage: o._count.values
 		})),
 		typeCount: byDef.get(d.id)?.typeId ?? 0,
-		itemCount: byDef.get(d.id)?.itemId ?? 0
+		itemCount: byDef.get(d.id)?.itemId ?? 0,
+		holder: d.inverse && isLink(d.inverse.valueType) ? d.inverse.valueType : null,
+		inverse: d.inverse ? { id: d.inverse.id, name: d.inverse.name } : null
 	}));
 }
 
@@ -633,7 +807,8 @@ function defSummary(def: Prisma.ParamDefGetPayload<{ include: typeof defInclude 
 		unit: def.unit,
 		valueType: PARAM_VALUE_TYPE_LABELS[def.valueType],
 		multiple: def.dictionary?.multiple ?? null,
-		options: def.dictionary?.options.map((o) => o.label).join(', ') ?? null
+		options: def.dictionary?.options.map((o) => o.label).join(', ') ?? null,
+		inverse: def.inverse?.name ?? null
 	};
 }
 
@@ -697,7 +872,7 @@ async function assertNameFree(actor: Actor, name: string, exceptId: string | nul
 }
 
 export async function createParamDef(actor: Actor, input: unknown): Promise<ParamDefView> {
-	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
+	const { options, multiple, holder, inverseName, ...data } = paramDefInputSchema.parse(input);
 	if (options.some((o) => o.id)) throw new ValidationError('У новых вариантов не бывает id');
 	const id = await writeTransaction(async (tx) => {
 		await assertNameFree(actor, data.name, null, tx);
@@ -707,26 +882,62 @@ export async function createParamDef(actor: Actor, input: unknown): Promise<Para
 				: null;
 		const def = await tx.paramDef.create({ data: { ...data, dictionaryId, ...ownedBy(actor) } });
 		await recordEvent(tx, actor, { kind: 'paramDef.created', subject: paramDefRef(def), data: {} });
+		if (holder && inverseName) await createInverse(actor, def, holder, inverseName, tx);
 		return def.id;
 	});
 	return (await getParamDef(actor, id)).def;
 }
 
 /**
+ * Gives a new link its inverse: itself when symmetric (the same name, item ↔
+ * item or type ↔ type), otherwise a new definition that lives where the link
+ * points and points where the link lives.
+ */
+async function createInverse(
+	actor: Actor,
+	def: ParamDef,
+	holder: LinkKind,
+	inverseName: string,
+	tx: Tx
+): Promise<void> {
+	if (isSymmetric({ ...def, holder, inverseName })) {
+		await tx.paramDef.update({ where: { id: def.id }, data: { inverseId: def.id } });
+		return;
+	}
+	await assertNameFree(actor, inverseName, null, tx);
+	const inverse = await tx.paramDef.create({
+		data: { name: inverseName, valueType: holder, inverseId: def.id, ...ownedBy(actor) }
+	});
+	await tx.paramDef.update({ where: { id: def.id }, data: { inverseId: inverse.id } });
+	await recordEvent(tx, actor, {
+		kind: 'paramDef.created',
+		subject: paramDefRef(inverse),
+		data: {}
+	});
+}
+
+/**
  * Renames a definition (every value shows the new name at once), changes its
  * unit or its drop-down options. The value type can change only while no
- * type or item has a value.
+ * type or item has a value, and never to or from a link: a link and its
+ * inverse are made together. A link can rename its inverse; where it lives,
+ * what it points at and whether it is symmetric stay as created.
  */
 export async function updateParamDef(
 	actor: Actor,
 	id: string,
 	input: unknown
 ): Promise<ParamDefView> {
-	const { options, multiple, ...data } = paramDefInputSchema.parse(input);
+	const { options, multiple, holder, inverseName, ...data } = paramDefInputSchema.parse(input);
 	await writeTransaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
 		await assertNameFree(actor, data.name, id, tx);
-		if (data.valueType !== def.valueType && (await tx.param.count({ where: { defId: id } }))) {
+		if (isLink(def.valueType) || isLink(data.valueType)) {
+			assertLinkKept(def, { ...data, holder, inverseName });
+		} else if (
+			data.valueType !== def.valueType &&
+			(await tx.param.count({ where: { defId: id } }))
+		) {
 			throw new ConflictError('Тип значения можно поменять, только пока у параметра нет значений');
 		}
 		let dictionaryId = def.dictionaryId;
@@ -744,31 +955,74 @@ export async function updateParamDef(
 		if (def.dictionaryId && !dictionaryId) {
 			await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
 		}
-		const updated = await findDef(actor, id, tx);
-		const changes = diffFields(defSummary(def), defSummary(updated));
-		if (changes.length) {
-			await recordEvent(tx, actor, {
-				kind: 'paramDef.updated',
-				subject: paramDefRef(updated),
-				data: { changes }
-			});
+		const inverse = def.inverse && def.inverse.id !== id ? def.inverse : null;
+		if (inverse && inverseName && inverseName !== inverse.name) {
+			await assertNameFree(actor, inverseName, inverse.id, tx);
+			const before = await findDef(actor, inverse.id, tx);
+			await tx.paramDef.update({ where: { id: inverse.id }, data: { name: inverseName } });
+			await recordDefChanges(actor, before, await findDef(actor, inverse.id, tx), tx);
 		}
+		await recordDefChanges(actor, def, await findDef(actor, id, tx), tx);
 	});
 	return (await getParamDef(actor, id)).def;
 }
 
-/** Deletes a definition no type or item has a value of (with its options). */
+type FullDef = Prisma.ParamDefGetPayload<{ include: typeof defInclude }>;
+
+async function recordDefChanges(actor: Actor, before: FullDef, after: FullDef, tx: Tx) {
+	const changes = diffFields(defSummary(before), defSummary(after));
+	if (changes.length) {
+		await recordEvent(tx, actor, {
+			kind: 'paramDef.updated',
+			subject: paramDefRef(after),
+			data: { changes }
+		});
+	}
+}
+
+/** A link stays the same kind of link: what it points at, where it lives, symmetric or not. */
+function assertLinkKept(
+	def: FullDef,
+	next: {
+		name: string;
+		valueType: ParamDef['valueType'];
+		holder: LinkKind | null;
+		inverseName: string | null;
+	}
+): void {
+	const fixed = 'Вид связи задаётся при создании — удалите параметр и создайте заново';
+	if (!isLink(def.valueType) || !def.inverse) {
+		throw new ConflictError('Связью можно сделать только новый параметр');
+	}
+	if (next.valueType !== def.valueType || next.holder !== def.inverse.valueType) {
+		throw new ConflictError(fixed);
+	}
+	const symmetric = def.inverse.id === def.id;
+	if (isSymmetric(next) !== symmetric) {
+		throw new ConflictError(
+			symmetric
+				? 'У симметричной связи параметр у связанной вещи называется так же'
+				: `${fixed}: параметр у связанной вещи не может называться так же`
+		);
+	}
+}
+
+/**
+ * Deletes a definition no type or item has a value of (with its options). A
+ * link goes together with its inverse.
+ */
 export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 	await writeTransaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
-		const used = await tx.param.count({ where: { defId: id } });
+		const ids = [...new Set([id, ...(def.inverse ? [def.inverse.id] : [])])];
+		const used = await tx.param.count({ where: { defId: { in: ids } } });
 		if (used > 0) {
 			throw new ConflictError(
 				`Параметр задан у типов и вещей (${used}) — сначала удалите значения`
 			);
 		}
 		const categories = await tx.category.findMany({
-			where: { params: { some: { defId: id } } },
+			where: { params: { some: { defId: { in: ids } } } },
 			select: { name: true },
 			orderBy: { name: 'asc' }
 		});
@@ -777,8 +1031,10 @@ export async function deleteParamDef(actor: Actor, id: string): Promise<void> {
 				`Параметр обязателен в категориях: ${categories.map((c) => `«${c.name}»`).join(', ')} — сначала уберите его оттуда`
 			);
 		}
-		await recordEvent(tx, actor, { kind: 'paramDef.deleted', subject: paramDefRef(def), data: {} });
-		await tx.paramDef.delete({ where: { id } });
+		for (const d of ids.length > 1 ? [def, def.inverse!] : [def]) {
+			await recordEvent(tx, actor, { kind: 'paramDef.deleted', subject: paramDefRef(d), data: {} });
+		}
+		await tx.paramDef.deleteMany({ where: { id: { in: ids } } });
 		if (def.dictionaryId) await tx.enumDictionary.delete({ where: { id: def.dictionaryId } });
 	});
 }

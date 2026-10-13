@@ -287,13 +287,13 @@ describe('types', () => {
 			await expect(deleteType(actor, type.id)).rejects.toThrow('есть вещи');
 		});
 
-		it('keeps a type referenced by a parameter', async () => {
+		it('keeps a type linked through a parameter', async () => {
 			const type = await createType(actor, { name: 'Блок питания' });
 			const item = await createItem(actor, { newTypeName: 'Паяльник' });
 			await setKeyedParams(actor, { itemId: item.id }, [
-				{ key: 'зарядка', valueType: 'REF', refTypeId: type.id }
+				{ key: 'зарядка', valueType: 'TYPE', refIds: [type.id], holder: 'ITEM' }
 			]);
-			await expect(deleteType(actor, type.id)).rejects.toThrow('ссылаются');
+			await expect(deleteType(actor, type.id)).rejects.toThrow('уберите связи');
 		});
 	});
 });

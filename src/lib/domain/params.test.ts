@@ -5,6 +5,9 @@ import {
 	formatNumber,
 	formatParamValue,
 	inheritedParams,
+	fitsHolder,
+	isLink,
+	isSymmetric,
 	paramDefInputSchema,
 	paramInputSchema,
 	paramListSchema
@@ -35,8 +38,9 @@ describe('paramInputSchema', () => {
 				fileSize: 1000
 			},
 			{ defId: DEF, valueType: 'DATE', date: '2027-05-01' },
-			{ defId: DEF, valueType: 'REF', refItemId: 'ctest0000000000000000003' },
-			{ defId: DEF, valueType: 'BOOLEAN', value: false }
+			{ defId: DEF, valueType: 'BOOLEAN', value: false },
+			{ defId: DEF, valueType: 'ITEM', refIds: ['ctest0000000000000000003'] },
+			{ defId: DEF, valueType: 'TYPE', refIds: ['ctest0000000000000000004'] }
 		];
 		for (const input of inputs) expect(paramInputSchema.parse(input)).toMatchObject(input);
 	});
@@ -55,7 +59,20 @@ describe('paramInputSchema', () => {
 			paramInputSchema.safeParse({ defId: DEF, valueType: 'URL', url: 'javascript:alert(1)' })
 				.success
 		).toBe(false);
-		expect(paramInputSchema.safeParse({ defId: DEF, valueType: 'REF' }).success).toBe(false);
+		expect(paramInputSchema.safeParse({ defId: DEF, valueType: 'ITEM' }).success).toBe(false);
+		expect(
+			paramInputSchema.safeParse({ defId: DEF, valueType: 'TYPE', refIds: [] }).error?.issues[0]
+				?.message
+		).toBe('Выберите тип');
+	});
+
+	it('drops repeated link targets', () => {
+		const id = 'ctest0000000000000000003';
+		expect(paramInputSchema.parse({ defId: DEF, valueType: 'ITEM', refIds: [id, id] })).toEqual({
+			defId: DEF,
+			valueType: 'ITEM',
+			refIds: [id]
+		});
 	});
 
 	it('drops a unit given with a value (the unit belongs to the parameter)', () => {
@@ -80,7 +97,9 @@ describe('paramDefInputSchema', () => {
 			valueType: 'NUMBER',
 			unit: null,
 			multiple: false,
-			options: []
+			options: [],
+			holder: null,
+			inverseName: null
 		});
 		expect(paramDefInputSchema.parse({ name: 'вес', valueType: 'NUMBER', unit: ' г ' }).unit).toBe(
 			'г'
@@ -99,7 +118,15 @@ describe('paramDefInputSchema', () => {
 				multiple: true,
 				options: [{ label: 'красный' }]
 			})
-		).toEqual({ name: 'цвет', valueType: 'STRING', unit: null, multiple: false, options: [] });
+		).toEqual({
+			name: 'цвет',
+			valueType: 'STRING',
+			unit: null,
+			multiple: false,
+			options: [],
+			holder: null,
+			inverseName: null
+		});
 		expect(
 			paramDefInputSchema.parse({ name: 'напряжение', valueType: 'RANGE', unit: 'В' }).unit
 		).toBe('В');
@@ -116,7 +143,9 @@ describe('paramDefInputSchema', () => {
 			valueType: 'ENUM',
 			unit: null,
 			multiple: true,
-			options: [{ label: 'USB' }, { label: 'Bluetooth' }]
+			options: [{ label: 'USB' }, { label: 'Bluetooth' }],
+			holder: null,
+			inverseName: null
 		});
 	});
 
@@ -138,6 +167,49 @@ describe('paramDefInputSchema', () => {
 				options: [{ label: '  ' }]
 			}).success
 		).toBe(false);
+	});
+});
+
+describe('links', () => {
+	const link = { name: 'Содержит деталь', valueType: 'ITEM', holder: 'ITEM' } as const;
+
+	it('needs where it lives and the inverse name', () => {
+		const r = paramDefInputSchema.safeParse({ name: 'Содержит деталь', valueType: 'ITEM' });
+		expect(r.error?.issues.map((i) => i.message)).toEqual([
+			'Укажите, где задаётся связь',
+			'Укажите параметр у связанной вещи'
+		]);
+		expect(paramDefInputSchema.parse({ ...link, inverseName: ' Является деталью ' })).toMatchObject(
+			{ holder: 'ITEM', inverseName: 'Является деталью' }
+		);
+	});
+
+	it('drops link fields from other parameters', () => {
+		expect(
+			paramDefInputSchema.parse({
+				name: 'вес',
+				valueType: 'NUMBER',
+				holder: 'TYPE',
+				inverseName: 'x'
+			})
+		).toMatchObject({ holder: null, inverseName: null });
+	});
+
+	it('is symmetric with the same name both ways between holders of one kind', () => {
+		const same = { name: 'Совместим с', inverseName: 'совместим С' };
+		expect(isSymmetric({ ...same, valueType: 'TYPE', holder: 'TYPE' })).toBe(true);
+		expect(isSymmetric({ ...same, valueType: 'TYPE', holder: 'ITEM' })).toBe(false);
+		expect(isSymmetric({ ...link, inverseName: 'Является деталью' })).toBe(false);
+		const mixed = paramDefInputSchema.safeParse({ ...same, valueType: 'TYPE', holder: 'ITEM' });
+		expect(mixed.error?.issues[0]?.path).toEqual(['inverseName']);
+	});
+
+	it('tells where a link can live', () => {
+		expect(isLink('ITEM')).toBe(true);
+		expect(isLink('STRING')).toBe(false);
+		expect(fitsHolder({ holder: null }, 'TYPE')).toBe(true);
+		expect(fitsHolder({ holder: 'ITEM' }, 'ITEM')).toBe(true);
+		expect(fitsHolder({ holder: 'ITEM' }, 'TYPE')).toBe(false);
 	});
 });
 
@@ -173,12 +245,14 @@ describe('formatting', () => {
 		).toBe('USB, Bluetooth');
 		expect(
 			f({
-				valueType: 'REF',
-				refItemId: 'x',
-				refTypeId: null,
-				ref: { kind: 'item', id: 'x', name: 'Блок питания 12 В', archived: true }
+				valueType: 'ITEM',
+				refIds: ['x', 'y'],
+				refs: [
+					{ id: 'x', name: 'Блок питания 12 В', archived: true },
+					{ id: 'y', name: 'Кабель', archived: false }
+				]
 			})
-		).toBe('Блок питания 12 В');
+		).toBe('Блок питания 12 В, Кабель');
 	});
 
 	it('formats dates and sizes', () => {

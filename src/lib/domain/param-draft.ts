@@ -3,7 +3,7 @@
  * fixes the name, the value type, the unit and the drop-down options; numbers
  * stay strings until saving so «4,5» can be typed.
  */
-import type { ParamInput, ParamValueType, ParamView } from './params';
+import type { LinkTarget, ParamInput, ParamValueType, ParamView } from './params';
 
 /** What a draft needs to know about its parameter definition. */
 export interface DraftDef {
@@ -30,7 +30,8 @@ export interface ParamDraft {
 	url: string;
 	file: { fileKey: string; fileName: string; fileMime: string; fileSize: number } | null;
 	date: string;
-	ref: { kind: 'item' | 'type'; id: string; name: string } | null;
+	/** ITEM, TYPE: the chosen targets in order. */
+	refs: LinkTarget[];
 	bool: boolean;
 }
 
@@ -51,7 +52,7 @@ export function emptyDraft(def: DraftDef): ParamDraft {
 		url: '',
 		file: null,
 		date: '',
-		ref: null,
+		refs: [],
 		bool: false
 	};
 }
@@ -101,11 +102,12 @@ export function draftFromView(p: ParamView): ParamDraft {
 		case 'DATE':
 			d.date = p.date;
 			break;
-		case 'REF':
-			d.ref = p.ref ? { kind: p.ref.kind, id: p.ref.id, name: p.ref.name } : null;
-			break;
 		case 'BOOLEAN':
 			d.bool = p.value;
+			break;
+		case 'ITEM':
+		case 'TYPE':
+			d.refs = (p.refs ?? []).map((r) => ({ ...r }));
 			break;
 	}
 	return d;
@@ -134,14 +136,10 @@ export function draftToInput(d: ParamDraft): Partial<ParamInput> & Record<string
 			return { ...base, valueType: 'FILE', ...d.file };
 		case 'DATE':
 			return { ...base, valueType: 'DATE', date: d.date };
-		case 'REF':
-			return {
-				...base,
-				valueType: 'REF',
-				refItemId: d.ref?.kind === 'item' ? d.ref.id : null,
-				refTypeId: d.ref?.kind === 'type' ? d.ref.id : null
-			};
 		case 'BOOLEAN':
 			return { ...base, valueType: 'BOOLEAN', value: d.bool };
+		case 'ITEM':
+		case 'TYPE':
+			return { ...base, valueType: d.valueType, refIds: d.refs.map((r) => r.id) };
 	}
 }

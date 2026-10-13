@@ -6,7 +6,7 @@
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import ParamDefFields from '$lib/components/ParamDefFields.svelte';
-	import type { ParamValueType } from '$lib/domain/params';
+	import { isLink, type LinkKind, type ParamValueType } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -25,6 +25,12 @@
 	let multiple = $state(data.card.def.multiple);
 	// svelte-ignore state_referenced_locally
 	let options = $state(data.card.def.options.map((o) => ({ ...o })));
+	// svelte-ignore state_referenced_locally
+	let holder = $state<LinkKind>(data.card.def.holder ?? 'ITEM');
+	// svelte-ignore state_referenced_locally
+	let inverseName = $state(data.card.def.inverse?.name ?? '');
+	const link = $derived(isLink(def.valueType));
+	const symmetric = $derived(def.inverse?.id === def.id);
 	let busy = $state(false);
 	let error = $state('');
 	let saved = $state(false);
@@ -53,7 +59,10 @@
 				// A new option left empty (Enter adds one) is not an option.
 				options: options
 					.filter((o) => o.id || o.label.trim())
-					.map(({ id, label }) => ({ id, label }))
+					.map(({ id, label }) => ({ id, label })),
+				holder,
+				// A symmetric link is renamed both ways at once.
+				inverseName: symmetric ? name : inverseName
 			});
 			await invalidateAll();
 			// New options got ids and usage counts.
@@ -82,8 +91,31 @@
 <h1 class="mb-3 text-2xl font-bold break-words">{def.name}</h1>
 
 <form class="flex flex-col gap-3" onsubmit={save}>
-	<ParamDefFields bind:name bind:valueType bind:unit bind:multiple bind:options typeLocked={used} />
-	{#if used}
+	<ParamDefFields
+		bind:name
+		bind:valueType
+		bind:unit
+		bind:multiple
+		bind:options
+		bind:holder
+		bind:inverseName
+		typeLocked={used || link}
+		holderLocked
+		noLinks={!link}
+	/>
+	{#if link && def.inverse}
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			{#if symmetric}
+				Симметричная связь: одно название в обе стороны.
+			{:else}
+				У связанной {def.valueType === 'TYPE' ? 'типа' : 'вещи'} —
+				<a
+					class="text-primary-700 hover:underline dark:text-primary-400"
+					href="/params/{def.inverse.id}">«{def.inverse.name}»</a
+				>.
+			{/if}
+		</p>
+	{:else if used}
 		<p class="text-sm text-gray-500 dark:text-gray-400">
 			Тип значения можно поменять, только пока параметр нигде не задан. Вариант, который выбран у
 			вещей или типов, удалить нельзя.

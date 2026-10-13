@@ -4,6 +4,7 @@ import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import { defIdFor } from '$lib/server/testing/params';
 import { discard, listArchive, purge, restore } from './archive';
+import { addParam, deleteParam, listParams } from './params';
 import { createWorkbench, listWorkbench, take } from './workbench';
 
 describe('archive service', () => {
@@ -132,20 +133,17 @@ describe('archive service', () => {
 		const chip = await item('NE555', box.id);
 		const s = await stickerFor(box.id);
 		const other = await item('Другая');
-		await db.param.create({
-			data: {
-				itemId: other.id,
-				defId: await defIdFor(actor, 'Ссылка', 'REF'),
-				valueType: 'REF',
-				refItemId: box.id
-			}
-		});
+		const link = await addParam(
+			actor,
+			{ itemId: other.id },
+			{ defId: await defIdFor(actor, 'Ссылка', 'ITEM'), valueType: 'ITEM', refIds: [box.id] }
+		);
 
 		await expect(purge(actor, box.id)).rejects.toThrow('только вещь из архива');
 		await discard(actor, box.id, { contents: 'discard' });
-		// A parameter «Вещь» of another item still points at it.
-		await expect(purge(actor, box.id)).rejects.toThrow('ссылаются параметры');
-		await db.param.deleteMany({ where: { itemId: other.id } });
+		// It is still linked with another item (either way).
+		await expect(purge(actor, box.id)).rejects.toThrow('уберите связи');
+		await deleteParam(actor, link.id);
 		await purge(actor, box.id);
 
 		expect(await db.item.findMany({ where: { id: { in: [box.id, chip.id] } } })).toEqual([]);
@@ -167,19 +165,21 @@ describe('archive service', () => {
 		await expect(purge(actor, box.id)).rejects.toThrow('ждут возврата');
 	});
 
-	it('keeps param refs to archived items', async () => {
+	it('keeps links with archived items', async () => {
 		const box = await item('Коробка');
 		const other = await item('Другая');
-		const param = await db.param.create({
-			data: {
-				itemId: other.id,
-				defId: await defIdFor(actor, 'Ссылка', 'REF'),
-				valueType: 'REF',
-				refItemId: box.id
-			}
-		});
+		await addParam(
+			actor,
+			{ itemId: other.id },
+			{ defId: await defIdFor(actor, 'Ссылка', 'ITEM'), valueType: 'ITEM', refIds: [box.id] }
+		);
 		await discard(actor, box.id);
-		expect((await db.param.findUniqueOrThrow({ where: { id: param.id } })).refItemId).toBe(box.id);
+		expect((await listParams(actor, { itemId: other.id }))[0]?.refs).toEqual([
+			{ id: box.id, name: 'Коробка', archived: true }
+		]);
+		expect((await listParams(actor, { itemId: box.id }))[0]?.refs?.map((r) => r.id)).toEqual([
+			other.id
+		]);
 	});
 
 	it('lists archived items with paths, newest first, only the actor’s', async () => {

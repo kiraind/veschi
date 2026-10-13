@@ -1,9 +1,11 @@
 /**
  * Parameters. A parameter definition (ParamDef, «Параметры» page) has a name,
  * a value type, a unit (numbers) and its own option list (ENUM); types and
- * items hold typed values of definitions. Input validation, display
- * formatting and the rule for the item card. Pure functions, shared by the
- * server and the browser.
+ * items hold typed values of definitions. A link («Вещь», «Тип») points at
+ * items or types and always has an inverse with its own name: «Содержит
+ * деталь» on a device ↔ «Является деталью» on the part. Input validation,
+ * display formatting and the rule for the item card. Pure functions, shared
+ * by the server and the browser.
  */
 import { z } from 'zod';
 import { idSchema } from './id';
@@ -16,8 +18,9 @@ export const PARAM_VALUE_TYPES = [
 	'URL',
 	'FILE',
 	'DATE',
-	'REF',
-	'BOOLEAN'
+	'BOOLEAN',
+	'ITEM',
+	'TYPE'
 ] as const;
 
 export type ParamValueType = (typeof PARAM_VALUE_TYPES)[number];
@@ -30,9 +33,32 @@ export const PARAM_VALUE_TYPE_LABELS: Record<ParamValueType, string> = {
 	URL: 'Ссылка (URL)',
 	FILE: 'Файл',
 	DATE: 'Дата',
-	REF: 'Вещь или тип',
-	BOOLEAN: 'Да / нет'
+	BOOLEAN: 'Да / нет',
+	ITEM: 'Связь с вещами',
+	TYPE: 'Связь с типами'
 };
+
+/** Value types of links: the value is items (ITEM) or types (TYPE). */
+export type LinkKind = 'ITEM' | 'TYPE';
+
+/** True for links («Вещь», «Тип»). */
+export function isLink(valueType: ParamValueType): valueType is LinkKind {
+	return valueType === 'ITEM' || valueType === 'TYPE';
+}
+
+/** «у вещей» / «у типов»: where a link lives. */
+export const LINK_HOLDER_LABELS: Record<LinkKind, string> = {
+	ITEM: 'у вещей',
+	TYPE: 'у типов'
+};
+
+/** «Параметр у связанной вещи»: the field with the inverse's name. */
+export function inverseNameLabel(valueType: LinkKind): string {
+	return valueType === 'TYPE' ? 'Параметр у связанного типа' : 'Параметр у связанной вещи';
+}
+
+/** Most targets one link value may hold. */
+export const MAX_LINK_TARGETS = 100;
 
 /** Largest file a FILE parameter may hold. */
 export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
@@ -65,9 +91,28 @@ export function hasUnit(valueType: ParamValueType): boolean {
 }
 
 /**
+ * Is a link with these names symmetric — its own inverse («Совместим с»)?
+ * Only a link between holders of one kind (item ↔ item, type ↔ type) can be.
+ */
+export function isSymmetric(v: {
+	name: string;
+	inverseName: string | null;
+	valueType: ParamValueType;
+	holder: LinkKind | null;
+}): boolean {
+	return (
+		isLink(v.valueType) &&
+		v.holder === v.valueType &&
+		normalizeParamKey(v.name) === normalizeParamKey(v.inverseName ?? '')
+	);
+}
+
+/**
  * A new or changed parameter definition. Numbers may have a unit; a
  * drop-down (ENUM) has its options: the full ordered list, options with an id
- * are kept (and renamed), others are new.
+ * are kept (and renamed), others are new. A link («Вещь», «Тип») says where
+ * it lives (`holder`: on items or on types) and names its inverse; the same
+ * name both ways makes a symmetric link (item ↔ item or type ↔ type only).
  */
 export const paramDefInputSchema = z
 	.object({
@@ -78,9 +123,41 @@ export const paramDefInputSchema = z
 		options: z
 			.array(z.object({ id: idSchema.optional(), label: optionLabel }))
 			.max(MAX_OPTIONS, `Не больше ${MAX_OPTIONS} вариантов`)
-			.default([])
+			.default([]),
+		holder: z
+			.enum(['ITEM', 'TYPE'])
+			.nullish()
+			.transform((v) => v ?? null),
+		inverseName: z
+			.string()
+			.trim()
+			.max(100, 'Параметр у связанной вещи длиннее 100 символов')
+			.nullish()
+			.transform((v) => v || null)
 	})
 	.superRefine((v, ctx) => {
+		if (isLink(v.valueType)) {
+			if (!v.holder) {
+				ctx.addIssue({ code: 'custom', message: 'Укажите, где задаётся связь', path: ['holder'] });
+			}
+			if (!v.inverseName) {
+				ctx.addIssue({
+					code: 'custom',
+					message: `Укажите ${inverseNameLabel(v.valueType).toLocaleLowerCase('ru')}`,
+					path: ['inverseName']
+				});
+			} else if (
+				normalizeParamKey(v.name) === normalizeParamKey(v.inverseName) &&
+				v.holder !== v.valueType
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					message:
+						'Названия с двух сторон совпадают — так можно только у связи вещи с вещью или типа с типом',
+					path: ['inverseName']
+				});
+			}
+		}
 		const seen = new Set<string>();
 		v.options.forEach((o, i) => {
 			const k = o.label.toLocaleLowerCase('ru');
@@ -98,7 +175,9 @@ export const paramDefInputSchema = z
 		...v,
 		unit: hasUnit(v.valueType) ? v.unit : null,
 		multiple: v.valueType === 'ENUM' ? v.multiple : false,
-		options: v.valueType === 'ENUM' ? v.options : []
+		options: v.valueType === 'ENUM' ? v.options : [],
+		holder: isLink(v.valueType) ? v.holder : null,
+		inverseName: isLink(v.valueType) ? v.inverseName : null
 	}));
 
 export type ParamDefInput = z.input<typeof paramDefInputSchema>;
@@ -123,6 +202,15 @@ export interface ParamDefView {
 	/** Types and items that have a value of it. */
 	typeCount: number;
 	itemCount: number;
+	/** Links: where it lives (on items or on types). */
+	holder: LinkKind | null;
+	/** Links: the inverse (itself when symmetric). */
+	inverse: { id: string; name: string } | null;
+}
+
+/** Can a type (TYPE) or an item (ITEM) have a value of this parameter? Links live on one kind only. */
+export function fitsHolder(def: Pick<ParamDefView, 'holder'>, holder: LinkKind): boolean {
+	return def.holder === null || def.holder === holder;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,12 +230,19 @@ const valueVariants = {
 		fileSize: z.number().int().min(0).max(MAX_PARAM_FILE_SIZE)
 	},
 	DATE: { date: z.string().refine(isIsoDate, 'Нужна дата ГГГГ-ММ-ДД') },
-	REF: {
-		refItemId: idSchema.nullish().transform((v) => v ?? null),
-		refTypeId: idSchema.nullish().transform((v) => v ?? null)
-	},
-	BOOLEAN: { value: z.boolean() }
+	BOOLEAN: { value: z.boolean() },
+	ITEM: { refIds: linkTargets('Выберите вещь') },
+	TYPE: { refIds: linkTargets('Выберите тип') }
 } as const;
+
+/** Targets of a link value: at least one, each once (repeats are dropped). */
+function linkTargets(empty: string) {
+	return z
+		.array(idSchema)
+		.min(1, empty)
+		.max(MAX_LINK_TARGETS, `Не больше ${MAX_LINK_TARGETS} ссылок`)
+		.transform((ids) => [...new Set(ids)]);
+}
 
 /** The value of one parameter, given with the definition it belongs to. */
 export const paramInputSchema = z
@@ -159,15 +254,13 @@ export const paramInputSchema = z
 		z.object({ defId: idSchema, valueType: z.literal('URL'), ...valueVariants.URL }),
 		z.object({ defId: idSchema, valueType: z.literal('FILE'), ...valueVariants.FILE }),
 		z.object({ defId: idSchema, valueType: z.literal('DATE'), ...valueVariants.DATE }),
-		z.object({ defId: idSchema, valueType: z.literal('REF'), ...valueVariants.REF }),
-		z.object({ defId: idSchema, valueType: z.literal('BOOLEAN'), ...valueVariants.BOOLEAN })
+		z.object({ defId: idSchema, valueType: z.literal('BOOLEAN'), ...valueVariants.BOOLEAN }),
+		z.object({ defId: idSchema, valueType: z.literal('ITEM'), ...valueVariants.ITEM }),
+		z.object({ defId: idSchema, valueType: z.literal('TYPE'), ...valueVariants.TYPE })
 	])
 	.superRefine((v, ctx) => {
 		if (v.valueType === 'RANGE' && v.min > v.max) {
 			ctx.addIssue({ code: 'custom', message: 'Минимум больше максимума', path: ['max'] });
-		}
-		if (v.valueType === 'REF' && (v.refItemId === null) === (v.refTypeId === null)) {
-			ctx.addIssue({ code: 'custom', message: 'Выберите вещь или тип', path: ['refItemId'] });
 		}
 	});
 
@@ -191,8 +284,8 @@ export const paramListSchema = z
 
 /**
  * A stored parameter as shown to the user: the value plus what the server
- * resolved (the definition's name, enum option labels in list order, the REF
- * target).
+ * resolved (the definition's name, enum option labels in list order, link
+ * targets).
  */
 export type ParamView = ParamInput & {
 	id: string;
@@ -202,9 +295,16 @@ export type ParamView = ParamInput & {
 	unit?: string | null;
 	/** ENUM: chosen options; renaming an option shows here at once. */
 	options?: { id: string; label: string }[];
-	/** REF: the target, or null when it no longer exists. */
-	ref?: { kind: 'item' | 'type'; id: string; name: string; archived: boolean } | null;
+	/** ITEM, TYPE: the targets by name (refIds lists the same ones). */
+	refs?: LinkTarget[];
 };
+
+/** One target of a link as shown: an item (maybe in the archive) or a type. */
+export interface LinkTarget {
+	id: string;
+	name: string;
+	archived: boolean;
+}
 
 /** Name comparison is case-insensitive and ignores surrounding spaces. */
 export function normalizeParamKey(k: string): string {
@@ -261,7 +361,7 @@ export function formatFileSize(bytes: number): string {
 
 /** The value of a parameter as one line of text. */
 export function formatParamValue(
-	p: ParamValue & Pick<ParamView, 'options' | 'ref' | 'unit'>
+	p: ParamValue & Pick<ParamView, 'options' | 'refs' | 'unit'>
 ): string {
 	switch (p.valueType) {
 		case 'STRING':
@@ -278,10 +378,11 @@ export function formatParamValue(
 			return p.fileName;
 		case 'DATE':
 			return formatDate(p.date);
-		case 'REF':
-			return p.ref ? p.ref.name : 'удалено';
 		case 'BOOLEAN':
 			return p.value ? 'да' : 'нет';
+		case 'ITEM':
+		case 'TYPE':
+			return (p.refs ?? []).map((r) => r.name).join(', ');
 	}
 }
 

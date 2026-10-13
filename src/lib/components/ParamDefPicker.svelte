@@ -2,22 +2,35 @@
 	import { Button, Card, Input } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
-	import { normalizeParamKey, paramKindLabel, type ParamDefView } from '$lib/domain/params';
+	import {
+		fitsHolder,
+		normalizeParamKey,
+		paramKindLabel,
+		type LinkKind,
+		type ParamDefView
+	} from '$lib/domain/params';
 	import ParamDefCreate from './ParamDefCreate.svelte';
 
 	/**
 	 * Chooses a parameter: search the existing ones by name or create a new one
-	 * (name, value type, unit or drop-down options) right here.
+	 * (name, value type, unit or drop-down options) right here. With `holder`
+	 * only parameters a type (TYPE) or an item (ITEM) can have are offered.
 	 */
 	let {
 		onpick,
 		oncancel,
-		exclude = []
+		exclude = [],
+		holder,
+		bare = false
 	}: {
 		onpick: (def: ParamDefView) => void;
 		oncancel: () => void;
 		/** Parameters the list already has. */
 		exclude?: string[];
+		/** The value goes to a type or an item: links living elsewhere are not offered. */
+		holder?: LinkKind;
+		/** Without the card frame (inside a sheet). */
+		bare?: boolean;
 	} = $props();
 
 	let defs = $state<ParamDefView[] | null>(null);
@@ -35,13 +48,18 @@
 	const q = $derived(normalizeParamKey(query));
 	const matches = $derived(
 		(defs ?? [])
-			.filter((d) => !exclude.includes(d.id) && normalizeParamKey(d.name).includes(q))
+			.filter(
+				(d) =>
+					!exclude.includes(d.id) &&
+					(!holder || fitsHolder(d, holder)) &&
+					normalizeParamKey(d.name).includes(q)
+			)
 			.slice(0, q ? 8 : 12)
 	);
 	const exact = $derived((defs ?? []).find((d) => normalizeParamKey(d.name) === q));
 </script>
 
-<Card class="max-w-none gap-3 p-3">
+{#snippet body()}
 	{#if !creating}
 		<Input
 			type="search"
@@ -82,6 +100,11 @@
 			{/if}
 			{#if exact && exclude.includes(exact.id)}
 				<p class="text-sm text-gray-500 dark:text-gray-400">«{exact.name}» уже есть в списке.</p>
+			{:else if exact && holder && !fitsHolder(exact, holder)}
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					«{exact.name}» — связь {exact.holder === 'TYPE' ? 'у типов' : 'у вещей'}, здесь её не
+					задать.
+				</p>
 			{/if}
 		{/if}
 		<div class="flex flex-wrap gap-2">
@@ -95,9 +118,16 @@
 	{:else}
 		<ParamDefCreate
 			name={query}
+			{holder}
 			oncreated={onpick}
 			oncancel={() => (creating = false)}
 			cancelLabel="Назад"
 		/>
 	{/if}
-</Card>
+{/snippet}
+
+{#if bare}
+	<div class="flex flex-col gap-3">{@render body()}</div>
+{:else}
+	<Card class="max-w-none gap-3 p-3">{@render body()}</Card>
+{/if}
