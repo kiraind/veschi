@@ -97,6 +97,18 @@ login=$(http -c "$COOKIES" -H "Origin: $BASE" -H "Accept: text/html" \
 [ "$(http -b "$COOKIES" "$BASE/")" = '200 ' ] || fail 'GET / after login is not 200'
 echo 'ok: admin created and can sign in'
 
+# A file goes to MinIO and comes back whole, with its size and type.
+printf 'veschi smoke file' >"$COOKIES.txt"
+key=$(curl -fsS -b "$COOKIES" -H "Origin: $BASE" -F "file=@$COOKIES.txt;type=text/plain" \
+	"$BASE/api/uploads" | sed -n 's/.*"fileKey":"\([^"]*\)".*/\1/p')
+[ -n "$key" ] || fail 'upload did not return a fileKey'
+headers=$(curl -fsS -b "$COOKIES" -H 'Accept-Encoding: identity' -D - -o "$COOKIES.out" "$BASE/files/$key")
+cmp -s "$COOKIES.txt" "$COOKIES.out" || fail 'downloaded file differs from the upload'
+echo "$headers" | grep -qi '^content-length: 17' || fail "wrong content-length: $headers"
+echo "$headers" | grep -qi '^content-type: text/plain' || fail "wrong content-type: $headers"
+rm -f "$COOKIES.txt" "$COOKIES.out"
+echo 'ok: a file is stored in MinIO and served back'
+
 docker restart veschi-smoke-app >/dev/null
 retry 90 curl -fsS "$BASE/healthz" || fail '/healthz did not answer 200 after restart'
 [ "$(admin_count)" = 1 ] || fail 'admin user duplicated after restart'

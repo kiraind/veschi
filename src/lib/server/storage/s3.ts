@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http';
 import { Client, S3Error } from 'minio';
 import type { Storage, StoredObject } from './types';
 
@@ -45,12 +46,17 @@ export class S3Storage implements Storage {
 
 	async get(key: string): Promise<StoredObject | null> {
 		try {
-			const stat = await this.client.statObject(this.bucket, key);
-			const body = await this.client.getObject(this.bucket, key);
+			// minio returns the HTTP response itself: its headers carry the size and type,
+			// so no separate statObject round trip is needed.
+			const body = (await this.client.getObject(this.bucket, key)) as IncomingMessage;
+			const length = Number(body.headers['content-length']);
+			const size = Number.isFinite(length)
+				? length
+				: (await this.client.statObject(this.bucket, key)).size;
 			return {
 				body,
-				size: stat.size,
-				contentType: String(stat.metaData['content-type'] ?? 'application/octet-stream')
+				size,
+				contentType: body.headers['content-type'] ?? 'application/octet-stream'
 			};
 		} catch (e) {
 			if (e instanceof S3Error && (e.code === 'NoSuchKey' || e.code === 'NotFound')) return null;
