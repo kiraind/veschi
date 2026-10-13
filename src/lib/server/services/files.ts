@@ -79,27 +79,41 @@ export async function openFile(
 	key: string,
 	{ thumb = false }: { thumb?: boolean } = {}
 ): Promise<StoredObject & { fileName: string | null }> {
-	let fileName: string | null = null;
-	let allowed = isOwnUpload(actor, key);
-	if (!allowed) {
-		const [type, param] = await Promise.all([
-			db.itemType.findFirst({ where: { photoKey: key, ...visibleTo(actor) } }),
-			db.param.findFirst({
-				where: { fileKey: key, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] }
-			})
-		]);
-		allowed = Boolean(type || param);
-		fileName = param?.fileName ?? null;
-	} else {
-		const param = await db.param.findFirst({ where: { fileKey: key } });
-		fileName = param?.fileName ?? null;
+	// The access check and the download run at the same time; the file is sent only
+	// once the check allows it, and its stream is dropped otherwise.
+	const [access, download] = await Promise.allSettled([
+		fileAccess(actor, key),
+		// Access is checked on the photo itself; a photo without a thumbnail is served whole.
+		(async () => (thumb ? await storage().get(thumbKeyOf(key)) : null) ?? storage().get(key))()
+	]);
+	const object = download.status === 'fulfilled' ? download.value : null;
+	if (access.status === 'rejected' || !access.value.allowed) {
+		object?.body.destroy();
+		// A key the actor may not open is «not found», whatever the storage said about it.
+		if (access.status === 'rejected') throw access.reason;
+		throw new NotFoundError('Файл не найден');
 	}
-	// Access is checked on the photo itself; a photo without a thumbnail is served whole.
-	const object = !allowed
-		? null
-		: ((thumb ? await storage().get(thumbKeyOf(key)) : null) ?? (await storage().get(key)));
+	if (download.status === 'rejected') throw download.reason;
 	if (!object) throw new NotFoundError('Файл не найден');
-	return { ...object, fileName };
+	return { ...object, fileName: access.value.fileName };
+}
+
+/** Whether the actor may open the file, and its original name (file parameters). */
+async function fileAccess(
+	actor: Actor,
+	key: string
+): Promise<{ allowed: boolean; fileName: string | null }> {
+	if (isOwnUpload(actor, key)) {
+		const param = await db.param.findFirst({ where: { fileKey: key } });
+		return { allowed: true, fileName: param?.fileName ?? null };
+	}
+	const [type, param] = await Promise.all([
+		db.itemType.findFirst({ where: { photoKey: key, ...visibleTo(actor) } }),
+		db.param.findFirst({
+			where: { fileKey: key, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] }
+		})
+	]);
+	return { allowed: Boolean(type || param), fileName: param?.fileName ?? null };
 }
 
 /** Deletes stored objects that no parameter or type photo references any more. */

@@ -6,6 +6,7 @@ import { MAX_PARAM_FILE_SIZE } from '$lib/domain/params';
 import { openFile, uploadParamFile } from './files';
 import { createItem } from './items';
 import { setKeyedParams } from '$lib/server/testing/params';
+import { MemoryStorage, setStorage, type StoredObject } from '$lib/server/storage';
 
 describe('files', () => {
 	let actor: Actor;
@@ -63,5 +64,28 @@ describe('files', () => {
 		await expect(openFile(other, file.fileKey)).rejects.toThrow('не найден');
 		await expect(openFile(actor, 'types/x/y.webp')).rejects.toThrow('не найден');
 		await expect(openFile(actor, `params/${actor.userId}/../x`)).rejects.toThrow('не найден');
+	});
+
+	it('drops the download of a file the actor may not open, and answers «not found»', async () => {
+		const file = await upload();
+		const opened: StoredObject[] = [];
+		const storage = new (class extends MemoryStorage {
+			async get(key: string) {
+				if (key.includes('broken')) throw new Error('Invalid object name');
+				const object = await super.get(key);
+				if (object) opened.push(object);
+				return object;
+			}
+		})();
+		storage.objects.set(file.fileKey, {
+			data: Buffer.from('%PDF-1.4'),
+			contentType: 'application/pdf'
+		});
+		setStorage(storage);
+
+		await expect(openFile(other, file.fileKey)).rejects.toThrow('не найден');
+		expect(opened.map((o) => o.body.destroyed)).toEqual([true]);
+		await expect(openFile(actor, 'params/broken')).rejects.toThrow('не найден');
+		expect((await openFile(actor, file.fileKey)).body.destroyed).toBe(false);
 	});
 });
