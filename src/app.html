@@ -3,19 +3,23 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="theme-color" content="#1f2937" />
+		<meta name="theme-color" content="#f9fafb" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icons/apple-touch-icon.png" />
 		<script>
 			// «Системная» theme: follow the device's light / dark setting, before the first paint
 			// and whenever it changes. «Светлая» / «Тёмная» are set by the server (hooks.server.ts).
+			// The system bar (theme-color) takes the page background: gray-50 / gray-900.
 			(function () {
 				var root = document.documentElement;
 				var media = matchMedia('(prefers-color-scheme: dark)');
+				var bar = document.querySelector('meta[name="theme-color"]');
 				function apply() {
 					var theme = root.dataset.theme;
-					root.classList.toggle('dark', theme === 'dark' || (theme === 'system' && media.matches));
+					var dark = theme === 'dark' || (theme === 'system' && media.matches);
+					root.classList.toggle('dark', dark);
+					bar.setAttribute('content', dark ? '#101828' : '#f9fafb');
 				}
 				apply();
 				media.addEventListener('change', apply);
