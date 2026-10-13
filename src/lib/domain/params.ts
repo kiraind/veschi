@@ -52,9 +52,9 @@ export const LINK_HOLDER_LABELS: Record<LinkKind, string> = {
 	TYPE: 'у типов'
 };
 
-/** «Название у связанной вещи»: the field with the inverse's name. */
+/** «Параметр у связанной вещи»: the field with the inverse's name. */
 export function inverseNameLabel(valueType: LinkKind): string {
-	return valueType === 'TYPE' ? 'Название у связанного типа' : 'Название у связанной вещи';
+	return valueType === 'TYPE' ? 'Параметр у связанного типа' : 'Параметр у связанной вещи';
 }
 
 /** Most targets one link value may hold. */
@@ -131,7 +131,7 @@ export const paramDefInputSchema = z
 		inverseName: z
 			.string()
 			.trim()
-			.max(100, 'Название у связанной вещи длиннее 100 символов')
+			.max(100, 'Параметр у связанной вещи длиннее 100 символов')
 			.nullish()
 			.transform((v) => v || null)
 	})

@@ -182,7 +182,7 @@ describe('links', () => {
 		).rejects.toThrow('задаётся при создании');
 		await expect(
 			updateParamDef(actor, contains.id, { ...input, inverseName: 'содержит' })
-		).rejects.toThrow('не может совпадать');
+		).rejects.toThrow('не может называться так же');
 		const weight = await createParamDef(actor, { name: 'Вес', valueType: 'NUMBER' });
 		await expect(updateParamDef(actor, weight.id, { ...input, name: 'Вес' })).rejects.toThrow(
 			'только новый параметр'

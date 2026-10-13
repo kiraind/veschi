@@ -177,7 +177,7 @@ describe('links', () => {
 		const r = paramDefInputSchema.safeParse({ name: 'Содержит деталь', valueType: 'ITEM' });
 		expect(r.error?.issues.map((i) => i.message)).toEqual([
 			'Укажите, где задаётся связь',
-			'Укажите название у связанной вещи'
+			'Укажите параметр у связанной вещи'
 		]);
 		expect(paramDefInputSchema.parse({ ...link, inverseName: ' Является деталью ' })).toMatchObject(
 			{ holder: 'ITEM', inverseName: 'Является деталью' }
