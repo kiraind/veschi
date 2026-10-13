@@ -8,23 +8,34 @@
  * the app shell load fast and lets the last seen pages open without a network:
  * - app files (Vite build output and static/) are precached per version;
  * - page navigations go to the network first and fall back to the last copy;
+ *   with no copy, a «Нет связи» page explains what happened (`offlinePage`);
  * - /api/ and /files/ are never touched (always network, never cached).
+ * A navigation also falls back when the server takes longer than NAVIGATION_TIMEOUT_MS
+ * or the proxy in front of it answers 502/503/504 (app restarting or down).
  */
 import { build, files, version } from '$service-worker';
+import {
+	isGatewayStatus,
+	markOfflineCopy,
+	offlinePage,
+	type OfflineReason
+} from '$lib/domain/offline';
 
 const sw = globalThis.self as unknown as ServiceWorkerGlobalScope;
 
 const ASSETS_CACHE = `assets-${version}`;
-/** Last successful copy of each visited page, used only when offline. */
-const PAGES_CACHE = 'pages';
+/**
+ * Last successful copy of each visited page, used only when offline. Per version:
+ * a copy needs the scripts and styles of its version, and those are dropped with it.
+ */
+const PAGES_CACHE = `pages-${version}`;
 const ASSETS = new Set([...build, ...files]);
 
-const OFFLINE_HTML = `<!doctype html><html lang="ru"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Нет сети — Вещи</title>
-<body style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center">
-<h1>Нет сети</h1><p>Эта страница ещё не открывалась на этом устройстве. Проверьте подключение и обновите страницу.</p>
-</body></html>`;
+/**
+ * A page that hasn't started to arrive by then is replaced by its saved copy or the
+ * «Нет связи» page (the request still finishes in the background and refreshes the copy).
+ */
+const NAVIGATION_TIMEOUT_MS = 15_000;
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(caches.open(ASSETS_CACHE).then((cache) => cache.addAll([...ASSETS])));
@@ -53,27 +64,55 @@ async function fromAssets(request: Request): Promise<Response> {
 	return cached ?? fetch(request);
 }
 
-async function networkFirstPage(request: Request): Promise<Response> {
+/** The saved copy of a page, marked for ConnectionNotice, or the «Нет связи» page. */
+async function fallbackPage(request: Request, reason: OfflineReason): Promise<Response> {
+	const cached = await caches.match(request, { cacheName: PAGES_CACHE });
+	if (cached) {
+		const html = markOfflineCopy(await cached.text(), new Date(cached.headers.get('date') ?? ''));
+		return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+	}
+	return new Response(offlinePage(reason), {
+		status: 503,
+		headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
+	});
+}
+
+/** Keeps the last good copy of a page; the login page clears them (signed out). */
+async function savePage(request: Request, response: Response): Promise<void> {
+	if (new URL(request.url).pathname === '/login') {
+		// The login page opens only without a session (signed out or expired; a redirect
+		// to it is opaque here): forget the pages of the previous session.
+		if (response.status === 200) await caches.delete(PAGES_CACHE);
+	} else if (response.status === 200 && response.type === 'basic') {
+		const cache = await caches.open(PAGES_CACHE);
+		await cache.put(request, response);
+	}
+}
+
+async function networkFirstPage(event: FetchEvent): Promise<Response> {
+	const { request } = event;
+	const network = fetch(request).then((response) => {
+		event.waitUntil(savePage(request, response.clone()));
+		return response;
+	});
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<'timeout'>((resolve) => {
+		timer = setTimeout(() => resolve('timeout'), NAVIGATION_TIMEOUT_MS);
+	});
+	// The page may still arrive after the timeout: let it refresh the saved copy.
+	event.waitUntil(network.catch(() => undefined));
 	try {
-		const response = await fetch(request);
-		if (new URL(request.url).pathname === '/login') {
-			// The login page opens only without a session (signed out or expired; a redirect
-			// to it is opaque here): forget the pages of the previous session.
-			if (response.status === 200) await caches.delete(PAGES_CACHE);
-		} else if (response.status === 200 && response.type === 'basic') {
-			const cache = await caches.open(PAGES_CACHE);
-			await cache.put(request, response.clone());
+		const response = await Promise.race([network, timeout]);
+		if (response === 'timeout') return fallbackPage(request, 'timeout');
+		// Only the proxy answers these (the app never does), and its error page says nothing useful.
+		if (isGatewayStatus(response.status)) {
+			return fallbackPage(request, 'down');
 		}
 		return response;
 	} catch {
-		const cached = await caches.match(request, { cacheName: PAGES_CACHE });
-		return (
-			cached ??
-			new Response(OFFLINE_HTML, {
-				status: 503,
-				headers: { 'content-type': 'text/html; charset=utf-8' }
-			})
-		);
+		return fallbackPage(request, 'network');
+	} finally {
+		clearTimeout(timer);
 	}
 }
 
@@ -91,6 +130,6 @@ sw.addEventListener('fetch', (event) => {
 	if (ASSETS.has(url.pathname)) {
 		event.respondWith(fromAssets(request));
 	} else if (request.mode === 'navigate') {
-		event.respondWith(networkFirstPage(request));
+		event.respondWith(networkFirstPage(event));
 	}
 });

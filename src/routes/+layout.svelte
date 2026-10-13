@@ -26,6 +26,7 @@
 		SwatchbookOutline
 	} from 'flowbite-svelte-icons';
 	import ConfirmHost from '$lib/components/ConfirmHost.svelte';
+	import ConnectionNotice from '$lib/components/ConnectionNotice.svelte';
 	import BoxIcon from '$lib/components/icons/BoxIcon.svelte';
 	import DeskIcon from '$lib/components/icons/DeskIcon.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
@@ -196,3 +197,4 @@
 {/if}
 
 <ConfirmHost />
+<ConnectionNotice belowNavbar={data.user !== null} />

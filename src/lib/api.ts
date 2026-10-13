@@ -2,6 +2,13 @@
  * Browser-side client for the JSON API under /api. All changes go through this
  * one layer (groundwork for the future offline mode, see docs/spec.md).
  */
+import { browser } from '$app/environment';
+import { connection } from '$lib/connection.svelte';
+import { isGatewayStatus } from '$lib/domain/offline';
+
+/** A read gives up after this long; changes are not cut off (a photo upload can be slow). */
+const GET_TIMEOUT_MS = 20_000;
+
 export class ApiError extends Error {
 	constructor(
 		readonly status: number,
@@ -23,13 +30,14 @@ async function request<T>(
 	fetchImpl: Fetch = fetch
 ): Promise<T> {
 	const init: RequestInit = { method, headers: {} };
+	if (method === 'GET') init.signal = AbortSignal.timeout(GET_TIMEOUT_MS);
 	if (body instanceof FormData) {
 		init.body = body;
 	} else if (body !== undefined) {
 		init.body = JSON.stringify(body);
 		(init.headers as Record<string, string>)['content-type'] = 'application/json';
 	}
-	const response = await fetchImpl(path, init);
+	const response = await track(fetchImpl(path, init));
 	if (response.status === 401 && typeof window !== 'undefined') {
 		window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 	}
@@ -43,12 +51,33 @@ async function request<T>(
 		throw new ApiError(
 			response.status,
 			payload.error?.code ?? 'http_error',
-			payload.error?.message ?? `Ошибка ${response.status}`,
+			payload.error?.message ??
+				(isGatewayStatus(response.status)
+					? `Сервер недоступен (${response.status}), попробуйте позже`
+					: `Ошибка ${response.status}`),
 			payload.error?.details
 		);
 	}
 	if (response.status === 204) return undefined as T;
 	return (await response.json()) as T;
+}
+
+/** Reports to `connection` whether the request reached the server (in the browser only). */
+async function track(pending: Promise<Response>): Promise<Response> {
+	if (!browser) return pending;
+	connection.pending++;
+	try {
+		const response = await pending;
+		// The app never answers 502/503/504 itself: it is the proxy saying the app is down.
+		if (isGatewayStatus(response.status)) connection.failed();
+		else connection.reached();
+		return response;
+	} catch (e) {
+		if (!(e instanceof DOMException && e.name === 'AbortError')) connection.failed();
+		throw e;
+	} finally {
+		connection.pending--;
+	}
 }
 
 export const api = {
@@ -67,5 +96,9 @@ export function errorText(
 	e: unknown,
 	fallback = 'Нет связи с сервером, попробуйте ещё раз'
 ): string {
-	return e instanceof ApiError ? e.message : fallback;
+	if (e instanceof ApiError) return e.message;
+	if (e instanceof DOMException && e.name === 'TimeoutError') {
+		return 'Сервер не ответил вовремя, попробуйте ещё раз';
+	}
+	return fallback;
 }
