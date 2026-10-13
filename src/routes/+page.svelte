@@ -4,6 +4,7 @@
 	import { PlusOutline, QrCodeOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import SearchNotices from '$lib/components/SearchNotices.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
+	import { searchPlaceholder } from '$lib/domain/search';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -14,6 +15,12 @@
 	/** The query this page last put into the URL. */
 	// svelte-ignore state_referenced_locally
 	let requested = data.q.trim();
+	/** The server sends a placeholder only with an empty query; the last one stays while typing. */
+	// svelte-ignore state_referenced_locally
+	let placeholder = $state(data.placeholder ?? searchPlaceholder([], []));
+	$effect(() => {
+		if (data.placeholder) placeholder = data.placeholder;
+	});
 
 	// The URL changed from outside (the «Поиск» tab, back): the field follows it.
 	$effect(() => {
@@ -88,7 +95,7 @@
 		size="lg"
 		class="ps-11 text-base max-md:h-14 max-md:rounded-2xl max-md:placeholder:text-gray-400 max-md:border-2 max-md:border-primary-600 max-md:bg-white max-md:shadow-lg max-md:dark:border-primary-500 max-md:dark:bg-gray-800"
 		bind:value={query}
-		placeholder={data.placeholder}
+		{placeholder}
 		aria-label="Поиск"
 		autocomplete="off"
 	>

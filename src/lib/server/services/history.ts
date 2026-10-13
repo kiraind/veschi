@@ -219,14 +219,16 @@ export async function listHistory(
 
 /** People who appear in the actor's history (for the «Кто» filter). */
 export async function listHistoryActors(actor: Actor): Promise<{ id: string; name: string }[]> {
-	const rows = await db.historyEvent.findMany({
-		where: { ...visibleTo(actor), actorId: { not: null } },
-		distinct: ['actorId'],
-		select: { actor: { select: { id: true, name: true } } }
+	// groupBy is a GROUP BY in SQL; findMany with `distinct` would read every event.
+	const groups = await db.historyEvent.groupBy({
+		by: ['actorId'],
+		where: { ...visibleTo(actor), actorId: { not: null } }
 	});
-	return rows
-		.flatMap((r) => (r.actor ? [r.actor] : []))
-		.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+	const users = await db.user.findMany({
+		where: { id: { in: groups.flatMap((g) => (g.actorId ? [g.actorId] : [])) } },
+		select: { id: true, name: true }
+	});
+	return users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 }
 
 /**
@@ -238,26 +240,29 @@ export async function describeEntity(
 	id: string
 ): Promise<{ name: string; kind: SubjectKind | null }> {
 	const scope = visibleTo(actor);
-	const item = await db.item.findFirst({
-		where: { id, ...scope },
-		include: { type: { select: { name: true } } }
-	});
+	const named = { where: { id, ...scope }, select: { name: true } } as const;
+	const [item, type, def, category, collection, last] = await Promise.all([
+		db.item.findFirst({
+			where: { id, ...scope },
+			include: { type: { select: { name: true } } }
+		}),
+		db.itemType.findFirst(named),
+		db.paramDef.findFirst(named),
+		db.category.findFirst(named),
+		db.collection.findFirst(named),
+		db.historyEvent.findFirst({
+			where: { subjectId: id, ...scope },
+			orderBy: { createdAt: 'desc' }
+		})
+	]);
 	if (item) {
 		const { name, kind } = itemRef(item);
 		return { name, kind };
 	}
-	const type = await db.itemType.findFirst({ where: { id, ...scope } });
 	if (type) return { name: type.name, kind: 'type' };
-	const def = await db.paramDef.findFirst({ where: { id, ...scope } });
 	if (def) return { name: def.name, kind: 'paramDef' };
-	const category = await db.category.findFirst({ where: { id, ...scope } });
 	if (category) return { name: category.name, kind: 'category' };
-	const collection = await db.collection.findFirst({ where: { id, ...scope } });
 	if (collection) return { name: collection.name, kind: 'collection' };
-	const last = await db.historyEvent.findFirst({
-		where: { subjectId: id, ...scope },
-		orderBy: { createdAt: 'desc' }
-	});
 	if (last) return { name: last.subjectName, kind: last.subjectKind as SubjectKind };
 	return { name: 'неизвестно что', kind: null };
 }

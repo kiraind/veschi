@@ -33,7 +33,7 @@ export interface SessionUser {
 /** Resolves a session token to its user; expired sessions are deleted. */
 export async function validateSession(
 	token: string
-): Promise<{ sessionId: string; user: SessionUser; expiresAt: Date } | null> {
+): Promise<{ sessionId: string; user: SessionUser; expiresAt: Date; renewed: boolean } | null> {
 	const sessionId = hashToken(token);
 	const session = await db.session.findUnique({
 		where: { id: sessionId },
@@ -45,7 +45,8 @@ export async function validateSession(
 		return null;
 	}
 	let expiresAt = session.expiresAt;
-	if (expiresAt.getTime() - Date.now() < RENEW_BEFORE_MS) {
+	const renewed = expiresAt.getTime() - Date.now() < RENEW_BEFORE_MS;
+	if (renewed) {
 		expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 		await db.session.update({ where: { id: sessionId }, data: { expiresAt } });
 	}
@@ -53,6 +54,7 @@ export async function validateSession(
 	return {
 		sessionId,
 		expiresAt,
+		renewed,
 		user: {
 			id: user.id,
 			login: user.login,

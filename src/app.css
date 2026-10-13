@@ -1,6 +1,30 @@
 @import 'tailwindcss';
 @plugin 'flowbite/plugin';
-@source '../node_modules/flowbite-svelte/dist';
+/* Only the Flowbite components the app uses (and the ones they render inside):
+   the whole library would put every component's classes into the CSS. */
+@source '../node_modules/flowbite-svelte/dist/alert';
+@source '../node_modules/flowbite-svelte/dist/badge';
+@source '../node_modules/flowbite-svelte/dist/buttons';
+@source '../node_modules/flowbite-svelte/dist/button-group';
+@source '../node_modules/flowbite-svelte/dist/card';
+@source '../node_modules/flowbite-svelte/dist/dialog';
+@source '../node_modules/flowbite-svelte/dist/drawer';
+@source '../node_modules/flowbite-svelte/dist/dropdown';
+@source '../node_modules/flowbite-svelte/dist/list-group';
+@source '../node_modules/flowbite-svelte/dist/modal';
+@source '../node_modules/flowbite-svelte/dist/navbar';
+@source '../node_modules/flowbite-svelte/dist/sidebar';
+@source '../node_modules/flowbite-svelte/dist/spinner';
+@source '../node_modules/flowbite-svelte/dist/toolbar';
+@source '../node_modules/flowbite-svelte/dist/utils';
+@source '../node_modules/flowbite-svelte/dist/forms/checkbox';
+@source '../node_modules/flowbite-svelte/dist/forms/radio';
+@source '../node_modules/flowbite-svelte/dist/forms/input-field';
+@source '../node_modules/flowbite-svelte/dist/forms/label';
+@source '../node_modules/flowbite-svelte/dist/forms/select';
+@source '../node_modules/flowbite-svelte/dist/forms/textarea';
+@source '../node_modules/flowbite-svelte/dist/forms/fileupload';
+@source '../node_modules/flowbite-svelte/dist/forms/helper';
 @source '../node_modules/flowbite-svelte-icons/dist';
 
 /* Dark styles apply under <html class="dark">: the theme is chosen in «Настройки»

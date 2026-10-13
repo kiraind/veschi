@@ -4,6 +4,16 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	build: {
+		rollupOptions: {
+			treeshake: {
+				// flowbite-svelte does not declare `sideEffects`, and its components import each
+				// other through the package index, so every component and theme of the library
+				// ended up in the bundle. Its JS modules have no side effects; its CSS does.
+				moduleSideEffects: (id) => !/\/node_modules\/flowbite-svelte\/.*\.(js|svelte)$/.test(id)
+			}
+		}
+	},
 	test: {
 		projects: [
 			{

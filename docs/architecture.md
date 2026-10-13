@@ -57,6 +57,10 @@ prisma/              схема и миграции
 - Подтверждение действия — `await confirmAction({ title, message?, confirmLabel? })` из `$lib/confirm.svelte`, не `confirm()` браузера.
 - Длинные имена файлов и ссылки показываются через `shortenFileName` / `shortenUrl` из `$lib/domain/shorten`.
 - **Интерфейс**: компоненты Flowbite Svelte (`Button`, `Card`, `Input`, `Badge`, `Alert`…) и утилиты Tailwind; `<style>` в компонентах — только если без него никак. Сначала вёрстка под телефон (≈390 px), кнопки не ниже 40 px. Общие приёмы: h1 — `text-2xl font-bold`, вторичный текст — `text-sm text-gray-500 dark:text-gray-400`, ошибка — `text-sm text-red-600 dark:text-red-500` с `role="alert"`.
+- **Flowbite и размер сборки**: Tailwind ищет классы только в папках `flowbite-svelte`, перечисленных через `@source` в `src/app.css`. Новый компонент Flowbite (и те, что он рисует внутри) — добавить его папку туда, иначе у него не будет стилей. В `vite.config.ts` модули `flowbite-svelte` помечены как не имеющие побочных эффектов, поэтому в бандл попадают только используемые компоненты.
+- Тяжёлое, что нужно не на каждой странице, загружается через `import()` в момент использования (так `QrScanner` грузит jsQR, а где есть — берёт встроенный `BarcodeDetector`).
+- Страницы, `__data.json` и ответы API сжимаются gzip в `hooks.server.ts` (`compress` из `$lib/server/compress`); статика сжата при сборке.
+- Prisma с `relationJoins`: `include` загружает связи одним SQL-запросом. Независимые чтения в `load` идут через `Promise.all`.
 - **Идентификаторы** — cuid (`@default(cuid())`, колонки `TEXT`); во входных данных — `idSchema` из `$lib/domain/id`.
 - **Правка на месте**: отдельных страниц «Изменить» нет. Название или описание правится через карандаш (`EditButton`, ставится в строку в конце текста) и шторку (`TextEditSheet` поверх `Sheet` — Drawer снизу); количество, «Использовать» и «Выкинуть» — `QuantitySheet`. Тип вещи после создания не меняется.
 - Наклейка — всегда на одну вещь: у записи с наклейкой количество 1 (`STICKER_QUANTITY` в `services/items.ts`); `bindSticker` отделяет одну вещь от записи с количеством больше 1.

@@ -1,5 +1,5 @@
 import { pageLoad } from '$lib/server/api';
-import { getItemCard } from '$lib/server/services/items';
+import { getItemSummary } from '$lib/server/services/items';
 import { resolveCode } from '$lib/server/services/stickers';
 import { getType } from '$lib/server/services/types';
 import { listWorkbenches } from '$lib/server/services/workbench';
@@ -17,7 +17,7 @@ export const load: PageServerLoad = pageLoad(async (event) => {
 	const typeId = event.url.searchParams.get('type');
 	const [sticker, parent, type, benches] = await Promise.all([
 		stickerInput ? resolveCode(actor, stickerInput) : null,
-		parentId ? getItemCard(actor, parentId).catch(() => null) : null,
+		parentId ? getItemSummary(actor, parentId).catch(() => null) : null,
 		typeId ? getType(actor, typeId).catch(() => null) : null,
 		listWorkbenches(actor)
 	]);
@@ -26,6 +26,6 @@ export const load: PageServerLoad = pageLoad(async (event) => {
 		type,
 		workbenches: benches.workbenches,
 		lastWorkbenchId: benches.lastWorkbenchId,
-		parent: parent && { id: parent.item.id, name: parent.item.displayName, path: parent.path }
+		parent
 	};
 });

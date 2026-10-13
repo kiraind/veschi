@@ -1,6 +1,7 @@
 import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
 import { errorResponse } from '$lib/server/api';
+import { compress } from '$lib/server/compress';
 import {
 	SESSION_COOKIE,
 	deleteSessionCookie,
@@ -55,7 +56,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 			event.locals.user = { id: user.id, login: user.login, name: user.name };
 			event.locals.actor = { userId: user.id, householdIds: user.householdIds };
 			event.locals.sessionId = session.sessionId;
-			setSessionCookie(event.cookies, token, session.expiresAt);
+			// The cookie expires with the session, so it is sent again only when that moves.
+			if (session.renewed) setSessionCookie(event.cookies, token, session.expiresAt);
 		} else {
 			deleteSessionCookie(event.cookies);
 		}
@@ -69,8 +71,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// The theme from «Настройки» goes into <html> so the page is rendered in it (app.html).
 	const theme = parseTheme(event.cookies.get(THEME_COOKIE));
-	return resolve(event, {
+	const response = await resolve(event, {
 		transformPageChunk: ({ html }) =>
 			html.replace('%theme%', theme).replace('%theme-class%', theme === 'dark' ? 'dark' : '')
 	});
+	// A server-side fetch of the app itself reads the body as is.
+	return event.isSubRequest ? response : compress(event.request, response);
 };
