@@ -5,7 +5,7 @@ import { relocate } from '$lib/server/services/workbench';
 import type { RequestEvent } from './$types';
 
 const Body = z.object({
-	containerId: idSchema.nullable(),
+	containerId: z.nullable(idSchema),
 	quantity: z.number().int().positive().optional()
 });
 

@@ -5,7 +5,7 @@
  * add up. Input validation and how requirements combine. Pure functions,
  * shared by the server and the browser.
  */
-import { z } from 'zod';
+import { z } from './zod';
 import { idSchema } from './id';
 import type { ParamDefView } from './params';
 import { plural } from './plural';
@@ -25,38 +25,40 @@ const MAX_CATEGORY_PARAMS = 100;
 
 export const categoryNameSchema = z
 	.string()
-	.trim()
-	.min(1, 'Укажите название категории')
-	.max(100, 'Название длиннее 100 символов');
+	.check(
+		z.trim(),
+		z.minLength(1, 'Укажите название категории'),
+		z.maxLength(100, 'Название длиннее 100 символов')
+	);
 
-export const categoryDescriptionSchema = z
-	.string()
-	.trim()
-	.max(2000, 'Описание длиннее 2000 символов')
-	.nullish()
-	.transform((v) => v || null);
+export const categoryDescriptionSchema = z.pipe(
+	z.nullish(z.string().check(z.trim(), z.maxLength(2000, 'Описание длиннее 2000 символов'))),
+	z.transform((v) => v || null)
+);
 
 export const categoryInputSchema = z.object({
 	name: categoryNameSchema,
-	description: categoryDescriptionSchema.optional()
+	description: z.optional(categoryDescriptionSchema)
 });
 
 /** Changes of a category: omitted fields stay as they are. */
-export const categoryUpdateSchema = categoryInputSchema.partial();
+export const categoryUpdateSchema = z.partial(categoryInputSchema);
 
 /** The whole list of required parameters of a category, in order; each parameter once. */
 export const categoryParamsSchema = z
 	.array(z.object({ defId: idSchema, level: z.enum(PARAM_LEVELS) }))
-	.max(MAX_CATEGORY_PARAMS, `Не больше ${MAX_CATEGORY_PARAMS} параметров`)
-	.superRefine((list, ctx) => {
-		const seen = new Set<string>();
-		list.forEach((p, i) => {
-			if (seen.has(p.defId)) {
-				ctx.addIssue({ code: 'custom', message: 'Параметр повторяется', path: [i, 'defId'] });
-			}
-			seen.add(p.defId);
-		});
-	});
+	.check(
+		z.maxLength(MAX_CATEGORY_PARAMS, `Не больше ${MAX_CATEGORY_PARAMS} параметров`),
+		z.superRefine((list, ctx) => {
+			const seen = new Set<string>();
+			list.forEach((p, i) => {
+				if (seen.has(p.defId)) {
+					ctx.addIssue({ code: 'custom', message: 'Параметр повторяется', path: [i, 'defId'] });
+				}
+				seen.add(p.defId);
+			});
+		})
+	);
 
 export type CategoryParamInput = z.infer<typeof categoryParamsSchema>[number];
 

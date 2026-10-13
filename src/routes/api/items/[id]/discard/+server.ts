@@ -6,7 +6,7 @@ import type { RequestEvent } from './$types';
 
 const Body = z.object({
 	contents: z.enum(['parent', 'workbench', 'discard']).optional(),
-	workbenchId: idSchema.optional()
+	workbenchId: z.optional(idSchema)
 });
 
 /** «Выкинуть»: to the archive; a container's contents go where chosen. */

@@ -5,7 +5,7 @@
  * весы»). Input validation and how a line's availability reads. Pure
  * functions, shared by the server and the browser.
  */
-import { z } from 'zod';
+import { z } from './zod';
 import { idSchema } from './id';
 import { pieces, plural } from './plural';
 
@@ -17,30 +17,32 @@ export const MAX_ENTRY_QUANTITY = 1_000_000;
 
 export const collectionNameSchema = z
 	.string()
-	.trim()
-	.min(1, 'Укажите название коллекции')
-	.max(100, 'Название длиннее 100 символов');
+	.check(
+		z.trim(),
+		z.minLength(1, 'Укажите название коллекции'),
+		z.maxLength(100, 'Название длиннее 100 символов')
+	);
 
-export const collectionDescriptionSchema = z
-	.string()
-	.trim()
-	.max(2000, 'Описание длиннее 2000 символов')
-	.nullish()
-	.transform((v) => v || null);
+export const collectionDescriptionSchema = z.pipe(
+	z.nullish(z.string().check(z.trim(), z.maxLength(2000, 'Описание длиннее 2000 символов'))),
+	z.transform((v) => v || null)
+);
 
 export const collectionInputSchema = z.object({
 	name: collectionNameSchema,
-	description: collectionDescriptionSchema.optional()
+	description: z.optional(collectionDescriptionSchema)
 });
 
 /** Changes of a collection: omitted fields stay as they are. */
-export const collectionUpdateSchema = collectionInputSchema.partial();
+export const collectionUpdateSchema = z.partial(collectionInputSchema);
 
 export const entryQuantitySchema = z
 	.number({ error: 'Укажите количество' })
-	.int('Количество — целое число')
-	.min(1, 'Количество — не меньше 1')
-	.max(MAX_ENTRY_QUANTITY, `Количество — не больше ${MAX_ENTRY_QUANTITY}`);
+	.check(
+		z.int('Количество — целое число'),
+		z.gte(1, 'Количество — не меньше 1'),
+		z.lte(MAX_ENTRY_QUANTITY, `Количество — не больше ${MAX_ENTRY_QUANTITY}`)
+	);
 
 /**
  * A new line and how many: a type (`typeId`, or `typeName` — the type with
@@ -50,14 +52,16 @@ export const entryQuantitySchema = z
  */
 export const entryInputSchema = z
 	.object({
-		typeId: idSchema.optional(),
-		typeName: z.string().trim().min(1).max(200).optional(),
-		itemId: idSchema.optional(),
-		quantity: entryQuantitySchema.default(1)
+		typeId: z.optional(idSchema),
+		typeName: z.optional(z.string().check(z.trim(), z.minLength(1), z.maxLength(200))),
+		itemId: z.optional(idSchema),
+		quantity: z._default(entryQuantitySchema, 1)
 	})
-	.refine((e) => [e.typeId, e.typeName, e.itemId].filter(Boolean).length === 1, {
-		message: 'Укажите тип или вещь'
-	});
+	.check(
+		z.refine((e) => [e.typeId, e.typeName, e.itemId].filter(Boolean).length === 1, {
+			message: 'Укажите тип или вещь'
+		})
+	);
 
 export type EntryInput = z.infer<typeof entryInputSchema>;
 
