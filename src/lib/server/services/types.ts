@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { ItemType } from '@prisma/client';
 import { z } from 'zod';
+import { barcodeQuery } from '$lib/domain/barcode';
 import { escapeLike } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
@@ -16,6 +17,7 @@ import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
 import { categoryInfoOf, type CategoryInfo } from './categories';
 import { collectionNamesHolding } from './collections';
+import { barcodesOf } from './barcodes';
 import { missingParams, type RequiredParam } from '$lib/domain/categories';
 import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
 
@@ -65,6 +67,8 @@ export interface TypeInfo {
 export interface TypeCard extends CategoryInfo {
 	type: TypeInfo;
 	params: ParamView[];
+	/** Packaging barcodes in stored form. */
+	barcodes: string[];
 	/** Required «у типа» parameters it has no value of. */
 	missing: RequiredParam[];
 	items: { id: string; name: string; quantity: number; path: PathNode[] }[];
@@ -92,13 +96,17 @@ export async function getType(actor: Actor, id: string): Promise<TypeInfo> {
 	return typeInfo(await findType(actor, id));
 }
 
-/** Types sorted by name; with `query`, a name or description substring filter (autocomplete). */
+/**
+ * Types sorted by name; with `query`, a name or description substring filter
+ * (autocomplete), digits also match barcodes.
+ */
 export async function listTypes(
 	actor: Actor,
 	query?: string,
 	limit = query ? 20 : 1000
 ): Promise<TypeSummary[]> {
 	const q = query?.trim();
+	const digits = q ? barcodeQuery(q) : null;
 	const types = await db.itemType.findMany({
 		where: {
 			...visibleTo(actor),
@@ -106,7 +114,8 @@ export async function listTypes(
 				? {
 						OR: [
 							{ name: { contains: escapeLike(q), mode: 'insensitive' } },
-							{ description: { contains: escapeLike(q), mode: 'insensitive' } }
+							{ description: { contains: escapeLike(q), mode: 'insensitive' } },
+							...(digits ? [{ barcodes: { some: { code: { contains: digits } } } }] : [])
 						]
 					}
 				: {})
@@ -121,14 +130,15 @@ export async function listTypes(
 /** A type with its parameters and every active item of it with its location. */
 export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 	const type = await findType(actor, id);
-	const [params, items, categories] = await Promise.all([
+	const [params, items, categories, barcodes] = await Promise.all([
 		getParamsOf(actor, 'typeId', [id]),
 		db.item.findMany({
 			where: { typeId: id, status: 'ACTIVE', ...visibleTo(actor) },
 			include: { type: { select: { name: true } } },
 			orderBy: { createdAt: 'asc' }
 		}),
-		categoryInfoOf(id)
+		categoryInfoOf(id),
+		barcodesOf(id)
 	]);
 	const [paths, contents] = await Promise.all([
 		getPaths(items.map((i) => i.id)),
@@ -138,6 +148,7 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 		type: typeInfo(type),
 		hasContents: contents.inside + contents.taken > 0,
 		params: params.get(id) ?? [],
+		barcodes,
 		...categories,
 		missing: missingParams(categories.typeRequired, params.get(id) ?? []),
 		items: items.map((i) => ({

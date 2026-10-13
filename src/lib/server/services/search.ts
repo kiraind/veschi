@@ -4,6 +4,7 @@ import { visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
 import { likePattern, parseSearchQuery } from '$lib/domain/search';
 import { codeQuery } from '$lib/domain/sticker-code';
+import { barcodeQuery } from '$lib/domain/barcode';
 import { getPaths, type PathNode } from './paths';
 
 /** Upper bound of matching item records per query. */
@@ -79,7 +80,7 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 /**
  * Case-insensitive substring search over item own names, type names and
  * descriptions, category names and parameter keys and values; «ключ: значение» also matches parameters with
- * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker. Active ordinary items only. Results are grouped by type.
+ * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker; 4+ digits match items of types with such a packaging barcode. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
 	return (await searchWithLimit(actor, input)).groups;
@@ -106,6 +107,11 @@ export async function searchWithLimit(
 	];
 	const code = codeQuery(query.text);
 	if (code) conditions.push(Prisma.sql`s.code LIKE ${likePattern(code)}`);
+	const barcode = barcodeQuery(query.text);
+	if (barcode) {
+		conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "TypeBarcode" b
+			WHERE b."typeId" = t.id AND b.code LIKE ${likePattern(barcode)})`);
+	}
 	if (query.param) {
 		conditions.push(
 			hasParam(
