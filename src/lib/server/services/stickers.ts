@@ -15,7 +15,6 @@ import {
 	MAX_SHEETS_PER_BATCH,
 	STICKER_WIDTHS,
 	type StickerWidth,
-	hasCaption,
 	isStickerWidth,
 	planSheets,
 	toStickerWidth
@@ -231,10 +230,9 @@ export interface BatchSummary {
 
 /**
  * Issues a batch of new stickers: one per ordered item (in `orderItemIds`,
- * the orders the person saw) in the width of its order, the captions in
- * `captionWidth` (20 or 40 mm), and `blanks[width]` blank ones of each width, with extra
- * blank stickers to fill the last A4 sheet unless `fillSheet` is false
- * (FR-9). Every new code differs from every code ever issued in at least 3
+ * the orders the person saw) in the width of its order, and `blanks[width]`
+ * blank ones of each width, with extra blank stickers `fill` wide to fill the
+ * last A4 sheet unless `fill` is null (FR-9). Every new code differs from every code ever issued in at least 3
  * positions (FR-11). Ordered stickers carry the item's name and are bound to
  * the item right away (one thing is split off a record holding several);
  * their orders are fulfilled.
@@ -242,19 +240,17 @@ export interface BatchSummary {
 export async function issueBatch(
 	actor: Actor,
 	input: {
-		captions: string[];
-		captionWidth?: StickerWidth;
 		blanks: BlankCounts;
 		orderItemIds?: string[];
-		fillSheet?: boolean;
+		/** Width of the blank stickers filling the rest of the last sheet; null — do not fill. */
+		fill?: StickerWidth | null;
 	}
 ): Promise<BatchSummary> {
 	if (!config().qrBaseUrl) throw noQrBaseUrl();
-	const captionWidth = input.captionWidth ?? DEFAULT_STICKER_WIDTH;
-	if (!isStickerWidth(captionWidth) || !hasCaption(captionWidth)) {
-		throw new ValidationError('Подпись помещается на наклейки шириной 20 или 40 мм');
+	const fill = input.fill === undefined ? DEFAULT_STICKER_WIDTH : input.fill;
+	if (fill !== null && !isStickerWidth(fill)) {
+		throw new ValidationError('Наклейки бывают шириной 10, 20 или 40 мм');
 	}
-	const typed = input.captions.map((c) => c.trim()).filter((c) => c.length > 0);
 	for (const width of STICKER_WIDTHS) {
 		const count = input.blanks[width] ?? 0;
 		if (!Number.isInteger(count) || count < 0) {
@@ -271,11 +267,8 @@ export async function issueBatch(
 			if (orders.length !== orderIds.length) {
 				throw new ConflictError('Список наклеек, ждущих печати, изменился, обновите страницу');
 			}
-			const captioned = [
-				...orders.map((o) => ({ caption: o.caption, width: o.width })),
-				...typed.map((caption) => ({ caption, width: captionWidth }))
-			];
-			const plan = planSheets(captioned, input.blanks, input.fillSheet ?? true);
+			const captioned = orders.map((o) => ({ caption: o.caption, width: o.width }));
+			const plan = planSheets(captioned, input.blanks, fill);
 			if (plan.total === 0) throw new ValidationError('Нужна хотя бы одна наклейка');
 			if (plan.sheets > MAX_SHEETS_PER_BATCH) {
 				throw new ValidationError(
@@ -307,8 +300,7 @@ export async function issueBatch(
 					if (ordered) orderCodes[index] = code;
 					return {
 						code,
-						// A 10 mm sticker has no room for a caption, even when ordered for a thing.
-						caption: index === null || !hasCaption(width) ? null : captioned[index]!.caption,
+						caption: index === null ? null : captioned[index]!.caption,
 						width,
 						position,
 						batchId: batch.id,

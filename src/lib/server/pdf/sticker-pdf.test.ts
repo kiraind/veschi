@@ -132,12 +132,15 @@ describe('sticker PDF', () => {
 		const wide = codes.slice(0, 36).map((code) => ({ code, caption: null, width: 40 as const }));
 		expect(pageCount(await renderStickerPdf(wide.slice(0, 35), 'https://v.ex.io'))).toBe(1);
 		expect(pageCount(await renderStickerPdf(wide, 'https://v.ex.io'))).toBe(2);
-		const tiny = generateCodes([], 561).map((code) => ({
+		const tiny = generateCodes([], 461).map((code, i) => ({
 			code,
-			caption: 'Не печатается',
+			caption: i < 80 ? 'Коробка с резисторами и конденсаторами' : null,
 			width: 10 as const
 		}));
-		expect(pageCount(await renderStickerPdf(tiny.slice(0, 560), 'https://v.ex.io'))).toBe(1);
-		expect(pageCount(await renderStickerPdf(tiny, 'https://v.ex.io'))).toBe(2);
+		// Four rows with three-line captions are taller, so the last rows move to page 2.
+		expect(pageCount(await renderStickerPdf(tiny.slice(0, 460), 'https://v.ex.io'))).toBe(2);
+		const blank = tiny.map((s) => ({ ...s, caption: null }));
+		expect(pageCount(await renderStickerPdf(blank.slice(0, 460), 'https://v.ex.io'))).toBe(1);
+		expect(pageCount(await renderStickerPdf(blank, 'https://v.ex.io'))).toBe(2);
 	});
 });

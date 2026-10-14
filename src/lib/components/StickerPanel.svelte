@@ -5,8 +5,8 @@
 	import { api, errorText } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
-	import StickerWidthPicker from './StickerWidthPicker.svelte';
-	import type { StickerWidth } from '$lib/domain/sticker-sheet';
+	import StickerWidthSelect from './StickerWidthSelect.svelte';
+	import { DEFAULT_STICKER_WIDTH, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import { confirmAction } from '$lib/confirm.svelte';
 
 	/** The item's sticker with «Привязать» / «Напечатать» / «Отвязать» actions. */
@@ -35,8 +35,8 @@
 	} = $props();
 
 	let binding = $state(false);
-	/** «Напечатать» was pressed: the width is being chosen. */
-	let choosing = $state(false);
+	/** Width for «Напечатать»; an ordered sticker shows the width of its order. */
+	let width = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -46,7 +46,6 @@
 		try {
 			await action();
 			binding = false;
-			choosing = false;
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e);
@@ -94,14 +93,9 @@
 		</div>
 	{:else}
 		{#if ordered}
-			<div class="flex flex-wrap items-center gap-2">
-				<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
-					>Наклейка {ordered} мм ждёт печати</a
-				>
-				{#if editable}
-					<StickerWidthPicker value={ordered} onpick={order} disabled={busy} />
-				{/if}
-			</div>
+			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
+				>Наклейка {ordered} мм ждёт печати</a
+			>
 		{:else if sticker?.status === 'WRITTEN_OFF'}
 			<span class="text-sm text-gray-500 dark:text-gray-400"
 				>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
@@ -109,22 +103,7 @@
 		{:else}
 			<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
 		{/if}
-		{#if editable && choosing}
-			<p class="text-sm">Какой ширины напечатать наклейку?</p>
-			<div class="flex flex-wrap gap-2">
-				<StickerWidthPicker value={null} onpick={order} disabled={busy} />
-				<Button
-					size="sm"
-					class="h-10"
-					color="alternative"
-					type="button"
-					onclick={() => (choosing = false)}
-					disabled={busy}
-				>
-					Отмена
-				</Button>
-			</div>
-		{:else if editable}
+		{#if editable}
 			<div class="flex flex-wrap gap-2">
 				<Button
 					size="sm"
@@ -137,16 +116,23 @@
 					{binding ? 'Отмена' : 'Привязать'}
 				</Button>
 				{#if !binding}
-					<Button
-						size="sm"
-						class="h-10"
-						color="alternative"
-						type="button"
-						onclick={ordered ? cancelOrder : () => (choosing = true)}
-						disabled={busy}
-					>
-						{ordered ? 'Не печатать' : 'Напечатать'}
-					</Button>
+					<div class="flex gap-2">
+						<StickerWidthSelect
+							value={ordered ?? width}
+							onpick={(picked) => (ordered ? order(picked) : (width = picked))}
+							disabled={busy}
+						/>
+						<Button
+							size="sm"
+							class="h-10"
+							color="alternative"
+							type="button"
+							onclick={ordered ? cancelOrder : () => order(width)}
+							disabled={busy}
+						>
+							{ordered ? 'Не печатать' : 'Напечатать'}
+						</Button>
+					</div>
 				{/if}
 			</div>
 		{/if}

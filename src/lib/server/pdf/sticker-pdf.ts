@@ -2,9 +2,7 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import {
-	CAPTION_FONT_PT,
 	CAPTION_GAP_MM,
-	CAPTION_LINE_MM,
 	MARGIN_X_MM,
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
@@ -13,8 +11,10 @@ import {
 	ID_GAP_MM,
 	type SheetRow,
 	type StickerWidth,
+	captionFontPt,
+	captionLineMm,
 	columns,
-	hasCaption,
+	idBlockMm,
 	idFontMm,
 	idUnderQr,
 	layoutSheets,
@@ -32,7 +32,7 @@ import { formatCode } from '$lib/domain/sticker-code';
 const QR_ERROR_CORRECTION = 'H';
 /**
  * A 10 mm sticker has the ID under the QR, so its QR has no box and level M:
- * fewer modules than H, so they stay as large as possible on a ≈7 mm code.
+ * fewer modules than H, so they stay as large as possible on a 9 mm code.
  */
 const QR_ERROR_CORRECTION_NO_BOX = 'M';
 const ID_BOX_SHARE = 0.31;
@@ -124,8 +124,8 @@ function drawCutLines(doc: PDFKit.PDFDocument, rows: SheetRow[]) {
 
 /**
  * Draws the QR with the ID in two lines (`K7M` over `4QX`) in its centre or,
- * on a 10 mm sticker, the QR centred with `K7M-4QX` under it across the
- * whole width. `x`, `y` — the top-left corner inside the sticker's border.
+ * on a 10 mm sticker, `K7M-4QX` under the QR across its whole width.
+ * `x`, `y` — the top-left corner inside the sticker's border.
  */
 function drawQr(
 	doc: PDFKit.PDFDocument,
@@ -135,13 +135,11 @@ function drawQr(
 	y: number
 ) {
 	const under = idUnderQr(width);
-	const inner = mm(width - 2 * stickerPadding(width));
 	const side = mm(qrSize(width));
 	const { size, box, runs } = qrLayout(qrContent(baseUrl, code), !under);
-	const left = x + (under ? (inner - side) / 2 : 0);
 	const module = side / size;
 	for (const [row, col, length] of runs) {
-		doc.rect(left + col * module, y + row * module, length * module, module);
+		doc.rect(x + col * module, y + row * module, length * module, module);
 	}
 	doc.fillColor('black').fill();
 
@@ -150,7 +148,7 @@ function drawQr(
 		const id = formatCode(code);
 		doc.font(ID_FONT).fontSize(fontSize);
 		const baseline = y + side + mm(ID_GAP_MM) + ID_CAP_HEIGHT_EM * fontSize;
-		doc.text(id, x + (inner - doc.widthOfString(id)) / 2, baseline, {
+		doc.text(id, x + (side - doc.widthOfString(id)) / 2, baseline, {
 			lineBreak: false,
 			baseline: 'alphabetic'
 		});
@@ -182,9 +180,9 @@ function drawCaption(
 	x: number,
 	y: number
 ) {
-	doc.font(CAPTION_FONT).fontSize(CAPTION_FONT_PT).fillColor('black');
+	doc.font(CAPTION_FONT).fontSize(captionFontPt(width)).fillColor('black');
 	wrapCaption(caption, width).lines.forEach((line, i) => {
-		doc.text(line, x, y + i * mm(CAPTION_LINE_MM), {
+		doc.text(line, x, y + i * mm(captionLineMm(width)), {
 			width: mm(qrSize(width)),
 			align: 'center',
 			lineBreak: false
@@ -225,8 +223,8 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 		const x = mm(cell.x + stickerPadding(sticker.width));
 		const y = mm(cell.y + stickerPadding(sticker.width));
 		drawQr(doc, qrBaseUrl, sticker, x, y);
-		if (sticker.caption && hasCaption(sticker.width)) {
-			const top = y + mm(qrSize(sticker.width) + CAPTION_GAP_MM);
+		if (sticker.caption) {
+			const top = y + mm(qrSize(sticker.width) + idBlockMm(sticker.width) + CAPTION_GAP_MM);
 			drawCaption(doc, sticker.caption, sticker.width, x, top);
 		}
 	});

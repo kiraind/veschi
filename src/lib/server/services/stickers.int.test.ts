@@ -26,18 +26,28 @@ describe('stickers', () => {
 		return db.item.create({ data: { ownerId: actor.userId, typeId, name } });
 	}
 
+	/** Items with stickers ordered for them; returns their ids in order. */
+	async function ordered(names: string[], width: 10 | 20 | 40 = 20) {
+		const ids: string[] = [];
+		for (const name of names) {
+			const { id } = await item(name);
+			await orderSticker(actor, id, width);
+			ids.push(id);
+		}
+		return ids;
+	}
+
 	async function batchStickers(batchId: string) {
 		return db.sticker.findMany({ where: { batchId }, orderBy: { position: 'asc' } });
 	}
 
+	/** A free sticker; a caption is set by hand, as on stickers from before orders. */
 	async function freeSticker(caption: string | null = null) {
-		const batch = await issueBatch(actor, {
-			captions: caption ? [caption] : [],
-			blanks: { 20: 1 }
-		});
+		const batch = await issueBatch(actor, { blanks: { 20: 1 } });
 		const [sticker] = await batchStickers(batch.id);
 		if (!sticker) throw new Error('no sticker issued');
-		return sticker;
+		if (!caption) return sticker;
+		return db.sticker.update({ where: { id: sticker.id }, data: { caption } });
 	}
 
 	beforeEach(async () => {
@@ -46,10 +56,11 @@ describe('stickers', () => {
 	});
 
 	describe('issueBatch (FR-9, FR-11)', () => {
-		it('7 captions + 10 blank → one sheet of 130 stickers, 7 captioned', async () => {
+		it('7 ordered + 10 blank → one sheet of 130 stickers, 7 captioned', async () => {
 			const captions = ['Припой', 'Шкаф', 'Полка 1', 'Полка 2', 'Коробка', 'Ящик', 'Пакет'];
-			const batch = await issueBatch(actor, { captions, blanks: { 20: 10 } });
-			expect(batch).toMatchObject({ total: 130, captioned: 7, free: 130 });
+			const orderItemIds = await ordered(captions);
+			const batch = await issueBatch(actor, { blanks: { 20: 10 }, orderItemIds });
+			expect(batch).toMatchObject({ total: 130, captioned: 7, ordered: 7, free: 123 });
 			const stickers = await batchStickers(batch.id);
 			expect(stickers).toHaveLength(130);
 			expect(stickers.slice(0, 7).map((s) => s.caption)).toEqual(captions);
@@ -57,26 +68,26 @@ describe('stickers', () => {
 		});
 
 		it('0 captions + 141 blank → two sheets, 280 stickers', async () => {
-			const batch = await issueBatch(actor, { captions: [], blanks: { 20: 141 } });
+			const batch = await issueBatch(actor, { blanks: { 20: 141 } });
 			expect(batch.total).toBe(280);
 			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(280);
 		});
 
-		it('fillSheet: false → exactly the requested stickers', async () => {
+		it('fill: null → exactly the requested stickers', async () => {
 			const batch = await issueBatch(actor, {
-				captions: ['Припой'],
 				blanks: { 20: 2 },
-				fillSheet: false
+				orderItemIds: await ordered(['Припой']),
+				fill: null
 			});
-			expect(batch).toMatchObject({ total: 3, captioned: 1, free: 3 });
+			expect(batch).toMatchObject({ total: 3, captioned: 1, free: 2 });
 			expect(await db.sticker.count({ where: { batchId: batch.id } })).toBe(3);
 		});
 
 		it('issues new, unique, free codes far from every code issued before, by anyone', async () => {
 			const other = await createTestActor('other');
-			await issueBatch(other, { captions: [], blanks: { 20: 140 } });
-			await issueBatch(actor, { captions: [], blanks: { 20: 140 } });
-			await issueBatch(actor, { captions: [' ', ''], blanks: { 20: 200 } });
+			await issueBatch(other, { blanks: { 20: 140 } });
+			await issueBatch(actor, { blanks: { 20: 140 } });
+			await issueBatch(actor, { blanks: { 20: 200 } });
 			const all = await db.sticker.findMany();
 			expect(all).toHaveLength(140 * 4);
 			expect(all.every((s) => s.status === 'FREE' && /^[2-9A-HJKMNP-Z]{6}$/.test(s.code))).toBe(
@@ -91,9 +102,8 @@ describe('stickers', () => {
 
 		it('prints 40 mm stickers first, five to a row, and keeps their width', async () => {
 			const batch = await issueBatch(actor, {
-				captions: ['Шуруповёрт'],
-				captionWidth: 40,
-				blanks: { 20: 3, 40: 1 }
+				blanks: { 20: 3, 40: 1 },
+				orderItemIds: await ordered(['Шуруповёрт'], 40)
 			});
 			const stickers = await batchStickers(batch.id);
 			// A row of 40 mm (1 captioned + 1 blank + 3 to fill it), then 20 mm to the end of the sheet.
@@ -111,23 +121,19 @@ describe('stickers', () => {
 		});
 
 		it('rejects empty and oversized batches', async () => {
-			await expect(issueBatch(actor, { captions: ['  '], blanks: { 20: 0 } })).rejects.toThrow(
-				'хотя бы одна'
+			await expect(issueBatch(actor, { blanks: { 20: 0 } })).rejects.toThrow('хотя бы одна');
+			await expect(issueBatch(actor, { blanks: { 20: -1 } })).rejects.toThrow();
+			await expect(issueBatch(actor, { blanks: { 40: 35 * 20 + 1 } })).rejects.toThrow('не больше');
+			await expect(issueBatch(actor, { blanks: { 20: 140 * 20 + 1 } })).rejects.toThrow(
+				'не больше'
 			);
-			await expect(issueBatch(actor, { captions: [], blanks: { 20: -1 } })).rejects.toThrow();
-			await expect(
-				issueBatch(actor, { captions: [], blanks: { 40: 35 * 20 + 1 } })
-			).rejects.toThrow('не больше');
-			await expect(
-				issueBatch(actor, { captions: [], blanks: { 20: 140 * 20 + 1 } })
-			).rejects.toThrow('не больше');
 		});
 	});
 
 	it('lists own batches with counts by status', async () => {
 		const other = await createTestActor('other');
-		await issueBatch(other, { captions: [], blanks: { 20: 1 } });
-		const batch = await issueBatch(actor, { captions: ['Припой'], blanks: { 20: 0 } });
+		await issueBatch(other, { blanks: { 20: 1 } });
+		const batch = await issueBatch(actor, { blanks: { 20: 1 } });
 		const [first, second] = await batchStickers(batch.id);
 		if (!first || !second) throw new Error('no stickers issued');
 		const a = await item('A');
@@ -139,16 +145,16 @@ describe('stickers', () => {
 		expect(list).toHaveLength(1);
 		expect(list[0]).toMatchObject({
 			id: batch.id,
-			total: 130,
-			captioned: 1,
-			free: 128,
+			total: 140,
+			captioned: 0,
+			free: 138,
 			bound: 1,
 			writtenOff: 1
 		});
 	});
 
 	it('renders the batch PDF with one page per sheet; other users cannot get it', async () => {
-		const batch = await issueBatch(actor, { captions: ['Припой'], blanks: { 20: 140 } });
+		const batch = await issueBatch(actor, { blanks: { 20: 141 } });
 		const { filename, pdf } = await getBatchPdf(actor, batch.id, 'https://v.ex.io');
 		expect(filename).toMatch(/^stickers-\d{4}-\d{2}-\d{2}-[0-9a-z]{8}\.pdf$/);
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
@@ -210,7 +216,7 @@ describe('stickers', () => {
 
 		it("does not reveal or suggest other users' stickers", async () => {
 			const other = await createTestActor('other');
-			const batch = await issueBatch(other, { captions: [], blanks: { 20: 1 } });
+			const batch = await issueBatch(other, { blanks: { 20: 1 } });
 			const [sticker] = await batchStickers(batch.id);
 			if (!sticker) throw new Error('no sticker issued');
 			expect(await resolveCode(actor, sticker.code)).toEqual({
@@ -363,15 +369,14 @@ describe('stickers', () => {
 			await orderSticker(actor, box.id);
 			await orderSticker(actor, solder.id);
 			const batch = await issueBatch(actor, {
-				captions: ['Полка'],
-				blanks: { 20: 0 },
+				blanks: { 20: 1 },
 				orderItemIds: [box.id, solder.id]
 			});
-			expect(batch).toMatchObject({ total: 130, captioned: 3, ordered: 2, bound: 2, free: 128 });
+			expect(batch).toMatchObject({ total: 130, captioned: 2, ordered: 2, bound: 2, free: 128 });
 			const [first, second, third] = await batchStickers(batch.id);
 			expect(first).toMatchObject({ caption: 'Коробка', status: 'BOUND', itemId: box.id });
 			expect(second).toMatchObject({ caption: 'Припой', status: 'BOUND', fromOrder: true });
-			expect(third).toMatchObject({ caption: 'Полка', status: 'FREE', itemId: null });
+			expect(third).toMatchObject({ caption: null, status: 'FREE', itemId: null });
 			// A sticker marks one thing: one of three solders got its own record.
 			expect(second!.itemId).not.toBe(solder.id);
 			expect(await db.item.findUnique({ where: { id: solder.id } })).toMatchObject({
@@ -391,14 +396,13 @@ describe('stickers', () => {
 			await orderSticker(actor, box.id, 40);
 			expect(await events(box.id)).toEqual(['sticker.ordered']);
 			const batch = await issueBatch(actor, {
-				captions: ['Полка'],
-				blanks: {},
+				blanks: { 20: 1 },
 				orderItemIds: [box.id],
-				fillSheet: false
+				fill: null
 			});
 			const [first, second] = await batchStickers(batch.id);
 			expect(first).toMatchObject({ caption: 'Коробка', width: 40, itemId: box.id });
-			expect(second).toMatchObject({ caption: 'Полка', width: 20, itemId: null });
+			expect(second).toMatchObject({ caption: null, width: 20, itemId: null });
 			expect(await db.historyEvent.findFirst({ where: { kind: 'sticker.printed' } })).toMatchObject(
 				{ data: { code: first!.code } }
 			);
@@ -406,27 +410,24 @@ describe('stickers', () => {
 			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id, width: 40 }]);
 		});
 
-		it('a 10 mm order is printed without the name, still bound to the item', async () => {
-			const box = await item('Коробка');
-			await orderSticker(actor, box.id, 10);
-			const batch = await issueBatch(actor, {
-				captions: [],
-				blanks: {},
-				orderItemIds: [box.id],
-				fillSheet: false
+		it('a 10 mm order is printed with the name, bound to the item; fills with the chosen width', async () => {
+			const [box] = await ordered(['Коробка'], 10);
+			const batch = await issueBatch(actor, { blanks: {}, orderItemIds: [box!], fill: 10 });
+			const stickers = await batchStickers(batch.id);
+			expect(stickers[0]).toMatchObject({
+				width: 10,
+				caption: 'Коробка',
+				itemId: box,
+				status: 'BOUND'
 			});
-			expect(await batchStickers(batch.id)).toMatchObject([
-				{ width: 10, caption: null, itemId: box.id, status: 'BOUND' }
-			]);
-			await expect(
-				issueBatch(actor, { captions: ['Полка'], captionWidth: 10, blanks: {} })
-			).rejects.toThrow('20 или 40 мм');
+			expect(stickers.every((s) => s.width === 10)).toBe(true);
+			expect(stickers.length % 20).toBe(0);
 		});
 
 		it('refuses a batch when the orders changed since the page was loaded', async () => {
 			const box = await item('Коробка');
 			await expect(
-				issueBatch(actor, { captions: [], blanks: { 20: 0 }, orderItemIds: [box.id] })
+				issueBatch(actor, { blanks: { 20: 0 }, orderItemIds: [box.id] })
 			).rejects.toThrow('обновите страницу');
 			expect(await db.stickerBatch.count()).toBe(0);
 		});
@@ -434,7 +435,7 @@ describe('stickers', () => {
 
 	describe('unprintBatch («Не распечатано»)', () => {
 		it('deletes the batch and its stickers, so the IDs are free again', async () => {
-			const batch = await issueBatch(actor, { captions: ['Припой'], blanks: { 20: 0 } });
+			const batch = await issueBatch(actor, { blanks: { 20: 1 } });
 			const [first] = await batchStickers(batch.id);
 			await unprintBatch(actor, batch.id);
 			expect(await db.stickerBatch.count()).toBe(0);
@@ -445,18 +446,14 @@ describe('stickers', () => {
 				await db.historyEvent.findFirst({ where: { kind: 'stickers.unprinted' } })
 			).toMatchObject({
 				subjectId: batch.id,
-				data: { count: 130 }
+				data: { count: 140 }
 			});
 		});
 
 		it('ordered items get their orders back', async () => {
 			const box = await item('Коробка');
 			await orderSticker(actor, box.id);
-			const batch = await issueBatch(actor, {
-				captions: [],
-				blanks: { 20: 0 },
-				orderItemIds: [box.id]
-			});
+			const batch = await issueBatch(actor, { blanks: { 20: 0 }, orderItemIds: [box.id] });
 			await unprintBatch(actor, batch.id);
 			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id }]);
 			expect(await getItemSticker(box.id)).toBeNull();
@@ -465,7 +462,7 @@ describe('stickers', () => {
 		});
 
 		it('refuses once a sticker of the batch is in use; other users cannot touch it', async () => {
-			const batch = await issueBatch(actor, { captions: [], blanks: { 20: 1 } });
+			const batch = await issueBatch(actor, { blanks: { 20: 1 } });
 			const [first] = await batchStickers(batch.id);
 			const box = await item('Коробка');
 			await bindSticker(actor, first!.code, box.id);

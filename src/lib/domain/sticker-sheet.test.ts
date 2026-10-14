@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	CAPTION_FONT_PT,
 	CAPTION_MAX_LINES,
 	ID_CAP_HEIGHT_EM,
 	ID_GAP_MM,
@@ -12,11 +11,12 @@ import {
 	type StickerWidth,
 	blankHeight,
 	blanksPerSheet,
+	captionFontPt,
+	captionLineMm,
 	captionWidthPt,
 	columns,
 	idFontMm,
 	layoutSheets,
-	parseCaptions,
 	planSheets,
 	qrSize,
 	stickerHeight,
@@ -25,7 +25,7 @@ import {
 } from './sticker-sheet';
 
 const lineWidthPt = (qrSize(20) * 72) / 25.4;
-const fitsLine = (line: string) => captionWidthPt(line) * CAPTION_FONT_PT <= lineWidthPt;
+const fitsLine = (line: string) => captionWidthPt(line) * captionFontPt(20) <= lineWidthPt;
 
 const blank = (n: number, width: StickerWidth = 20): StickerSpec[] =>
 	Array.from({ length: n }, () => ({ width, caption: null }));
@@ -83,29 +83,46 @@ describe('sticker sheet', () => {
 		expect(cells[2]).toMatchObject({ index: 2, x: 5, y: MARGIN_Y_MM + 40, width: 20 });
 	});
 
-	it('fits 20 columns of 10 × 10 mm, the ID under a QR of ≈7 mm', () => {
+	it('fits 20 columns of 10 mm: a 9 mm QR, the ID under it, 23 rows to a sheet', () => {
 		expect(columns(10)).toBe(20);
-		expect(blanksPerSheet(10)).toBe(560);
 		expect(stickerPadding(10)).toBe(0.5);
-		// Padding, QR, gap and the ID's cap height add up to the 10 mm square.
+		expect(qrSize(10)).toBe(9);
+		// Padding, QR, gap, the ID's cap height (≈1.56 mm) and padding.
 		const id = ID_CAP_HEIGHT_EM * idFontMm(10);
-		expect(0.5 + qrSize(10) + ID_GAP_MM + id + 0.5).toBeCloseTo(10, 9);
-		expect(qrSize(10)).toBeGreaterThan(7);
-		// A 10 mm sticker never grows: it has no caption.
-		const { cells } = layoutSheets([{ width: 10, caption: 'Коробка' }, ...blank(20, 10)]);
-		expect(cells[0]).toMatchObject({ height: 10, width: 10 });
-		expect(cells[20]).toMatchObject({ x: 5, y: MARGIN_Y_MM + 10 });
+		expect(id).toBeCloseTo(1.557, 3);
+		expect(blankHeight(10)).toBeCloseTo(0.5 + 9 + ID_GAP_MM + id + 0.5, 9);
+		expect(blanksPerSheet(10)).toBe(23 * 20);
+		const { cells } = layoutSheets([...blank(20, 10), ...blank(1, 10)]);
+		expect(cells[0]).toMatchObject({ height: blankHeight(10), width: 10 });
+		expect(cells[20]).toMatchObject({ x: 5, y: MARGIN_Y_MM + blankHeight(10) });
 	});
 
-	it('prints 10 mm stickers last and fills the sheet with them', () => {
-		const plan = planSheets([{ caption: 'Коробка', width: 10 }], { 20: 1 });
-		expect(plan.slots.slice(0, 11).map((s) => s.width)).toEqual([...Array(10).fill(20), 10]);
-		// An ordered 10 mm sticker has no caption.
-		expect(plan).toMatchObject({ captioned: 0, byWidth: { 20: 10 } });
-		// A 20 mm row takes the place of two rows of 10 mm: 26 rows of 20 are left.
-		expect(plan.byWidth[10]).toBe(26 * 20);
-		expect(planSheets([], { 10: 560 })).toMatchObject({ sheets: 1, padding: 0 });
-		expect(planSheets([], { 10: 560 * 20 + 1 }).sheets).toBe(21);
+	it('captions 10 mm stickers in a smaller font under the ID', () => {
+		expect(captionFontPt(10)).toBe(5);
+		expect(wrapCaption('Коробка', 10)).toEqual({ lines: ['Коробка'], truncated: false });
+		expect(stickerHeight(1, 10)).toBeCloseTo(blankHeight(10) + 0.3 + captionLineMm(10), 9);
+		const { cells } = layoutSheets([{ width: 10, caption: 'Резисторы 0805 10 кОм' }]);
+		expect(cells[0]!.height).toBe(
+			stickerHeight(wrapCaption('Резисторы 0805 10 кОм', 10).lines.length, 10)
+		);
+	});
+
+	it('prints 10 mm stickers last and fills the sheet with the chosen width', () => {
+		const plan = planSheets([{ caption: 'Коробка', width: 10 }], { 20: 1 }, 10);
+		expect(plan.slots.slice(0, 11)).toEqual([
+			...Array(10).fill({ index: null, width: 20 }),
+			{ index: 0, width: 10 }
+		]);
+		expect(plan.byWidth[20]).toBe(10);
+		// The rest of the sheet: rows of 10 mm under the 20 mm row and the captioned 10 mm row.
+		const left = PAGE_HEIGHT_MM - 2 * MARGIN_Y_MM - 20 - stickerHeight(1, 10);
+		expect(plan.byWidth[10]).toBe(20 + Math.floor(left / blankHeight(10)) * 20);
+		// Filling with 20 mm instead: the short 10 mm row is still filled with 10 mm ones.
+		const with20 = planSheets([{ caption: 'Коробка', width: 10 }], { 20: 1 }, 20);
+		expect(with20.byWidth[10]).toBe(20);
+		expect(with20.byWidth[20]).toBeGreaterThan(10);
+		expect(planSheets([], { 10: 460 }, 10)).toMatchObject({ sheets: 1, padding: 0 });
+		expect(planSheets([], { 10: 460 * 20 + 1 }).sheets).toBe(21);
 	});
 
 	it('wraps 40 mm captions into wider lines', () => {
@@ -142,9 +159,9 @@ describe('sticker sheet', () => {
 		]);
 		// A captioned 40 mm row (≈43 mm) leaves room for 11 rows of 20 mm.
 		expect(plan).toMatchObject({ sheets: 1, total: 5 + 110, byWidth: { 10: 0, 20: 110, 40: 5 } });
-		expect(planSheets([], { 40: 1 }, false)).toMatchObject({ total: 1, padding: 0 });
-		// Only 40 mm: the sheet is filled with 40 mm ones.
-		expect(planSheets([], { 40: 1 })).toMatchObject({ total: 35, byWidth: { 40: 35 } });
+		expect(planSheets([], { 40: 1 }, null)).toMatchObject({ total: 1, padding: 0 });
+		// Filled with 40 mm ones: 4 more in the row, 6 rows under it.
+		expect(planSheets([], { 40: 1 }, 40)).toMatchObject({ total: 35, byWidth: { 40: 35 } });
 	});
 
 	it('0 captions + 141 blank → 2 sheets of 140', () => {
@@ -157,7 +174,7 @@ describe('sticker sheet', () => {
 	});
 
 	it('without filling the sheet, prints only what was asked', () => {
-		expect(planSheets(captioned(['Припой']), { 20: 141 }, false)).toMatchObject({
+		expect(planSheets(captioned(['Припой']), { 20: 141 }, null)).toMatchObject({
 			sheets: 2,
 			total: 142,
 			captioned: 1,
@@ -167,7 +184,7 @@ describe('sticker sheet', () => {
 
 	it('exactly one sheet needs no padding; nothing requested → no sheets', () => {
 		expect(planSheets([], { 20: 140 })).toMatchObject({ sheets: 1, padding: 0 });
-		expect(planSheets([], { 40: 35 })).toMatchObject({ sheets: 1, padding: 0 });
+		expect(planSheets([], { 40: 35 }, 40)).toMatchObject({ sheets: 1, padding: 0 });
 		expect(planSheets([], {})).toMatchObject({ sheets: 0, total: 0 });
 	});
 
@@ -175,10 +192,6 @@ describe('sticker sheet', () => {
 		expect(planSheets([], { 20: 1e9 })).toMatchObject({ slots: [] });
 		expect(planSheets([], { 20: 1e9 }).sheets).toBeGreaterThan(20);
 		expect(planSheets([], { 40: 35 * 20 + 1 }).sheets).toBe(21);
-	});
-
-	it('parses one caption per non-empty line', () => {
-		expect(parseCaptions(' Припой \n\n  \nОтвёртки\r\n')).toEqual(['Припой', 'Отвёртки']);
 	});
 
 	it('wraps captions by words, and the sticker grows with the lines', () => {
