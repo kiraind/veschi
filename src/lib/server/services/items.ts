@@ -24,6 +24,7 @@ import { requireWorkbench } from './workbench';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
 import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
 import { missingParams, type CategoryRef, type RequiredParam } from '$lib/domain/categories';
+import { type StickerWidth, toStickerWidth } from '$lib/domain/sticker-sheet';
 
 const ownName = z
 	.string()
@@ -119,8 +120,8 @@ export interface ItemCard {
 		photoKey: string | null;
 	} | null;
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
-	/** A sticker is ordered and waits for the next batch («Заказать наклейку»). */
-	stickerOrdered: boolean;
+	/** Width of the sticker ordered for the next batch («Заказать наклейку»), or null. */
+	stickerOrder: StickerWidth | null;
 	path: PathNode[];
 	/** The item's own parameters («Индивидуальные параметры»). */
 	itemParams: ParamView[];
@@ -396,7 +397,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 		sticker: item.sticker
 			? { code: item.sticker.code, status: item.sticker.status, caption: item.sticker.caption }
 			: null,
-		stickerOrdered: item.stickerOrderedAt !== null,
+		stickerOrder: item.stickerOrderedAt ? toStickerWidth(item.stickerOrderWidth) : null,
 		path,
 		itemParams: own,
 		typeParams: inheritedParams(ofType, own),

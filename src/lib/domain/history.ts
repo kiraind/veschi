@@ -92,7 +92,8 @@ export interface HistoryDataMap {
 	'item.purged': { together: number };
 	'sticker.bound': { code: string; resultId?: string };
 	'sticker.unbound': { code: string };
-	'sticker.ordered': Record<string, never>;
+	/** `width` in mm, when not the default 20. */
+	'sticker.ordered': { width?: number };
 	'sticker.orderCancelled': Record<string, never>;
 	/** An ordered sticker printed in a batch and bound to the item (`resultId` when split off). */
 	'sticker.printed': { code: string; resultId?: string };
@@ -470,8 +471,11 @@ export function describeEvent(e: HistoryEventView): EventText {
 				details: []
 			};
 		}
-		case 'sticker.ordered':
-			return { title: [t('Наклейка ждёт печати для вещи '), subject], details: [] };
+		case 'sticker.ordered': {
+			const d = e.data as HistoryData<'sticker.ordered'>;
+			const size = d.width ? ` ${d.width} мм` : '';
+			return { title: [t(`Наклейка${size} ждёт печати для вещи `), subject], details: [] };
+		}
 		case 'sticker.orderCancelled':
 			return { title: [t('Наклейка больше не ждёт печати для вещи '), subject], details: [] };
 		case 'sticker.printed': {
