@@ -26,6 +26,8 @@
 	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
 	import {
 		ChevronSortOutline,
+		CloseOutline,
+		PrinterOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
 		TrashBinOutline,
@@ -132,6 +134,8 @@
 			await api.post(`/api/items/${childId}/move`, { parentId: item.id, quantity });
 			picked = null;
 		});
+
+	const cancelStickerOrder = () => run(() => api.delete(`/api/stickers/orders/${item.id}`));
 
 	const restore = () => run(() => api.post(`/api/items/${item.id}/restore`));
 
@@ -269,18 +273,34 @@
 			{error}
 		</p>{/if}
 	{#if !item.isWorkbench}
-		{#if card.sticker?.status === 'BOUND' || card.stickerOrder !== null}
+		{#if card.sticker?.status === 'BOUND'}
 			<Card class="max-w-none p-4">
-				<StickerPanel
-					itemId={item.id}
-					quantity={item.quantity}
-					sticker={card.sticker?.status === 'BOUND' ? card.sticker : null}
-					orderWidth={card.stickerOrder ?? undefined}
-					editable={active}
-				/>
+				<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
 			</Card>
+		{:else if card.stickerOrder !== null}
+			{#if active}
+				<ButtonGroup class="w-full">
+					<Button color="alternative" class="h-11 flex-1" onclick={() => (addingSticker = true)}>
+						<PrinterOutline class="me-1.5 h-5 w-5" />Наклейка {card.stickerOrder} мм ждёт печати
+					</Button>
+					<Button
+						color="alternative"
+						class="h-11 w-12 shrink-0 p-0"
+						aria-label="Не печатать"
+						title="Не печатать"
+						disabled={busy}
+						onclick={cancelStickerOrder}
+					>
+						<CloseOutline class="h-5 w-5" />
+					</Button>
+				</ButtonGroup>
+			{:else}
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					Наклейка {card.stickerOrder} мм ждёт печати
+				</p>
+			{/if}
 		{:else if active}
-			<Button color="alternative" class="w-full" onclick={() => (addingSticker = true)}>
+			<Button color="alternative" class="h-11 w-full" onclick={() => (addingSticker = true)}>
 				<PlusOutline class="me-1.5 h-5 w-5" />Наклейка
 			</Button>
 		{/if}
@@ -432,7 +452,12 @@
 			onrelocate={startMoving}
 		/>
 	{/if}
-	<StickerSheet bind:open={addingSticker} itemId={item.id} quantity={item.quantity} />
+	<StickerSheet
+		bind:open={addingSticker}
+		itemId={item.id}
+		quantity={item.quantity}
+		ordered={card.stickerOrder}
+	/>
 	<MoveSheet
 		bind:open={moving}
 		title="Переложить «{item.displayName}»"

@@ -10,14 +10,18 @@
 	/**
 	 * «+ Наклейка» on the card of an item without a sticker: bind a free sticker
 	 * by scanning it, or print one of the chosen width with the next batch.
+	 * For a sticker waiting for print it binds one instead or changes the width.
 	 */
 	let {
 		open = $bindable(false),
 		itemId,
-		quantity = 1
+		quantity = 1,
+		ordered = null
 	}: {
 		open?: boolean;
 		itemId: string;
+		/** Width of the sticker waiting for print, if there is one. */
+		ordered?: StickerWidth | null;
 		/** A sticker marks one thing: binding it to several splits one off (see bindSticker). */
 		quantity?: number;
 	} = $props();
@@ -94,8 +98,13 @@
 			<button type="button" class={optionClass} onclick={() => (step = 'print')}>
 				<PrinterOutline class={iconClass} />
 				<span>
-					<span class="block font-medium">Напечатать</span>
-					<span class={hintClass}>С названием вещи, на странице «Наклейки»</span>
+					{#if ordered}
+						<span class="block font-medium">Другая ширина</span>
+						<span class={hintClass}>Сейчас {ordered} мм</span>
+					{:else}
+						<span class="block font-medium">Напечатать</span>
+						<span class={hintClass}>С названием вещи, на странице «Наклейки»</span>
+					{/if}
 				</span>
 			</button>
 		</div>
