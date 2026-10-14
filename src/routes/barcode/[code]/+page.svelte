@@ -24,7 +24,7 @@
 		busy = true;
 		error = '';
 		try {
-			await api.post(`/api/types/${typeId}/barcodes`, { code });
+			await api.post(`/api/types/${typeId}/barcode`, { code });
 			await goto(`/types/${typeId}`, { replaceState: true });
 		} catch (e) {
 			error = errorText(e);

@@ -101,8 +101,8 @@ export interface HistoryDataMap {
 	'type.updated': { changes: Change[] };
 	'type.deleted': Record<string, never>;
 	'type.photo': { removed: boolean };
-	/** A packaging barcode (stored form) was linked to the type or unlinked from it. */
-	'type.barcode': { code: string; removed: boolean };
+	/** A packaging barcode (stored form) was linked to the type (replacing `previous`) or unlinked. */
+	'type.barcode': { code: string; removed: boolean; previous?: string };
 	'paramDef.created': Record<string, never>;
 	'paramDef.updated': { changes: Change[] };
 	'paramDef.deleted': Record<string, never>;
@@ -514,7 +514,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 					),
 					subject
 				],
-				details: []
+				details: d.previous ? [[t(`Был ${formatBarcode(d.previous)}`)]] : []
 			};
 		}
 		case 'paramDef.created':

@@ -19,7 +19,7 @@ import {
 } from './paths';
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
-import { addBarcode } from './barcodes';
+import { setBarcode } from './barcodes';
 import { requireWorkbench } from './workbench';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
 import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
@@ -183,7 +183,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const bench = data.workbenchId ? await requireWorkbench(actor, data.workbenchId, tx) : null;
-		if (data.barcode) await addBarcode(actor, type.id, data.barcode, tx);
+		if (data.barcode) await setBarcode(actor, type.id, data.barcode, {}, tx);
 		if (!data.typeId) {
 			for (const categoryId of new Set(data.newTypeCategoryIds)) {
 				await addTypeToCategory(actor, type.id, categoryId, tx);

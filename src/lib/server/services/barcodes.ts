@@ -2,13 +2,13 @@ import { z } from 'zod';
 import { formatBarcode, normalizeBarcode, NOT_A_BARCODE } from '$lib/domain/barcode';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
-import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
+import { visibleTo, type Actor } from '$lib/server/scope';
 import { recordEvent, typeRef } from './history';
 
 /**
- * Packaging barcodes of types («Штрихкоды»). A barcode identifies a product,
- * so it belongs to a type; a type can have several, a barcode belongs to one
- * type. The app never issues barcodes, it only remembers the ones it is shown.
+ * Packaging barcodes of types («Штрихкод»). A barcode identifies a product,
+ * so it belongs to a type: one per type, and a barcode belongs to one type of
+ * its owner. The app never issues barcodes, it only remembers the ones it is shown.
  */
 
 export const barcodeBodySchema = z.object({ code: z.string().trim().min(1).max(40) });
@@ -18,77 +18,68 @@ export type BarcodeResolution =
 	| { status: 'unknown'; code: string }
 	| { status: 'invalid' };
 
-/** Barcodes of a type in stored form, oldest first. */
-export async function barcodesOf(typeId: string, tx: Tx = db): Promise<string[]> {
-	const rows = await tx.typeBarcode.findMany({
-		where: { typeId },
-		select: { code: true },
-		orderBy: { createdAt: 'asc' }
-	});
-	return rows.map((r) => r.code);
-}
-
 /** What a scanned or typed barcode is: the type it belongs to, a new barcode or no barcode. */
 export async function resolveBarcode(actor: Actor, input: string): Promise<BarcodeResolution> {
 	const code = normalizeBarcode(input);
 	if (!code) return { status: 'invalid' };
-	const found = await db.typeBarcode.findFirst({
-		where: { code, ...visibleTo(actor) },
-		select: { type: { select: { id: true, name: true } } }
+	const type = await db.itemType.findFirst({
+		where: { barcode: code, ...visibleTo(actor) },
+		select: { id: true, name: true }
 	});
-	return found ? { status: 'known', code, type: found.type } : { status: 'unknown', code };
+	return type ? { status: 'known', code, type } : { status: 'unknown', code };
 }
 
 /**
- * Links a barcode to a type. Linking it again to the same type changes
- * nothing; a barcode of another type is refused (unlink it there first).
+ * Sets the barcode of a type. A barcode of another type is refused (unlink it
+ * there first). A type that has another barcode keeps it unless `replace`
+ * (changing it on the type card); setting the same one changes nothing.
  * Returns the stored form.
  */
-export async function addBarcode(
+export async function setBarcode(
 	actor: Actor,
 	typeId: string,
 	input: string,
+	{ replace = false }: { replace?: boolean } = {},
 	tx?: Tx
 ): Promise<string> {
-	if (!tx) return writeTransaction((t) => addBarcode(actor, typeId, input, t));
+	if (!tx) return writeTransaction((t) => setBarcode(actor, typeId, input, { replace }, t));
 	const code = normalizeBarcode(input);
 	if (!code) throw new ValidationError(NOT_A_BARCODE);
 	const type = await tx.itemType.findFirst({ where: { id: typeId, ...visibleTo(actor) } });
 	if (!type) throw new NotFoundError('Тип не найден');
-	const existing = await tx.typeBarcode.findFirst({
-		where: { code, ...visibleTo(actor) },
-		include: { type: { select: { name: true } } }
+	if (type.barcode === code) return code;
+	const other = await tx.itemType.findFirst({
+		where: { barcode: code, ...visibleTo(actor) },
+		select: { name: true }
 	});
-	if (existing?.typeId === typeId) return code;
-	if (existing) {
+	if (other) {
+		throw new ConflictError(`Штрихкод ${formatBarcode(code)} уже привязан к типу «${other.name}»`);
+	}
+	if (type.barcode && !replace) {
 		throw new ConflictError(
-			`Штрихкод ${formatBarcode(code)} уже привязан к типу «${existing.type.name}»`
+			`У типа «${type.name}» уже есть штрихкод ${formatBarcode(type.barcode)} — замените его на странице типа`
 		);
 	}
-	await tx.typeBarcode.create({ data: { code, typeId, ...ownedBy(actor) } });
+	await tx.itemType.update({ where: { id: typeId }, data: { barcode: code } });
 	await recordEvent(tx, actor, {
 		kind: 'type.barcode',
 		subject: typeRef(type),
-		data: { code, removed: false }
+		data: { code, removed: false, ...(type.barcode ? { previous: type.barcode } : {}) }
 	});
 	return code;
 }
 
-/** Unlinks a barcode from a type; one it does not have is a 404. */
-export async function removeBarcode(actor: Actor, typeId: string, input: string): Promise<void> {
-	const code = normalizeBarcode(input);
-	if (!code) throw new ValidationError(NOT_A_BARCODE);
+/** Unlinks the barcode of a type; a type without one is left as it is. */
+export async function removeBarcode(actor: Actor, typeId: string): Promise<void> {
 	await writeTransaction(async (tx) => {
-		const row = await tx.typeBarcode.findFirst({
-			where: { code, typeId, ...visibleTo(actor) },
-			include: { type: true }
-		});
-		if (!row) throw new NotFoundError('У типа нет такого штрихкода');
-		await tx.typeBarcode.delete({ where: { id: row.id } });
+		const type = await tx.itemType.findFirst({ where: { id: typeId, ...visibleTo(actor) } });
+		if (!type) throw new NotFoundError('Тип не найден');
+		if (!type.barcode) return;
+		await tx.itemType.update({ where: { id: typeId }, data: { barcode: null } });
 		await recordEvent(tx, actor, {
 			kind: 'type.barcode',
-			subject: typeRef(row.type),
-			data: { code, removed: true }
+			subject: typeRef(type),
+			data: { code: type.barcode, removed: true }
 		});
 	});
 }

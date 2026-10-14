@@ -46,7 +46,6 @@ model User {
   ownedParamDefs    ParamDef[]       @relation("ParamDefOwner")
   ownedCategories   Category[]       @relation("CategoryOwner")
   ownedCollections  Collection[]     @relation("CollectionOwner")
-  ownedBarcodes     TypeBarcode[]    @relation("TypeBarcodeOwner")
   ownedEvents       HistoryEvent[]   @relation("HistoryEventOwner")
   actedEvents       HistoryEvent[]   @relation("HistoryEventActor")
 }
@@ -79,7 +78,6 @@ model Household {
   paramDefs    ParamDef[]
   categories   Category[]
   collections  Collection[]
-  barcodes     TypeBarcode[]
   events       HistoryEvent[]
 }
 
@@ -127,6 +125,10 @@ model ItemType {
   isContainer Boolean  @default(false)
   // Object key of the single photo in S3/MinIO; shared by every item of the type.
   photoKey    String?
+  // Barcode from the packaging (EAN-13, EAN-8, UPC, GTIN-14), never issued by
+  // the app; one per type and one type per barcode of an owner. Stored form of
+  // src/lib/domain/barcode.ts (digits, UPC-A as EAN-13).
+  barcode     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -137,8 +139,9 @@ model ItemType {
   paramRefs         ParamRef[]        @relation("ParamRefType")
   categories        TypeCategory[]
   collectionEntries CollectionEntry[]
-  barcodes          TypeBarcode[]
 
+  @@unique([ownerId, barcode])
+  @@unique([householdId, barcode])
   @@index([ownerId])
   @@index([householdId])
   // Access check of every photo request (/files).
@@ -210,27 +213,6 @@ model Item {
   @@index([typeId])
   @@index([homeId])
   @@index([splitFromId])
-}
-
-// A barcode from the packaging (EAN-13, EAN-8, UPC, GTIN-14) linked to the
-// type it identifies. The app never issues barcodes. A type can have several
-// (new packaging, other sizes); one barcode belongs to one type of its owner.
-// `code` is the stored form of src/lib/domain/barcode.ts (digits, UPC-A as EAN-13).
-model TypeBarcode {
-  id          String   @id @default(cuid())
-  code        String
-  typeId      String
-  ownerId     String?
-  householdId String?
-  createdAt   DateTime @default(now())
-
-  type      ItemType   @relation(fields: [typeId], references: [id], onDelete: Cascade)
-  owner     User?      @relation("TypeBarcodeOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  household Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
-
-  @@unique([ownerId, code])
-  @@unique([householdId, code])
-  @@index([typeId])
 }
 
 // ---------------------------------------------------------------------------

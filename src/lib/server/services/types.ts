@@ -17,7 +17,6 @@ import { recordEvent, typeRef } from './history';
 import { getParamsOf } from './params';
 import { categoryInfoOf, type CategoryInfo } from './categories';
 import { collectionNamesHolding } from './collections';
-import { barcodesOf } from './barcodes';
 import { missingParams, type RequiredParam } from '$lib/domain/categories';
 import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
 
@@ -46,12 +45,7 @@ export const typeUpdateSchema = typeInputSchema.partial();
 /** A container is a single instance: one thing never lies in two identical boxes. */
 export const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
 
-export interface TypeSummary {
-	id: string;
-	name: string;
-	description: string | null;
-	isContainer: boolean;
-	photoKey: string | null;
+export interface TypeSummary extends TypeInfo {
 	/** Active items of this type (records, not quantity). */
 	itemCount: number;
 }
@@ -62,13 +56,13 @@ export interface TypeInfo {
 	description: string | null;
 	isContainer: boolean;
 	photoKey: string | null;
+	/** Packaging barcode in stored form. */
+	barcode: string | null;
 }
 
 export interface TypeCard extends CategoryInfo {
 	type: TypeInfo;
 	params: ParamView[];
-	/** Packaging barcodes in stored form. */
-	barcodes: string[];
 	/** Required «у типа» parameters it has no value of. */
 	missing: RequiredParam[];
 	items: { id: string; name: string; quantity: number; path: PathNode[] }[];
@@ -88,7 +82,8 @@ function typeInfo(t: TypeInfo): TypeInfo {
 		name: t.name,
 		description: t.description,
 		isContainer: t.isContainer,
-		photoKey: t.photoKey
+		photoKey: t.photoKey,
+		barcode: t.barcode
 	};
 }
 
@@ -115,7 +110,7 @@ export async function listTypes(
 						OR: [
 							{ name: { contains: escapeLike(q), mode: 'insensitive' } },
 							{ description: { contains: escapeLike(q), mode: 'insensitive' } },
-							...(digits ? [{ barcodes: { some: { code: { contains: digits } } } }] : [])
+							...(digits ? [{ barcode: { contains: digits } }] : [])
 						]
 					}
 				: {})
@@ -130,15 +125,14 @@ export async function listTypes(
 /** A type with its parameters and every active item of it with its location. */
 export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 	const type = await findType(actor, id);
-	const [params, items, categories, barcodes] = await Promise.all([
+	const [params, items, categories] = await Promise.all([
 		getParamsOf(actor, 'typeId', [id]),
 		db.item.findMany({
 			where: { typeId: id, status: 'ACTIVE', ...visibleTo(actor) },
 			include: { type: { select: { name: true } } },
 			orderBy: { createdAt: 'asc' }
 		}),
-		categoryInfoOf(id),
-		barcodesOf(id)
+		categoryInfoOf(id)
 	]);
 	const [paths, contents] = await Promise.all([
 		getPaths(items.map((i) => i.id)),
@@ -148,7 +142,6 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 		type: typeInfo(type),
 		hasContents: contents.inside + contents.taken > 0,
 		params: params.get(id) ?? [],
-		barcodes,
 		...categories,
 		missing: missingParams(categories.typeRequired, params.get(id) ?? []),
 		items: items.map((i) => ({

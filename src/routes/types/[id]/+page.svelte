@@ -12,7 +12,8 @@
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import TypeCategories from '$lib/components/TypeCategories.svelte';
-	import TypeBarcodes from '$lib/components/TypeBarcodes.svelte';
+	import TypeBarcode from '$lib/components/TypeBarcode.svelte';
+	import BarcodeIcon from '$lib/components/BarcodeIcon.svelte';
 	import InCollections from '$lib/components/InCollections.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -24,6 +25,7 @@
 	let error = $state('');
 	let renaming = $state(false);
 	let describing = $state(false);
+	let barcodeOpen = $state(false);
 	let containerBusy = $state(false);
 	let containerError = $state('');
 
@@ -67,13 +69,14 @@
 		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
 	>
 </p>
-<!-- Named by the text alone: the pen is not part of the heading's name. -->
+<!-- Named by the text alone: the pen and the barcode are not part of the heading's name. -->
 <h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
 	<span id="page-title">{type.name}</span><EditButton
 		label="Изменить название"
 		onclick={() => (renaming = true)}
-	/>
+	/><BarcodeIcon barcode={type.barcode} onclick={() => (barcodeOpen = true)} />
 </h1>
+<TypeBarcode typeId={type.id} barcode={type.barcode} bind:open={barcodeOpen} />
 {#if type.isContainer}<div class="mt-1"><Badge color="indigo">контейнер</Badge></div>{/if}
 
 <div class="mt-3">
@@ -126,9 +129,6 @@
 	categories={data.card.categories}
 	itemRequired={data.card.itemRequired}
 />
-
-<h2 class="mt-6 mb-2 text-lg font-semibold">Штрихкоды</h2>
-<TypeBarcodes typeId={type.id} barcodes={data.card.barcodes} />
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
 <InCollections target={{ typeId: type.id }} collections={data.collections} />
