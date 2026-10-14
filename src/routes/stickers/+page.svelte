@@ -221,7 +221,9 @@
 				{/each}
 			</div>
 			<div class="mt-3 flex items-center gap-3">
-				<Checkbox bind:checked={fillSheet}>Заполнить лист наклейками</Checkbox>
+				<Checkbox bind:checked={fillSheet}
+					>Заполнить пустое место на листе наклейками без подписи</Checkbox
+				>
 				<StickerWidthSelect
 					value={fillWidth}
 					onpick={(width) => (fillWidth = width)}
