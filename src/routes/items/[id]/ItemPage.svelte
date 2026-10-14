@@ -12,6 +12,7 @@
 	import QuantityField from '$lib/components/QuantityField.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
+	import StickerSheet from '$lib/components/StickerSheet.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
@@ -25,6 +26,8 @@
 	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
 	import {
 		ChevronSortOutline,
+		CloseOutline,
+		PrinterOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
 		TrashBinOutline,
@@ -49,6 +52,7 @@
 	let describing = $state(false);
 	let changingQuantity = $state(false);
 	let discarding = $state(false);
+	let addingSticker = $state(false);
 
 	/** Why the quantity of this item is always 1, if it is. */
 	const quantityLock = $derived(
@@ -130,6 +134,8 @@
 			await api.post(`/api/items/${childId}/move`, { parentId: item.id, quantity });
 			picked = null;
 		});
+
+	const cancelStickerOrder = () => run(() => api.delete(`/api/stickers/orders/${item.id}`));
 
 	const restore = () => run(() => api.post(`/api/items/${item.id}/restore`));
 
@@ -222,60 +228,86 @@
 	/>
 {/if}
 
-{#if active && !item.isWorkbench}
-	<ButtonGroup class="my-3 w-full sm:w-auto">
-		{#if data.onBench}
-			<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
-			<Button color="alternative" class={actionClass} onclick={startReturning}>
-				<UndoOutline class={actionIconClass} />
-				Вернуть
+<!-- Actions and the sticker: one column, 12 px apart; sections below start 24 px lower. -->
+<div class="mt-3 flex flex-col gap-3">
+	{#if active && !item.isWorkbench}
+		<ButtonGroup class="w-full sm:w-auto sm:self-start">
+			{#if data.onBench}
+				<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
+				<Button color="alternative" class={actionClass} onclick={startReturning}>
+					<UndoOutline class={actionIconClass} />
+					Вернуть
+				</Button>
+			{:else}
+				<Button color="alternative" class={actionClass} onclick={() => (taking = true)}>
+					<WorkbenchIcon icon={null} class={actionIconClass} />
+					На стол
+				</Button>
+			{/if}
+			<Button color="alternative" class={actionClass} onclick={startMoving}>
+				<ArrowsRepeatOutline class={actionIconClass} />
+				Переложить
 			</Button>
-		{:else}
-			<Button color="alternative" class={actionClass} onclick={() => (taking = true)}>
-				<WorkbenchIcon icon={null} class={actionIconClass} />
-				На стол
+			{#if container}
+				<!-- A container is always one: throwing it away is the only thing to do here. -->
+				<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
+					<TrashBinOutline class={actionIconClass} />
+					Выкинуть
+				</Button>
+			{:else}
+				<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
+				{@const quantityText = pieces(item.quantity)}
+				<Button
+					color="alternative"
+					class={actionClass}
+					aria-label="Количество: {quantityText}. Изменить"
+					onclick={() => (changingQuantity = true)}
+				>
+					<ChevronSortOutline class={actionIconClass} />
+					{quantityText}
+				</Button>
+			{/if}
+		</ButtonGroup>
+	{/if}
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
+			{error}
+		</p>{/if}
+	{#if !item.isWorkbench}
+		{#if card.sticker?.status === 'BOUND'}
+			<Card class="max-w-none p-4">
+				<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
+			</Card>
+		{:else if card.stickerOrder !== null}
+			{#if active}
+				<ButtonGroup class="w-full">
+					<Button color="alternative" class="h-11 flex-1" onclick={() => (addingSticker = true)}>
+						<PrinterOutline class="me-1.5 h-5 w-5" />Наклейка {card.stickerOrder} мм ждёт печати
+					</Button>
+					<Button
+						color="alternative"
+						class="h-11 w-12 shrink-0 p-0"
+						aria-label="Не печатать"
+						title="Не печатать"
+						disabled={busy}
+						onclick={cancelStickerOrder}
+					>
+						<CloseOutline class="h-5 w-5" />
+					</Button>
+				</ButtonGroup>
+			{:else}
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					Наклейка {card.stickerOrder} мм ждёт печати
+				</p>
+			{/if}
+		{:else if active}
+			<Button color="alternative" class="h-11 w-full" onclick={() => (addingSticker = true)}>
+				<PlusOutline class="me-1.5 h-5 w-5" />Наклейка
 			</Button>
 		{/if}
-		<Button color="alternative" class={actionClass} onclick={startMoving}>
-			<ArrowsRepeatOutline class={actionIconClass} />
-			Переложить
-		</Button>
-		{#if container}
-			<!-- A container is always one: throwing it away is the only thing to do here. -->
-			<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
-				<TrashBinOutline class={actionIconClass} />
-				Выкинуть
-			</Button>
-		{:else}
-			<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
-			{@const quantityText = pieces(item.quantity)}
-			<Button
-				color="alternative"
-				class={actionClass}
-				aria-label="Количество: {quantityText}. Изменить"
-				onclick={() => (changingQuantity = true)}
-			>
-				<ChevronSortOutline class={actionIconClass} />
-				{quantityText}
-			</Button>
-		{/if}
-	</ButtonGroup>
-{/if}
-{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
-		{error}
-	</p>{/if}
+	{/if}
+</div>
 
 {#if !item.isWorkbench}
-	<Card class="mt-3 max-w-none p-4">
-		<StickerPanel
-			itemId={item.id}
-			quantity={item.quantity}
-			sticker={card.sticker}
-			ordered={card.stickerOrdered}
-			editable={active}
-		/>
-	</Card>
-
 	{#if card.type && (card.type.description || active)}
 		<div class="mt-6">
 			<Description
@@ -420,6 +452,12 @@
 			onrelocate={startMoving}
 		/>
 	{/if}
+	<StickerSheet
+		bind:open={addingSticker}
+		itemId={item.id}
+		quantity={item.quantity}
+		ordered={card.stickerOrder}
+	/>
 	<MoveSheet
 		bind:open={moving}
 		title="Переложить «{item.displayName}»"

@@ -1,47 +1,58 @@
 <script lang="ts">
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
-	import { Alert, Button, Card, Checkbox, Input, Label, Textarea } from 'flowbite-svelte';
-	import { CloseOutline, FilePdfOutline } from 'flowbite-svelte-icons';
+	import { Alert, Button, Card, Checkbox, Input, Label } from 'flowbite-svelte';
+	import { FilePdfOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import StickerWidthSelect from '$lib/components/StickerWidthSelect.svelte';
 	import { plural } from '$lib/domain/plural';
 	import {
 		CAPTION_MAX_LINES,
+		DEFAULT_STICKER_WIDTH,
+		STICKER_WIDTHS,
 		MAX_SHEETS_PER_BATCH,
+		type StickerWidth,
 		wrapCaption,
-		parseCaptions,
 		planSheets
 	} from '$lib/domain/sticker-sheet';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	let captionsText = $state('');
-	let blankCount = $state(0);
+	let blankCounts = $state<Record<StickerWidth, number>>({ 10: 0, 20: 0, 40: 0 });
 	let fillSheet = $state(true);
+	let fillWidth = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
 	let busy = $state(false);
 	let error = $state('');
 	let issuedId = $state('');
 
-	const typed = $derived(parseCaptions(captionsText));
-	// Ordered stickers go first, with the item's name as the caption (see issueBatch).
-	const captions = $derived([...data.orders.map((o) => o.caption), ...typed]);
-	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
-	const plan = $derived(planSheets(captions, blank, fillSheet));
+	// Ordered stickers carry the item's name and the width of the order (see issueBatch).
+	const captions = $derived(data.orders.map((o) => ({ caption: o.caption, width: o.width })));
+	const count = (n: number) => (Number.isInteger(n) && n > 0 ? n : 0);
+	const blanks = $derived({
+		10: count(blankCounts[10]),
+		20: count(blankCounts[20]),
+		40: count(blankCounts[40])
+	});
+	const fill = $derived(fillSheet ? fillWidth : null);
+	const plan = $derived(planSheets(captions, blanks, fill));
+	/** Item names that do not fit into the caption of their sticker. */
 	const tooLong = $derived(
 		captions
-			.map((caption) => ({ caption, fitted: wrapCaption(caption) }))
+			.map(({ caption, width }) => ({ caption, width, fitted: wrapCaption(caption, width) }))
 			.filter(({ fitted }) => fitted.truncated)
 	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
 
-	const captionedText = $derived(
-		`${plan.captioned} с подписью` +
-			(data.orders.length > 0 ? ` (из них ${data.orders.length} для вещей)` : '')
-	);
 	// A leading space: Svelte drops the whitespace between «подписи» and an {#if}.
 	const padText = $derived(` (ещё ${plan.padding} добавлено, чтобы заполнить лист)`);
+	// «шириной 40 мм» when all are of one width other than 20, «(40 мм: 5, 20 мм: 110)» when mixed.
+	const widthText = $derived.by(() => {
+		const used = [...STICKER_WIDTHS].reverse().filter((w) => plan.byWidth[w] > 0);
+		if (used.length > 1) return ` (${used.map((w) => `${w} мм: ${plan.byWidth[w]}`).join(', ')})`;
+		return used[0] && used[0] !== DEFAULT_STICKER_WIDTH ? ` шириной ${used[0]} мм` : '';
+	});
 
 	function batchStats(batch: PageData['batches'][number]): string {
 		return [
@@ -71,14 +82,12 @@
 		error = '';
 		try {
 			const batch = await api.post<{ id: string }>('/api/stickers/batches', {
-				captions: typed,
-				blankCount: blank,
-				fillSheet,
+				blanks,
+				fill,
 				orderItemIds: data.orders.map((o) => o.itemId)
 			});
 			issuedId = batch.id;
-			captionsText = '';
-			blankCount = 0;
+			blankCounts = { 10: 0, 20: 0, 40: 0 };
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e, 'Не удалось выпустить наклейки');
@@ -107,6 +116,11 @@
 
 	const cancelOrder = (itemId: string) =>
 		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось убрать из печати');
+	const setOrderWidth = (itemId: string, width: StickerWidth) =>
+		act(
+			() => api.post('/api/stickers/orders', { itemId, width }),
+			'Не удалось поменять ширину наклейки'
+		);
 
 	async function unprint(batchId: string, ordered: number) {
 		const ok = await confirmAction({
@@ -133,92 +147,124 @@
 <h1 class="mb-3 text-2xl font-bold">Наклейки</h1>
 
 <Card class="max-w-none p-4">
-	<form class="flex flex-col gap-3" onsubmit={issue}>
-		{#if data.orders.length > 0}
-			<div>
-				<p class="mb-1 text-sm font-medium text-gray-900 dark:text-white">
-					Ждут печати — напечатаются и сразу привяжутся к вещам
+	<form class="flex flex-col gap-5" onsubmit={issue}>
+		<section>
+			<h2 class="font-semibold">Для вещей</h2>
+			{#if data.orders.length === 0}
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					Пока ничего. Наклейку для вещи заказывают на её карточке кнопкой «Напечатать».
 				</p>
-				<ul class="flex flex-col">
+			{:else}
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					С названием вещи, сразу привяжутся к ней.
+				</p>
+				<ul
+					class="mt-2 divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+				>
 					{#each data.orders as order (order.itemId)}
-						<li class="flex items-center justify-between gap-2">
-							<a href="/items/{order.itemId}" class="min-w-0 py-2 break-words hover:underline"
+						<li class="flex items-center gap-2 py-2">
+							<a href="/items/{order.itemId}" class="min-w-0 flex-1 break-words hover:underline"
 								>{order.caption}</a
 							>
-							<Button
-								class="h-10 shrink-0"
-								size="sm"
-								color="alternative"
+							<StickerWidthSelect
+								value={order.width}
+								onpick={(width) => setOrderWidth(order.itemId, width)}
+								disabled={busy}
+								label="Ширина наклейки для «{order.caption}»"
+							/>
+							<button
 								type="button"
-								aria-label="Не печатать"
+								class="-me-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none disabled:opacity-50 dark:text-gray-500 dark:hover:text-red-500 dark:focus-visible:ring-primary-800"
+								aria-label="Не печатать «{order.caption}»"
 								title="Не печатать"
 								disabled={busy}
 								onclick={() => cancelOrder(order.itemId)}
 							>
-								<CloseOutline class="h-4 w-4" />
-							</Button>
+								<TrashBinOutline class="h-5 w-5" />
+							</button>
 						</li>
 					{/each}
 				</ul>
-			</div>
-		{/if}
-		<Label>
-			{data.orders.length > 0 ? 'Ещё подписи' : 'Подписи'} — по одной наклейке на строку
-			<Textarea
-				class="mt-1 w-full"
-				bind:value={captionsText}
-				rows={6}
-				placeholder="Припой&#10;Коробка с NE555"
-			/>
-		</Label>
-		{#if tooLong.length > 0}
-			<Alert color="yellow" class="text-sm">
-				Не влезет в {CAPTION_MAX_LINES} строки и будет обрезано:
-				<ul class="mt-1 list-disc ps-5">
-					{#each tooLong as { caption, fitted }, i (i)}
-						<li class="break-words">{caption} → <b>{fitted.lines.join(' ')}</b></li>
-					{/each}
-				</ul>
-			</Alert>
-		{/if}
-		<Label>
-			Без подписи
-			<Input
-				class="mt-1"
-				type="number"
-				min="0"
-				step="1"
-				inputmode="numeric"
-				bind:value={blankCount}
-			/>
-		</Label>
-		<Checkbox bind:checked={fillSheet}
-			>Заполнить пустое место на листе наклейками без подписи</Checkbox
-		>
-
-		{#if plan.total > 0}
-			<p class="text-sm">
-				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {captionedText},
-				{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
-					<span class="text-gray-500 dark:text-gray-400">{padText}</span>{/if}.
-			</p>
-		{/if}
-		{#if tooMany}
-			<p class="text-sm text-red-600 dark:text-red-500">
-				За раз можно напечатать не больше {MAX_SHEETS_PER_BATCH} листов.
-			</p>
-		{/if}
-		{#if error}<p class="text-sm text-red-600 dark:text-red-500">{error}</p>{/if}
-
-		<div class="flex flex-wrap gap-2">
-			<Button type="submit" disabled={busy || plan.total === 0 || tooMany}>
-				{busy ? 'Выпускаю…' : 'Выпустить и собрать PDF'}
-			</Button>
-			{#if issuedId}
-				<Button color="alternative" href={pdfUrl(issuedId)} target="_blank" rel="noopener">
-					<FilePdfOutline class="me-1 h-4 w-4" />Открыть PDF
-				</Button>
+				{#if tooLong.length > 0}
+					<Alert color="yellow" class="mt-2 text-sm">
+						Не влезет в {CAPTION_MAX_LINES} строки и будет обрезано:
+						<ul class="mt-1 list-disc ps-5">
+							{#each tooLong as { caption, width, fitted }, i (i)}
+								<li class="break-words">
+									{caption} ({width} мм) → <b>{fitted.lines.join(' ')}</b>
+								</li>
+							{/each}
+						</ul>
+					</Alert>
+				{/if}
 			{/if}
+		</section>
+
+		<section>
+			<h2 class="font-semibold">Без подписи</h2>
+			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+				Привязываются к вещи, когда их отсканируют.
+			</p>
+			<div class="mt-2 grid grid-cols-3 gap-3">
+				{#each STICKER_WIDTHS as width (width)}
+					<Label class="text-sm">
+						{width} мм
+						<Input
+							class="mt-1"
+							type="number"
+							min="0"
+							step="1"
+							inputmode="numeric"
+							bind:value={blankCounts[width]}
+						/>
+					</Label>
+				{/each}
+			</div>
+			<div class="mt-3 flex items-center gap-3">
+				<Checkbox bind:checked={fillSheet}
+					>Заполнить пустое место на листе наклейками без подписи</Checkbox
+				>
+				<StickerWidthSelect
+					value={fillWidth}
+					onpick={(width) => (fillWidth = width)}
+					disabled={!fillSheet}
+					label="Ширина наклеек, которыми заполнить лист"
+				/>
+			</div>
+		</section>
+
+		<div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+			{#if plan.total > 0}
+				<p class="text-sm">
+					{sheetsLabel(plan.sheets)} A4, {plan.total}
+					{plural(plan.total, [
+						'наклейка',
+						'наклейки',
+						'наклеек'
+					])}{widthText}{#if plan.captioned > 0}:
+						{plan.captioned} для вещей, {plan.total - plan.captioned} без подписи{/if}{#if plan.padding > 0}
+						<span class="text-gray-500 dark:text-gray-400">{padText}</span>{/if}.
+				</p>
+			{:else}
+				<p class="text-sm text-gray-500 dark:text-gray-400">Нечего печатать.</p>
+			{/if}
+			{#if tooMany}
+				<p class="text-sm text-red-600 dark:text-red-500">
+					За раз можно напечатать не больше {MAX_SHEETS_PER_BATCH} листов.
+				</p>
+			{/if}
+			{#if error}<p class="text-sm text-red-600 dark:text-red-500">{error}</p>{/if}
+
+			<div class="flex flex-wrap gap-2">
+				<Button type="submit" disabled={busy || plan.total === 0 || tooMany}>
+					{busy ? 'Выпускаю…' : 'Выпустить и собрать PDF'}
+				</Button>
+				{#if issuedId}
+					<Button color="alternative" href={pdfUrl(issuedId)} target="_blank" rel="noopener">
+						<FilePdfOutline class="me-1 h-4 w-4" />Открыть PDF
+					</Button>
+				{/if}
+			</div>
 		</div>
 	</form>
 </Card>

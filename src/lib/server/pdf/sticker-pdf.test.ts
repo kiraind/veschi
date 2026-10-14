@@ -4,7 +4,7 @@ import { generateCodes } from '$lib/domain/sticker-code';
 import path from 'node:path';
 import jsQR from 'jsqr';
 import PDFDocument from 'pdfkit';
-import { captionWidthPt } from '$lib/domain/sticker-sheet';
+import { ID_ADVANCE_EM, captionWidthPt } from '$lib/domain/sticker-sheet';
 import { type QrLayout, qrContent, qrLayout, renderStickerPdf } from './sticker-pdf';
 
 function pageCount(pdf: Buffer): number {
@@ -72,6 +72,23 @@ describe('sticker PDF', () => {
 		expect([...versions].sort((a, b) => a - b)).toEqual([25, 29, 33, 37]);
 	});
 
+	it('without the ID square, uses level M so a 10 mm code keeps large modules', () => {
+		const text = qrContent('https://veschi.example.com', 'K7M4QX');
+		const layout = qrLayout(text, false);
+		expect(layout.box.side).toBe(0);
+		expect(layout.size).toBe(25); // version 2 instead of 3 at level H
+		for (const code of generateCodes([], 30)) {
+			const t = qrContent('https://veschi.example.com', code);
+			expect(decode(qrLayout(t, false))).toBe(t);
+		}
+	});
+
+	it('knows the width of the monospaced ID font', () => {
+		const doc = new PDFDocument({ autoFirstPage: false });
+		doc.font(path.resolve('assets/fonts/DejaVuSansMono-Bold.ttf')).fontSize(10);
+		expect(doc.widthOfString('K7M-4QX')).toBeCloseTo(7 * ID_ADVANCE_EM * 10, 3);
+	});
+
 	it('measures captions like the PDF does', () => {
 		const doc = new PDFDocument({ autoFirstPage: false });
 		doc.font(path.resolve('assets/fonts/DejaVuSans.ttf')).fontSize(10);
@@ -88,7 +105,8 @@ describe('sticker PDF', () => {
 		const codes = generateCodes([], 140);
 		const stickers = codes.map((code, i) => ({
 			code,
-			caption: i < 7 ? `Коробка с микросхемами ${i}` : null
+			caption: i < 7 ? `Коробка с микросхемами ${i}` : null,
+			width: 20 as const
 		}));
 		const pdf = await renderStickerPdf(stickers, 'https://v.ex.io');
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
@@ -99,5 +117,30 @@ describe('sticker PDF', () => {
 			.slice(10)
 			.concat(stickers.slice(0, 10).map((s) => ({ ...s, caption: null })));
 		expect(pageCount(await renderStickerPdf(blank, 'https://v.ex.io'))).toBe(1);
+	});
+
+	it('renders 40 mm stickers next to 20 mm ones', async () => {
+		const codes = generateCodes([], 40);
+		const stickers = codes.map((code, i) => ({
+			code,
+			caption: i === 0 ? 'Шуруповёрт Makita DF333' : null,
+			width: i < 5 ? (40 as const) : (20 as const)
+		}));
+		const pdf = await renderStickerPdf(stickers, 'https://v.ex.io');
+		expect(pageCount(pdf)).toBe(1);
+		// 35 blank 40 mm stickers fill exactly one sheet.
+		const wide = codes.slice(0, 36).map((code) => ({ code, caption: null, width: 40 as const }));
+		expect(pageCount(await renderStickerPdf(wide.slice(0, 35), 'https://v.ex.io'))).toBe(1);
+		expect(pageCount(await renderStickerPdf(wide, 'https://v.ex.io'))).toBe(2);
+		const tiny = generateCodes([], 461).map((code, i) => ({
+			code,
+			caption: i < 80 ? 'Коробка с резисторами и конденсаторами' : null,
+			width: 10 as const
+		}));
+		// Four rows with three-line captions are taller, so the last rows move to page 2.
+		expect(pageCount(await renderStickerPdf(tiny.slice(0, 460), 'https://v.ex.io'))).toBe(2);
+		const blank = tiny.map((s) => ({ ...s, caption: null }));
+		expect(pageCount(await renderStickerPdf(blank.slice(0, 460), 'https://v.ex.io'))).toBe(1);
+		expect(pageCount(await renderStickerPdf(blank, 'https://v.ex.io'))).toBe(2);
 	});
 });
