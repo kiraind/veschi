@@ -12,6 +12,7 @@
 	import QuantityField from '$lib/components/QuantityField.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
+	import StickerSheet from '$lib/components/StickerSheet.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import QuantitySheet from '$lib/components/QuantitySheet.svelte';
@@ -49,6 +50,7 @@
 	let describing = $state(false);
 	let changingQuantity = $state(false);
 	let discarding = $state(false);
+	let addingSticker = $state(false);
 
 	/** Why the quantity of this item is always 1, if it is. */
 	const quantityLock = $derived(
@@ -266,15 +268,25 @@
 	</p>{/if}
 
 {#if !item.isWorkbench}
-	<Card class="mt-3 max-w-none p-4">
-		<StickerPanel
-			itemId={item.id}
-			quantity={item.quantity}
-			sticker={card.sticker}
-			ordered={card.stickerOrder !== null}
-			editable={active}
-		/>
-	</Card>
+	{#if card.sticker?.status === 'BOUND' || card.stickerOrder !== null}
+		<Card class="mt-3 max-w-none p-4">
+			<StickerPanel
+				itemId={item.id}
+				quantity={item.quantity}
+				sticker={card.sticker?.status === 'BOUND' ? card.sticker : null}
+				orderWidth={card.stickerOrder ?? undefined}
+				editable={active}
+			/>
+		</Card>
+	{:else if active}
+		<button
+			type="button"
+			class="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg px-1 text-sm text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white dark:focus-visible:ring-primary-800"
+			onclick={() => (addingSticker = true)}
+		>
+			<PlusOutline class="h-4 w-4" />Наклейка
+		</button>
+	{/if}
 
 	{#if card.type && (card.type.description || active)}
 		<div class="mt-6">
@@ -420,6 +432,7 @@
 			onrelocate={startMoving}
 		/>
 	{/if}
+	<StickerSheet bind:open={addingSticker} itemId={item.id} quantity={item.quantity} />
 	<MoveSheet
 		bind:open={moving}
 		title="Переложить «{item.displayName}»"

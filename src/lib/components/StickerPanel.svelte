@@ -5,14 +5,19 @@
 	import { api, errorText } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
+	import { DEFAULT_STICKER_WIDTH, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import { confirmAction } from '$lib/confirm.svelte';
 
-	/** The item's sticker with «Привязать» / «Напечатать» / «Отвязать» actions. */
+	/**
+	 * The item's bound sticker with «Отвязать», or its sticker waiting for print
+	 * with «Привязать» / «Не печатать». Without either the card has only
+	 * «+ Наклейка» (StickerSheet).
+	 */
 	let {
 		itemId,
 		quantity = 1,
 		sticker,
-		ordered = false,
+		orderWidth = DEFAULT_STICKER_WIDTH,
 		editable
 	}: {
 		itemId: string;
@@ -23,8 +28,8 @@
 			status: 'FREE' | 'BOUND' | 'WRITTEN_OFF';
 			caption: string | null;
 		} | null;
-		/** A sticker is ordered: it is printed and bound with the next batch on «Наклейки». */
-		ordered?: boolean;
+		/** Width of the sticker waiting for print (shown when there is no bound sticker). */
+		orderWidth?: StickerWidth;
 		/** False for archived items: their sticker is only shown. */
 		editable: boolean;
 	} = $props();
@@ -53,7 +58,6 @@
 			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
 		});
 
-	const order = () => run(() => api.post('/api/stickers/orders', { itemId }));
 	const cancelOrder = () => run(() => api.delete(`/api/stickers/orders/${itemId}`));
 
 	async function unbind() {
@@ -84,17 +88,9 @@
 			{/if}
 		</div>
 	{:else}
-		{#if ordered}
-			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
-				>Наклейка ждёт печати</a
-			>
-		{:else if sticker?.status === 'WRITTEN_OFF'}
-			<span class="text-sm text-gray-500 dark:text-gray-400"
-				>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
-			>
-		{:else}
-			<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
-		{/if}
+		<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
+			>Наклейка {orderWidth} мм ждёт печати</a
+		>
 		{#if editable}
 			<div class="flex flex-wrap gap-2">
 				<Button
@@ -113,10 +109,10 @@
 						class="h-10"
 						color="alternative"
 						type="button"
-						onclick={ordered ? cancelOrder : order}
+						onclick={cancelOrder}
 						disabled={busy}
 					>
-						{ordered ? 'Не печатать' : 'Напечатать'}
+						Не печатать
 					</Button>
 				{/if}
 			</div>
