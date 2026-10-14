@@ -5,8 +5,6 @@
 	import { api, errorText } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
-	import StickerWidthSelect from './StickerWidthSelect.svelte';
-	import { DEFAULT_STICKER_WIDTH, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import { confirmAction } from '$lib/confirm.svelte';
 
 	/** The item's sticker with «Привязать» / «Напечатать» / «Отвязать» actions. */
@@ -14,7 +12,7 @@
 		itemId,
 		quantity = 1,
 		sticker,
-		ordered = null,
+		ordered = false,
 		editable
 	}: {
 		itemId: string;
@@ -25,18 +23,13 @@
 			status: 'FREE' | 'BOUND' | 'WRITTEN_OFF';
 			caption: string | null;
 		} | null;
-		/**
-		 * Width of the ordered sticker, or null: an ordered sticker is printed and
-		 * bound with the next batch on «Наклейки».
-		 */
-		ordered?: StickerWidth | null;
+		/** A sticker is ordered: it is printed and bound with the next batch on «Наклейки». */
+		ordered?: boolean;
 		/** False for archived items: their sticker is only shown. */
 		editable: boolean;
 	} = $props();
 
 	let binding = $state(false);
-	/** Width for «Напечатать»; an ordered sticker shows the width of its order. */
-	let width = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -60,8 +53,7 @@
 			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
 		});
 
-	const order = (width: StickerWidth) =>
-		run(() => api.post('/api/stickers/orders', { itemId, width }));
+	const order = () => run(() => api.post('/api/stickers/orders', { itemId }));
 	const cancelOrder = () => run(() => api.delete(`/api/stickers/orders/${itemId}`));
 
 	async function unbind() {
@@ -94,7 +86,7 @@
 	{:else}
 		{#if ordered}
 			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
-				>Наклейка {ordered} мм ждёт печати</a
+				>Наклейка ждёт печати</a
 			>
 		{:else if sticker?.status === 'WRITTEN_OFF'}
 			<span class="text-sm text-gray-500 dark:text-gray-400"
@@ -116,23 +108,16 @@
 					{binding ? 'Отмена' : 'Привязать'}
 				</Button>
 				{#if !binding}
-					<div class="flex gap-2">
-						<StickerWidthSelect
-							value={ordered ?? width}
-							onpick={(picked) => (ordered ? order(picked) : (width = picked))}
-							disabled={busy}
-						/>
-						<Button
-							size="sm"
-							class="h-10"
-							color="alternative"
-							type="button"
-							onclick={ordered ? cancelOrder : () => order(width)}
-							disabled={busy}
-						>
-							{ordered ? 'Не печатать' : 'Напечатать'}
-						</Button>
-					</div>
+					<Button
+						size="sm"
+						class="h-10"
+						color="alternative"
+						type="button"
+						onclick={ordered ? cancelOrder : order}
+						disabled={busy}
+					>
+						{ordered ? 'Не печатать' : 'Напечатать'}
+					</Button>
 				{/if}
 			</div>
 		{/if}
