@@ -12,6 +12,8 @@
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import TypeCategories from '$lib/components/TypeCategories.svelte';
+	import TypeBarcode from '$lib/components/TypeBarcode.svelte';
+	import BarcodeIcon from '$lib/components/BarcodeIcon.svelte';
 	import InCollections from '$lib/components/InCollections.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -23,6 +25,7 @@
 	let error = $state('');
 	let renaming = $state(false);
 	let describing = $state(false);
+	let barcodeOpen = $state(false);
 	let containerBusy = $state(false);
 	let containerError = $state('');
 
@@ -73,6 +76,7 @@
 		onclick={() => (renaming = true)}
 	/>
 </h1>
+<TypeBarcode typeId={type.id} barcode={type.barcode} bind:open={barcodeOpen} />
 {#if type.isContainer}<div class="mt-1"><Badge color="indigo">контейнер</Badge></div>{/if}
 
 <div class="mt-3">
@@ -90,7 +94,12 @@
 			await api.delete(`/api/types/${type.id}/photo`);
 			await invalidateAll();
 		}}
-	/>
+	>
+		{#snippet corner()}<BarcodeIcon
+				barcode={type.barcode}
+				onclick={() => (barcodeOpen = true)}
+			/>{/snippet}
+	</PhotoField>
 </div>
 
 <!-- Same shape as the action buttons on an item card. -->

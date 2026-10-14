@@ -18,13 +18,16 @@
 		typeId = $bindable(null),
 		typeName = $bindable(''),
 		selected = $bindable(null),
-		label = 'Тип'
+		label = 'Тип',
+		allowNew = true
 	}: {
 		typeId?: string | null;
 		typeName?: string;
 		/** The picked existing type. */
 		selected?: TypeInfo | null;
 		label?: string;
+		/** Free text names a new type; without it only an existing type can be picked. */
+		allowNew?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -140,10 +143,12 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if typeName.trim()}
+		{#if typeName.trim() && allowNew}
 			<span class="text-sm break-words text-gray-500 dark:text-gray-400"
 				>Будет создан новый тип «{typeName.trim()}», если такого ещё нет</span
 			>
+		{:else if typeName.trim()}
+			<span class="text-sm text-gray-500 dark:text-gray-400">Выберите тип из списка</span>
 		{/if}
 	{/if}
 </div>

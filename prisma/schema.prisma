@@ -125,6 +125,10 @@ model ItemType {
   isContainer Boolean  @default(false)
   // Object key of the single photo in S3/MinIO; shared by every item of the type.
   photoKey    String?
+  // Barcode from the packaging (EAN-13, EAN-8, UPC, GTIN-14), never issued by
+  // the app; one per type and one type per barcode of an owner. Stored form of
+  // src/lib/domain/barcode.ts (digits, UPC-A as EAN-13).
+  barcode     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -136,6 +140,8 @@ model ItemType {
   categories        TypeCategory[]
   collectionEntries CollectionEntry[]
 
+  @@unique([ownerId, barcode])
+  @@unique([householdId, barcode])
   @@index([ownerId])
   @@index([householdId])
   // Access check of every photo request (/files).

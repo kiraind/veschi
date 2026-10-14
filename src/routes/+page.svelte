@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { Button, Input } from 'flowbite-svelte';
-	import { PlusOutline, QrCodeOutline, SearchOutline } from 'flowbite-svelte-icons';
+	import {
+		ChevronRightOutline,
+		PlusOutline,
+		QrCodeOutline,
+		SearchOutline
+	} from 'flowbite-svelte-icons';
+	import { formatBarcode } from '$lib/domain/barcode';
 	import SearchNotices from '$lib/components/SearchNotices.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import { searchPlaceholder } from '$lib/domain/search';
@@ -105,10 +111,32 @@
 	</Input>
 </form>
 
+{#if !empty && data.barcode && data.barcode.status !== 'invalid'}
+	{@const known = data.barcode.status === 'known' ? data.barcode.type : null}
+	<a
+		href={known ? `/types/${known.id}` : `/barcode/${data.barcode.code}`}
+		class="mb-4 flex min-h-14 items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-xs hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+	>
+		<span class="min-w-0 flex-1">
+			<span class="block font-medium wrap-anywhere text-gray-900 dark:text-white"
+				>{known
+					? `Тип «${known.name}»`
+					: `Штрихкод ${formatBarcode(data.barcode.code)} не привязан`}</span
+			>
+			<span class="block text-sm text-gray-500 dark:text-gray-400"
+				>{known
+					? 'Штрихкод этого типа. Вещей этого типа сейчас нет.'
+					: 'Привязать к типу или добавить вещь'}</span
+			>
+		</span>
+		<ChevronRightOutline class="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500" />
+	</a>
+{/if}
+
 {#if empty}
 	<div class="mb-4 flex flex-wrap gap-2 max-md:hidden">{@render actions('')}</div>
 	{#if data.notices}<SearchNotices notices={data.notices} />{/if}
-{:else if data.groups.length === 0}
+{:else if data.groups.length === 0 && !data.barcode}
 	<p class="text-sm text-gray-500 dark:text-gray-400">Ничего не найдено.</p>
 {:else}
 	<SearchResults groups={data.groups} />

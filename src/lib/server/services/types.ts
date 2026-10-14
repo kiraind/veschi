@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { ItemType } from '@prisma/client';
 import { z } from 'zod';
+import { barcodeQuery } from '$lib/domain/barcode';
 import { escapeLike } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
@@ -44,12 +45,7 @@ export const typeUpdateSchema = typeInputSchema.partial();
 /** A container is a single instance: one thing never lies in two identical boxes. */
 export const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
 
-export interface TypeSummary {
-	id: string;
-	name: string;
-	description: string | null;
-	isContainer: boolean;
-	photoKey: string | null;
+export interface TypeSummary extends TypeInfo {
 	/** Active items of this type (records, not quantity). */
 	itemCount: number;
 }
@@ -60,6 +56,8 @@ export interface TypeInfo {
 	description: string | null;
 	isContainer: boolean;
 	photoKey: string | null;
+	/** Packaging barcode in stored form. */
+	barcode: string | null;
 }
 
 export interface TypeCard extends CategoryInfo {
@@ -84,7 +82,8 @@ function typeInfo(t: TypeInfo): TypeInfo {
 		name: t.name,
 		description: t.description,
 		isContainer: t.isContainer,
-		photoKey: t.photoKey
+		photoKey: t.photoKey,
+		barcode: t.barcode
 	};
 }
 
@@ -92,13 +91,17 @@ export async function getType(actor: Actor, id: string): Promise<TypeInfo> {
 	return typeInfo(await findType(actor, id));
 }
 
-/** Types sorted by name; with `query`, a name or description substring filter (autocomplete). */
+/**
+ * Types sorted by name; with `query`, a name or description substring filter
+ * (autocomplete), digits also match barcodes.
+ */
 export async function listTypes(
 	actor: Actor,
 	query?: string,
 	limit = query ? 20 : 1000
 ): Promise<TypeSummary[]> {
 	const q = query?.trim();
+	const digits = q ? barcodeQuery(q) : null;
 	const types = await db.itemType.findMany({
 		where: {
 			...visibleTo(actor),
@@ -106,7 +109,8 @@ export async function listTypes(
 				? {
 						OR: [
 							{ name: { contains: escapeLike(q), mode: 'insensitive' } },
-							{ description: { contains: escapeLike(q), mode: 'insensitive' } }
+							{ description: { contains: escapeLike(q), mode: 'insensitive' } },
+							...(digits ? [{ barcode: { contains: digits } }] : [])
 						]
 					}
 				: {})

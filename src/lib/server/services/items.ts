@@ -19,6 +19,7 @@ import {
 } from './paths';
 import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
+import { setBarcode } from './barcodes';
 import { requireWorkbench } from './workbench';
 import { CONTAINER_QUANTITY, findOrCreateType } from './types';
 import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
@@ -55,6 +56,8 @@ export const createItemSchema = z
 		/** Categories of a new type (newTypeName). */
 		newTypeCategoryIds: z.array(idSchema).max(50).default([]),
 		stickerCode: z.string().trim().min(1).optional(),
+		/** A packaging barcode to link to the type (existing or new). */
+		barcode: z.string().trim().min(1).max(40).optional(),
 		params: z.optional(paramListSchema)
 	})
 	.refine((v) => Boolean(v.typeId) !== Boolean(v.newTypeName), {
@@ -164,7 +167,8 @@ async function findPlaceableParent(actor: Actor, parentId: string, tx: Tx) {
 
 /**
  * Creates an item: an existing type or a new one by name (optionally a
- * container type, put into categories), own name, parameters and a free sticker — all in one
+ * container type, put into categories), own name, parameters, a free sticker and a
+ * packaging barcode for the type — all in one
  * transaction. Items of a container type have quantity 1. With `workbenchId` the item
  * lies on that bench as taken by the actor, its home being the top level.
  */
@@ -180,6 +184,7 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const bench = data.workbenchId ? await requireWorkbench(actor, data.workbenchId, tx) : null;
+		if (data.barcode) await setBarcode(actor, type.id, data.barcode, {}, tx);
 		if (!data.typeId) {
 			for (const categoryId of new Set(data.newTypeCategoryIds)) {
 				await addTypeToCategory(actor, type.id, categoryId, tx);
