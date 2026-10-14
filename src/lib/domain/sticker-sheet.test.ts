@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	CAPTION_FONT_PT,
 	CAPTION_MAX_LINES,
+	ID_CAP_HEIGHT_EM,
+	ID_GAP_MM,
 	MARGIN_X_MM,
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
@@ -12,11 +14,13 @@ import {
 	blanksPerSheet,
 	captionWidthPt,
 	columns,
+	idFontMm,
 	layoutSheets,
 	parseCaptions,
 	planSheets,
 	qrSize,
 	stickerHeight,
+	stickerPadding,
 	wrapCaption
 } from './sticker-sheet';
 
@@ -79,6 +83,31 @@ describe('sticker sheet', () => {
 		expect(cells[2]).toMatchObject({ index: 2, x: 5, y: MARGIN_Y_MM + 40, width: 20 });
 	});
 
+	it('fits 20 columns of 10 × 10 mm, the ID under a QR of ≈7 mm', () => {
+		expect(columns(10)).toBe(20);
+		expect(blanksPerSheet(10)).toBe(560);
+		expect(stickerPadding(10)).toBe(0.5);
+		// Padding, QR, gap and the ID's cap height add up to the 10 mm square.
+		const id = ID_CAP_HEIGHT_EM * idFontMm(10);
+		expect(0.5 + qrSize(10) + ID_GAP_MM + id + 0.5).toBeCloseTo(10, 9);
+		expect(qrSize(10)).toBeGreaterThan(7);
+		// A 10 mm sticker never grows: it has no caption.
+		const { cells } = layoutSheets([{ width: 10, caption: 'Коробка' }, ...blank(20, 10)]);
+		expect(cells[0]).toMatchObject({ height: 10, width: 10 });
+		expect(cells[20]).toMatchObject({ x: 5, y: MARGIN_Y_MM + 10 });
+	});
+
+	it('prints 10 mm stickers last and fills the sheet with them', () => {
+		const plan = planSheets([{ caption: 'Коробка', width: 10 }], { 20: 1 });
+		expect(plan.slots.slice(0, 11).map((s) => s.width)).toEqual([...Array(10).fill(20), 10]);
+		// An ordered 10 mm sticker has no caption.
+		expect(plan).toMatchObject({ captioned: 0, byWidth: { 20: 10 } });
+		// A 20 mm row takes the place of two rows of 10 mm: 26 rows of 20 are left.
+		expect(plan.byWidth[10]).toBe(26 * 20);
+		expect(planSheets([], { 10: 560 })).toMatchObject({ sheets: 1, padding: 0 });
+		expect(planSheets([], { 10: 560 * 20 + 1 }).sheets).toBe(21);
+	});
+
 	it('wraps 40 mm captions into wider lines', () => {
 		const text = 'Коробка с микросхемами';
 		expect(wrapCaption(text, 20).lines.length).toBeGreaterThan(1);
@@ -90,7 +119,7 @@ describe('sticker sheet', () => {
 		const captions = ['Припой', 'Шкаф', 'Полка 1', 'Полка 2', 'Коробка', 'Ящик', 'Пакет'];
 		// A row of 7 captioned + 3 blank, then 12 rows of blank ones.
 		const plan = planSheets(captioned(captions), { 20: 10 });
-		expect(plan).toMatchObject({ sheets: 1, total: 130, captioned: 7, wide: 0, padding: 113 });
+		expect(plan).toMatchObject({ sheets: 1, total: 130, captioned: 7, padding: 113 });
 		expect(plan.slots.slice(0, 8).map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5, 6, null]);
 	});
 
@@ -112,10 +141,10 @@ describe('sticker sheet', () => {
 			{ index: null, width: 20 }
 		]);
 		// A captioned 40 mm row (≈43 mm) leaves room for 11 rows of 20 mm.
-		expect(plan).toMatchObject({ sheets: 1, wide: 5, total: 5 + 110 });
-		expect(planSheets([], { 40: 1 }, false)).toMatchObject({ total: 1, wide: 1, padding: 0 });
+		expect(plan).toMatchObject({ sheets: 1, total: 5 + 110, byWidth: { 10: 0, 20: 110, 40: 5 } });
+		expect(planSheets([], { 40: 1 }, false)).toMatchObject({ total: 1, padding: 0 });
 		// Only 40 mm: the sheet is filled with 40 mm ones.
-		expect(planSheets([], { 40: 1 })).toMatchObject({ total: 35, wide: 35 });
+		expect(planSheets([], { 40: 1 })).toMatchObject({ total: 35, byWidth: { 40: 35 } });
 	});
 
 	it('0 captions + 141 blank → 2 sheets of 140', () => {

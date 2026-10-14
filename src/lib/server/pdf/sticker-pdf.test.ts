@@ -4,7 +4,7 @@ import { generateCodes } from '$lib/domain/sticker-code';
 import path from 'node:path';
 import jsQR from 'jsqr';
 import PDFDocument from 'pdfkit';
-import { captionWidthPt } from '$lib/domain/sticker-sheet';
+import { ID_ADVANCE_EM, captionWidthPt } from '$lib/domain/sticker-sheet';
 import { type QrLayout, qrContent, qrLayout, renderStickerPdf } from './sticker-pdf';
 
 function pageCount(pdf: Buffer): number {
@@ -72,6 +72,23 @@ describe('sticker PDF', () => {
 		expect([...versions].sort((a, b) => a - b)).toEqual([25, 29, 33, 37]);
 	});
 
+	it('without the ID square, uses level M so a 10 mm code keeps large modules', () => {
+		const text = qrContent('https://veschi.example.com', 'K7M4QX');
+		const layout = qrLayout(text, false);
+		expect(layout.box.side).toBe(0);
+		expect(layout.size).toBe(25); // version 2 instead of 3 at level H
+		for (const code of generateCodes([], 30)) {
+			const t = qrContent('https://veschi.example.com', code);
+			expect(decode(qrLayout(t, false))).toBe(t);
+		}
+	});
+
+	it('knows the width of the monospaced ID font', () => {
+		const doc = new PDFDocument({ autoFirstPage: false });
+		doc.font(path.resolve('assets/fonts/DejaVuSansMono-Bold.ttf')).fontSize(10);
+		expect(doc.widthOfString('K7M-4QX')).toBeCloseTo(7 * ID_ADVANCE_EM * 10, 3);
+	});
+
 	it('measures captions like the PDF does', () => {
 		const doc = new PDFDocument({ autoFirstPage: false });
 		doc.font(path.resolve('assets/fonts/DejaVuSans.ttf')).fontSize(10);
@@ -115,5 +132,12 @@ describe('sticker PDF', () => {
 		const wide = codes.slice(0, 36).map((code) => ({ code, caption: null, width: 40 as const }));
 		expect(pageCount(await renderStickerPdf(wide.slice(0, 35), 'https://v.ex.io'))).toBe(1);
 		expect(pageCount(await renderStickerPdf(wide, 'https://v.ex.io'))).toBe(2);
+		const tiny = generateCodes([], 561).map((code) => ({
+			code,
+			caption: 'Не печатается',
+			width: 10 as const
+		}));
+		expect(pageCount(await renderStickerPdf(tiny.slice(0, 560), 'https://v.ex.io'))).toBe(1);
+		expect(pageCount(await renderStickerPdf(tiny, 'https://v.ex.io'))).toBe(2);
 	});
 });

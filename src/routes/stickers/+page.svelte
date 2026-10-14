@@ -9,7 +9,11 @@
 	import { plural } from '$lib/domain/plural';
 	import {
 		CAPTION_MAX_LINES,
+		CAPTION_WIDTHS,
+		type CaptionWidth,
 		DEFAULT_STICKER_WIDTH,
+		STICKER_WIDTHS,
+		hasCaption,
 		MAX_SHEETS_PER_BATCH,
 		type StickerWidth,
 		wrapCaption,
@@ -21,9 +25,8 @@
 	let { data }: { data: PageData } = $props();
 
 	let captionsText = $state('');
-	let captionWidth = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
-	let blankCount = $state(0);
-	let wideBlankCount = $state(0);
+	let captionWidth = $state<CaptionWidth>(DEFAULT_STICKER_WIDTH);
+	let blankCounts = $state<Record<StickerWidth, number>>({ 10: 0, 20: 0, 40: 0 });
 	let fillSheet = $state(true);
 	let busy = $state(false);
 	let error = $state('');
@@ -36,28 +39,33 @@
 		...typed.map((caption) => ({ caption, width: captionWidth }))
 	]);
 	const count = (n: number) => (Number.isInteger(n) && n > 0 ? n : 0);
-	const blanks = $derived({ 20: count(blankCount), 40: count(wideBlankCount) });
+	const blanks = $derived({
+		10: count(blankCounts[10]),
+		20: count(blankCounts[20]),
+		40: count(blankCounts[40])
+	});
 	const plan = $derived(planSheets(captions, blanks, fillSheet));
 	const tooLong = $derived(
 		captions
+			.filter(({ width }) => hasCaption(width))
 			.map(({ caption, width }) => ({ caption, fitted: wrapCaption(caption, width) }))
 			.filter(({ fitted }) => fitted.truncated)
 	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
 
+	const orderedCaptioned = $derived(data.orders.filter((o) => hasCaption(o.width)).length);
 	const captionedText = $derived(
 		`${plan.captioned} с подписью` +
-			(data.orders.length > 0 ? ` (из них ${data.orders.length} для вещей)` : '')
+			(orderedCaptioned > 0 ? ` (из них ${orderedCaptioned} для вещей)` : '')
 	);
 	// A leading space: Svelte drops the whitespace between «подписи» and an {#if}.
 	const padText = $derived(` (ещё ${plan.padding} добавлено, чтобы заполнить лист)`);
-	const wideText = $derived(
-		plan.wide === 0
-			? ''
-			: plan.wide === plan.total
-				? ' шириной 40 мм'
-				: ` (из них ${plan.wide} шириной 40 мм)`
-	);
+	// «шириной 40 мм» when all are of one width other than 20, «(40 мм: 5, 20 мм: 110)» when mixed.
+	const widthText = $derived.by(() => {
+		const used = [...STICKER_WIDTHS].reverse().filter((w) => plan.byWidth[w] > 0);
+		if (used.length > 1) return ` (${used.map((w) => `${w} мм: ${plan.byWidth[w]}`).join(', ')})`;
+		return used[0] && used[0] !== DEFAULT_STICKER_WIDTH ? ` шириной ${used[0]} мм` : '';
+	});
 
 	function batchStats(batch: PageData['batches'][number]): string {
 		return [
@@ -95,8 +103,7 @@
 			});
 			issuedId = batch.id;
 			captionsText = '';
-			blankCount = 0;
-			wideBlankCount = 0;
+			blankCounts = { 10: 0, 20: 0, 40: 0 };
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e, 'Не удалось выпустить наклейки');
@@ -164,29 +171,31 @@
 				</p>
 				<ul class="flex flex-col">
 					{#each data.orders as order (order.itemId)}
-						<li class="flex items-center gap-2">
+						<li class="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
 							<a
 								href="/items/{order.itemId}"
-								class="min-w-0 flex-1 py-2 break-words hover:underline">{order.caption}</a
+								class="min-w-0 flex-1 basis-40 break-words hover:underline">{order.caption}</a
 							>
-							<StickerWidthPicker
-								value={order.width}
-								onpick={(width) => setOrderWidth(order.itemId, width)}
-								disabled={busy}
-								label="Ширина наклейки для «{order.caption}»"
-							/>
-							<Button
-								class="h-10 shrink-0"
-								size="sm"
-								color="alternative"
-								type="button"
-								aria-label="Не печатать"
-								title="Не печатать"
-								disabled={busy}
-								onclick={() => cancelOrder(order.itemId)}
-							>
-								<CloseOutline class="h-4 w-4" />
-							</Button>
+							<div class="ms-auto flex gap-2">
+								<StickerWidthPicker
+									value={order.width}
+									onpick={(width) => setOrderWidth(order.itemId, width)}
+									disabled={busy}
+									label="Ширина наклейки для «{order.caption}»"
+								/>
+								<Button
+									class="h-10 shrink-0"
+									size="sm"
+									color="alternative"
+									type="button"
+									aria-label="Не печатать"
+									title="Не печатать"
+									disabled={busy}
+									onclick={() => cancelOrder(order.itemId)}
+								>
+									<CloseOutline class="h-4 w-4" />
+								</Button>
+							</div>
 						</li>
 					{/each}
 				</ul>
@@ -205,8 +214,11 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="text-sm">Ширина наклеек с этими подписями</span>
 				<StickerWidthPicker
+					widths={CAPTION_WIDTHS}
 					value={captionWidth}
-					onpick={(width) => (captionWidth = width)}
+					onpick={(width) => {
+						if (hasCaption(width)) captionWidth = width;
+					}}
 					label="Ширина наклеек с подписями"
 				/>
 			</div>
@@ -221,37 +233,34 @@
 				</ul>
 			</Alert>
 		{/if}
-		<div class="grid grid-cols-2 gap-3">
-			<Label>
-				Без подписи, 20 мм
-				<Input
-					class="mt-1"
-					type="number"
-					min="0"
-					step="1"
-					inputmode="numeric"
-					bind:value={blankCount}
-				/>
-			</Label>
-			<Label>
-				Без подписи, 40 мм
-				<Input
-					class="mt-1"
-					type="number"
-					min="0"
-					step="1"
-					inputmode="numeric"
-					bind:value={wideBlankCount}
-				/>
-			</Label>
-		</div>
+		<fieldset>
+			<legend class="mb-1 text-sm font-medium text-gray-900 dark:text-white"> Без подписи </legend>
+			<div class="grid grid-cols-3 gap-3">
+				{#each STICKER_WIDTHS as width (width)}
+					<Label class="text-gray-500 dark:text-gray-400">
+						{width} мм
+						<Input
+							class="mt-1"
+							type="number"
+							min="0"
+							step="1"
+							inputmode="numeric"
+							bind:value={blankCounts[width]}
+						/>
+					</Label>
+				{/each}
+			</div>
+			<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+				На наклейке 10 мм нет подписи, ID напечатан под кодом.
+			</p>
+		</fieldset>
 		<Checkbox bind:checked={fillSheet}
 			>Заполнить пустое место на листе наклейками без подписи</Checkbox
 		>
 
 		{#if plan.total > 0}
 			<p class="text-sm">
-				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек{wideText}: {captionedText},
+				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек{widthText}: {captionedText},
 				{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
 					<span class="text-gray-500 dark:text-gray-400">{padText}</span>{/if}.
 			</p>

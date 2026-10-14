@@ -2,13 +2,15 @@
 	import { Button, ButtonGroup } from 'flowbite-svelte';
 	import { STICKER_WIDTHS, type StickerWidth } from '$lib/domain/sticker-sheet';
 
-	/** «20 мм | 40 мм» segmented choice of the sticker width. */
+	/** «10 мм | 20 мм | 40 мм» segmented choice of the sticker width. */
 	let {
+		widths = STICKER_WIDTHS,
 		value,
 		onpick,
 		disabled = false,
 		label = 'Ширина наклейки'
 	}: {
+		widths?: readonly StickerWidth[];
 		/** The chosen width, or null when nothing is chosen yet. */
 		value: StickerWidth | null;
 		onpick: (width: StickerWidth) => void;
@@ -18,7 +20,7 @@
 </script>
 
 <ButtonGroup class="shrink-0" role="radiogroup" aria-label={label}>
-	{#each STICKER_WIDTHS as width (width)}
+	{#each widths as width (width)}
 		{@const selected = value === width}
 		<Button
 			size="sm"

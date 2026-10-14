@@ -9,14 +9,20 @@ import {
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
 	PAGE_WIDTH_MM,
-	STICKER_PADDING_MM,
+	ID_CAP_HEIGHT_EM,
+	ID_GAP_MM,
 	type SheetRow,
 	type StickerWidth,
 	columns,
+	hasCaption,
+	idFontMm,
+	idUnderQr,
 	layoutSheets,
 	qrSize,
+	stickerPadding,
 	wrapCaption
 } from '$lib/domain/sticker-sheet';
+import { formatCode } from '$lib/domain/sticker-code';
 
 /**
  * The ID is printed inside the QR, in a blank square in its centre. Level H
@@ -24,13 +30,16 @@ import {
  * area) leaves the rest of that budget for dirt and scratches.
  */
 const QR_ERROR_CORRECTION = 'H';
+/**
+ * A 10 mm sticker has the ID under the QR, so its QR has no box and level M:
+ * fewer modules than H, so they stay as large as possible on a ≈7 mm code.
+ */
+const QR_ERROR_CORRECTION_NO_BOX = 'M';
 const ID_BOX_SHARE = 0.31;
 /** Blank space around the ID, in modules, so the nearest modules do not read as letters. */
 const ID_PADDING_MODULES = 1;
 /** Space between the two lines of the ID, in cap heights. */
 const ID_LINE_GAP_SHARE = 0.25;
-/** Cap height of DejaVu Sans Mono Bold, in em: the ID has only capitals and digits. */
-const ID_CAP_HEIGHT_EM = 0.729;
 const CUT_LINE_PT = 0.25;
 const CUT_LINE_COLOR = '#b0b0b0';
 
@@ -58,17 +67,22 @@ export function qrContent(baseUrl: string, code: string): string {
 export interface QrLayout {
 	/** Modules per side. */
 	size: number;
-	/** The blank centre square for the ID: first module and side, in modules. */
+	/** The blank centre square for the ID: first module and side, in modules (side 0 without one). */
 	box: { start: number; side: number };
 	/** Dark modules outside the box merged into horizontal runs: [row, startColumn, length]. */
 	runs: [number, number, number][];
 }
 
-/** The QR matrix with a blank square in the centre (odd side, so it is exactly centred). */
-export function qrLayout(text: string): QrLayout {
-	const { modules } = QRCode.create(text, { errorCorrectionLevel: QR_ERROR_CORRECTION });
+/**
+ * The QR matrix with a blank square in the centre (odd side, so it is exactly
+ * centred), or, with `box` false, the plain QR at level M.
+ */
+export function qrLayout(text: string, box = true): QrLayout {
+	const { modules } = QRCode.create(text, {
+		errorCorrectionLevel: box ? QR_ERROR_CORRECTION : QR_ERROR_CORRECTION_NO_BOX
+	});
 	const size = modules.size;
-	const side = 2 * Math.round((size * ID_BOX_SHARE - 1) / 2) + 1;
+	const side = box ? 2 * Math.round((size * ID_BOX_SHARE - 1) / 2) + 1 : 0;
 	const start = (size - side) / 2;
 	const inBox = (row: number, col: number) =>
 		row >= start && row < start + side && col >= start && col < start + side;
@@ -108,7 +122,11 @@ function drawCutLines(doc: PDFKit.PDFDocument, rows: SheetRow[]) {
 	doc.stroke().restore();
 }
 
-/** Draws the QR with the ID in two lines (`K7M` over `4QX`) in its centre. */
+/**
+ * Draws the QR with the ID in two lines (`K7M` over `4QX`) in its centre or,
+ * on a 10 mm sticker, the QR centred with `K7M-4QX` under it across the
+ * whole width. `x`, `y` — the top-left corner inside the sticker's border.
+ */
 function drawQr(
 	doc: PDFKit.PDFDocument,
 	baseUrl: string,
@@ -116,19 +134,35 @@ function drawQr(
 	x: number,
 	y: number
 ) {
-	const { size, box, runs } = qrLayout(qrContent(baseUrl, code));
-	const module = mm(qrSize(width)) / size;
+	const under = idUnderQr(width);
+	const inner = mm(width - 2 * stickerPadding(width));
+	const side = mm(qrSize(width));
+	const { size, box, runs } = qrLayout(qrContent(baseUrl, code), !under);
+	const left = x + (under ? (inner - side) / 2 : 0);
+	const module = side / size;
 	for (const [row, col, length] of runs) {
-		doc.rect(x + col * module, y + row * module, length * module, module);
+		doc.rect(left + col * module, y + row * module, length * module, module);
 	}
 	doc.fillColor('black').fill();
 
+	if (under) {
+		const fontSize = mm(idFontMm(width));
+		const id = formatCode(code);
+		doc.font(ID_FONT).fontSize(fontSize);
+		const baseline = y + side + mm(ID_GAP_MM) + ID_CAP_HEIGHT_EM * fontSize;
+		doc.text(id, x + (inner - doc.widthOfString(id)) / 2, baseline, {
+			lineBreak: false,
+			baseline: 'alphabetic'
+		});
+		return;
+	}
+
 	const lines = [code.slice(0, 3), code.slice(3)];
-	const inner = box.side * module - 2 * ID_PADDING_MODULES * module;
+	const boxInner = box.side * module - 2 * ID_PADDING_MODULES * module;
 	doc.font(ID_FONT).fontSize(1);
 	const lineWidth = Math.max(...lines.map((line) => doc.widthOfString(line)));
 	const blockHeight = ID_CAP_HEIGHT_EM * (2 + ID_LINE_GAP_SHARE);
-	const fontSize = Math.min(inner / lineWidth, inner / blockHeight);
+	const fontSize = Math.min(boxInner / lineWidth, boxInner / blockHeight);
 	doc.fontSize(fontSize);
 	const centre = (box.start + box.side / 2) * module;
 	const top = y + centre - (blockHeight * fontSize) / 2;
@@ -188,10 +222,10 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 				rows.filter((row) => row.page === page)
 			);
 		}
-		const x = mm(cell.x + STICKER_PADDING_MM);
-		const y = mm(cell.y + STICKER_PADDING_MM);
+		const x = mm(cell.x + stickerPadding(sticker.width));
+		const y = mm(cell.y + stickerPadding(sticker.width));
 		drawQr(doc, qrBaseUrl, sticker, x, y);
-		if (sticker.caption) {
+		if (sticker.caption && hasCaption(sticker.width)) {
 			const top = y + mm(qrSize(sticker.width) + CAPTION_GAP_MM);
 			drawCaption(doc, sticker.caption, sticker.width, x, top);
 		}

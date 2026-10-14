@@ -406,6 +406,23 @@ describe('stickers', () => {
 			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id, width: 40 }]);
 		});
 
+		it('a 10 mm order is printed without the name, still bound to the item', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id, 10);
+			const batch = await issueBatch(actor, {
+				captions: [],
+				blanks: {},
+				orderItemIds: [box.id],
+				fillSheet: false
+			});
+			expect(await batchStickers(batch.id)).toMatchObject([
+				{ width: 10, caption: null, itemId: box.id, status: 'BOUND' }
+			]);
+			await expect(
+				issueBatch(actor, { captions: ['Полка'], captionWidth: 10, blanks: {} })
+			).rejects.toThrow('20 или 40 мм');
+		});
+
 		it('refuses a batch when the orders changed since the page was loaded', async () => {
 			const box = await item('Коробка');
 			await expect(

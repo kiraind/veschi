@@ -2,11 +2,13 @@ import { CHARS, FALLBACK_WIDTH, UNITS_PER_EM, WIDTHS } from './caption-metrics';
 
 /**
  * Sticker sheet layout (spec «Наклейки»): A4, a 200 mm wide band with 5 mm
- * side margins, cut into stickers 20 mm wide (10 per row) or 40 mm wide (5 per
- * row). A sticker is the QR with a 1 mm white border, plus up to three caption
- * lines under it. A row holds stickers of one width and is as tall as its
- * tallest sticker, so the sheet can be cut along straight lines. All sizes
- * are in millimetres.
+ * side margins, cut into stickers 10 mm wide (20 per row), 20 mm wide (10 per
+ * row) or 40 mm wide (5 per row). A 20 or 40 mm sticker is the QR with the ID
+ * inside and a 1 mm white border, plus up to three caption lines under it. A
+ * 10 mm sticker is a 10 × 10 mm square: the QR with the ID (`K7M-4QX`) under
+ * it across the whole width, and no caption. A row holds stickers of one
+ * width and is as tall as its tallest sticker, so the sheet can be cut along
+ * straight lines. All sizes are in millimetres.
  */
 export const PAGE_WIDTH_MM = 210;
 export const PAGE_HEIGHT_MM = 297;
@@ -17,21 +19,46 @@ export const MARGIN_Y_MM = 8;
 export const PRINTABLE_HEIGHT_MM = PAGE_HEIGHT_MM - 2 * MARGIN_Y_MM;
 
 /** Sticker widths; 20 mm is the default and the unit of the sheet. */
-export const STICKER_WIDTHS = [20, 40] as const;
+export const STICKER_WIDTHS = [10, 20, 40] as const;
 export type StickerWidth = (typeof STICKER_WIDTHS)[number];
-export const DEFAULT_STICKER_WIDTH: StickerWidth = 20;
+export const DEFAULT_STICKER_WIDTH = 20 satisfies StickerWidth;
 export const isStickerWidth = (value: unknown): value is StickerWidth =>
 	STICKER_WIDTHS.includes(value as StickerWidth);
-/** A stored width (20 or 40); anything else reads as the default. */
+/** A stored width (10, 20 or 40); anything else reads as the default. */
 export const toStickerWidth = (value: number): StickerWidth =>
 	isStickerWidth(value) ? value : DEFAULT_STICKER_WIDTH;
 
-/** White border around the QR; the cut lines run along the outer edge. */
-export const STICKER_PADDING_MM = 1;
+/** On a 10 mm sticker the ID goes under the QR, and there is no room for a caption. */
+export const idUnderQr = (width: StickerWidth) => width === 10;
+/** Widths that carry a caption. */
+export const CAPTION_WIDTHS = [20, 40] as const satisfies readonly StickerWidth[];
+export type CaptionWidth = (typeof CAPTION_WIDTHS)[number];
+export const hasCaption = (width: StickerWidth): width is CaptionWidth => !idUnderQr(width);
+
+/** White border around the sticker's content; the cut lines run along the outer edge. */
+export const stickerPadding = (width: StickerWidth) => (idUnderQr(width) ? 0.5 : 1);
 /** Stickers per row. */
 export const columns = (width: StickerWidth) => ROW_WIDTH_MM / width;
-/** Side of the QR: 18 mm on a 20 mm sticker, 38 mm on a 40 mm one. */
-export const qrSize = (width: StickerWidth) => width - 2 * STICKER_PADDING_MM;
+
+/** The ID under the QR: DejaVu Sans Mono Bold, `K7M-4QX` as wide as the sticker inside its border. */
+export const ID_CAP_HEIGHT_EM = 0.729;
+/** Advance width of every DejaVu Sans Mono glyph, in em. */
+export const ID_ADVANCE_EM = 1233 / 2048;
+const ID_CHARS = 7;
+/** Space between the QR and the ID under it. */
+export const ID_GAP_MM = 0.3;
+/** Font size (em) of the ID under the QR, in mm. */
+export const idFontMm = (width: StickerWidth) =>
+	(width - 2 * stickerPadding(width)) / (ID_CHARS * ID_ADVANCE_EM);
+
+/**
+ * Side of the QR: 18 mm on a 20 mm sticker, 38 mm on a 40 mm one. On a 10 mm
+ * sticker the QR leaves room for the ID under it (≈7.1 mm).
+ */
+export const qrSize = (width: StickerWidth) => {
+	const inner = width - 2 * stickerPadding(width);
+	return idUnderQr(width) ? inner - ID_GAP_MM - ID_CAP_HEIGHT_EM * idFontMm(width) : inner;
+};
 /** A sticker without a caption is square. */
 export const blankHeight = (width: StickerWidth) => width;
 
@@ -47,10 +74,10 @@ export const CAPTION_GAP_MM = 0.3;
 
 /** Upper limit for one batch, to keep a PDF printable in one go. */
 export const MAX_SHEETS_PER_BATCH = 20;
-/** Blank stickers on a sheet: 14 rows × 10 of 20 mm, or 7 rows × 5 of 40 mm. */
+/** Blank stickers on a sheet: 28 rows × 20 of 10 mm, 14 × 10 of 20 mm or 7 × 5 of 40 mm. */
 export const blanksPerSheet = (width: StickerWidth) =>
 	Math.floor(PRINTABLE_HEIGHT_MM / blankHeight(width)) * columns(width);
-/** A 40 mm sticker takes the place of four 20 mm ones. */
+/** A 40 mm sticker takes the place of four 20 mm ones, a 10 mm one of a quarter. */
 const area = (width: StickerWidth) => (width / DEFAULT_STICKER_WIDTH) ** 2;
 
 /** One caption per non-empty line, trimmed. */
@@ -208,7 +235,8 @@ export function layoutSheets(stickers: StickerSpec[], fill = false): SheetLayout
 			row = [];
 		}
 		width = sticker.width;
-		const lines = sticker.caption ? wrapCaption(sticker.caption, width).lines.length : 0;
+		const lines =
+			sticker.caption && hasCaption(width) ? wrapCaption(sticker.caption, width).lines.length : 0;
 		row.push({ index, height: stickerHeight(lines, width) });
 	});
 	if (row.length > 0) addRow(width, row);
@@ -219,7 +247,7 @@ export function layoutSheets(stickers: StickerSpec[], fill = false): SheetLayout
 }
 
 /**
- * Print order: 40 mm stickers first, then 20 mm ones, each keeping the given
+ * Print order: wider stickers first (40, 20, then 10 mm), each width keeping the given
  * order. So each width has at most one row cut short, and the rest of a sheet
  * shared by both widths is filled with the small ones.
  */
@@ -235,9 +263,10 @@ export type BlankCounts = Partial<Record<StickerWidth, number>>;
 export interface SheetPlan {
 	sheets: number;
 	total: number;
+	/** Stickers printed with a caption (a 10 mm one has none, even when ordered for a thing). */
 	captioned: number;
-	/** Stickers 40 mm wide, captioned or not. */
-	wide: number;
+	/** Stickers of each width, captioned or not. */
+	byWidth: Record<StickerWidth, number>;
 	/** Blank stickers added on top of the requested ones to fill the last sheet. */
 	padding: number;
 	/**
@@ -259,6 +288,9 @@ export function planSheets(
 	fill = true
 ): SheetPlan {
 	const blankCount = (width: StickerWidth) => Math.max(0, Math.floor(blanks[width] ?? 0));
+	const withCaption = captioned.filter((s) => hasCaption(s.width)).length;
+	const byWidth = (count: (width: StickerWidth) => number) =>
+		Object.fromEntries(STICKER_WIDTHS.map((w) => [w, count(w)])) as Record<StickerWidth, number>;
 	const requested = captioned.length + STICKER_WIDTHS.reduce((n, w) => n + blankCount(w), 0);
 	const area20 =
 		captioned.reduce((sum, s) => sum + area(s.width), 0) +
@@ -266,8 +298,14 @@ export function planSheets(
 	if (area20 > MAX_SHEETS_PER_BATCH * blanksPerSheet(DEFAULT_STICKER_WIDTH)) {
 		// Too many for a batch whatever the captions; skip laying out a huge list.
 		const sheets = Math.ceil(area20 / blanksPerSheet(DEFAULT_STICKER_WIDTH));
-		const wide = captioned.filter((s) => s.width === 40).length + blankCount(40);
-		return { sheets, total: requested, captioned: captioned.length, wide, padding: 0, slots: [] };
+		return {
+			sheets,
+			total: requested,
+			captioned: withCaption,
+			byWidth: byWidth((w) => captioned.filter((s) => s.width === w).length + blankCount(w)),
+			padding: 0,
+			slots: []
+		};
 	}
 	const order = printOrder([
 		...captioned.map((s, index) => ({ ...s, index })),
@@ -283,8 +321,8 @@ export function planSheets(
 	return {
 		sheets: pages,
 		total: cells.length,
-		captioned: captioned.length,
-		wide: cells.filter((cell) => cell.width === 40).length,
+		captioned: withCaption,
+		byWidth: byWidth((w) => cells.filter((cell) => cell.width === w).length),
 		padding: cells.length - requested,
 		slots
 	};

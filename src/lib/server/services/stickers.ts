@@ -15,6 +15,7 @@ import {
 	MAX_SHEETS_PER_BATCH,
 	STICKER_WIDTHS,
 	type StickerWidth,
+	hasCaption,
 	isStickerWidth,
 	planSheets,
 	toStickerWidth
@@ -155,7 +156,7 @@ export async function orderSticker(
 	itemId: string,
 	width: StickerWidth = DEFAULT_STICKER_WIDTH
 ): Promise<void> {
-	if (!isStickerWidth(width)) throw new ValidationError('Наклейки бывают шириной 20 или 40 мм');
+	if (!isStickerWidth(width)) throw new ValidationError('Наклейки бывают шириной 10, 20 или 40 мм');
 	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id: itemId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) },
@@ -231,7 +232,7 @@ export interface BatchSummary {
 /**
  * Issues a batch of new stickers: one per ordered item (in `orderItemIds`,
  * the orders the person saw) in the width of its order, the captions in
- * `captionWidth`, and `blanks[width]` blank ones of each width, with extra
+ * `captionWidth` (20 or 40 mm), and `blanks[width]` blank ones of each width, with extra
  * blank stickers to fill the last A4 sheet unless `fillSheet` is false
  * (FR-9). Every new code differs from every code ever issued in at least 3
  * positions (FR-11). Ordered stickers carry the item's name and are bound to
@@ -250,8 +251,8 @@ export async function issueBatch(
 ): Promise<BatchSummary> {
 	if (!config().qrBaseUrl) throw noQrBaseUrl();
 	const captionWidth = input.captionWidth ?? DEFAULT_STICKER_WIDTH;
-	if (!isStickerWidth(captionWidth)) {
-		throw new ValidationError('Наклейки бывают шириной 20 или 40 мм');
+	if (!isStickerWidth(captionWidth) || !hasCaption(captionWidth)) {
+		throw new ValidationError('Подпись помещается на наклейки шириной 20 или 40 мм');
 	}
 	const typed = input.captions.map((c) => c.trim()).filter((c) => c.length > 0);
 	for (const width of STICKER_WIDTHS) {
@@ -306,7 +307,8 @@ export async function issueBatch(
 					if (ordered) orderCodes[index] = code;
 					return {
 						code,
-						caption: index === null ? null : captioned[index]!.caption,
+						// A 10 mm sticker has no room for a caption, even when ordered for a thing.
+						caption: index === null || !hasCaption(width) ? null : captioned[index]!.caption,
 						width,
 						position,
 						batchId: batch.id,
