@@ -38,7 +38,7 @@
 		alt?: string;
 		/** The placeholder without a photo is a box instead of a picture. */
 		container?: boolean;
-		/** Another round button, over the opposite (bottom-left) corner. */
+		/** Another round button, right above the photo menu button. */
 		corner?: Snippet;
 	} = $props();
 
@@ -101,7 +101,7 @@
 			</div>
 		{/if}
 
-		{#if corner}<div class="absolute start-2 bottom-2">{@render corner()}</div>{/if}
+		{#if corner}<div class="absolute end-2 bottom-15">{@render corner()}</div>{/if}
 
 		{#if editable}
 			<button

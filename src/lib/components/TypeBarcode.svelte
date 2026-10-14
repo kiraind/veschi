@@ -9,8 +9,7 @@
 	import Sheet from './Sheet.svelte';
 
 	/**
-	 * The sheet of a type's packaging barcode, opened by BarcodeIcon on the corner of
-	 * the type photo: link one (scan or digits), or see it, replace it or unlink it.
+	 * The sheet of a type's packaging barcode, opened by BarcodeIcon on the type photo: link one (scan or digits), or see it, replace it or unlink it.
 	 */
 	let {
 		typeId,
