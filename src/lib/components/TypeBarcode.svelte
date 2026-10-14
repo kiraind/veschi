@@ -9,8 +9,8 @@
 	import Sheet from './Sheet.svelte';
 
 	/**
-	 * The sheet of a type's packaging barcode, opened by BarcodeIcon next to the
-	 * type name: link one (scan or digits), or see it, replace it or unlink it.
+	 * The sheet of a type's packaging barcode, opened by BarcodeIcon on the corner of
+	 * the type photo: link one (scan or digits), or see it, replace it or unlink it.
 	 */
 	let {
 		typeId,
@@ -53,19 +53,11 @@
 <Sheet bind:open title="Штрихкод с упаковки">
 	{#if barcode && !scanning}
 		<p class="font-mono text-2xl">{formatBarcode(barcode)}</p>
-		<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-			Скан этого штрихкода на вкладке «Скан» открывает этот тип.
-		</p>
 		<div class="mt-4 flex flex-wrap gap-2">
 			<Button color="alternative" onclick={() => (scanning = true)}>Заменить</Button>
 			<Button color="red" outline onclick={unlink}>Отвязать</Button>
 		</div>
 	{:else}
-		{#if !barcode}
-			<p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
-				После привязки скан этого штрихкода сразу откроет тип.
-			</p>
-		{/if}
 		<QrScanner
 			onbarcode={(code) => run(() => api.put(`/api/types/${typeId}/barcode`, { code }))}
 			active={open && scanning}

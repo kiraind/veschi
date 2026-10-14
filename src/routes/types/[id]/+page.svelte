@@ -69,12 +69,12 @@
 		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
 	>
 </p>
-<!-- Named by the text alone: the pen and the barcode are not part of the heading's name. -->
+<!-- Named by the text alone: the pen is not part of the heading's name. -->
 <h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
 	<span id="page-title">{type.name}</span><EditButton
 		label="Изменить название"
 		onclick={() => (renaming = true)}
-	/><BarcodeIcon barcode={type.barcode} onclick={() => (barcodeOpen = true)} />
+	/>
 </h1>
 <TypeBarcode typeId={type.id} barcode={type.barcode} bind:open={barcodeOpen} />
 {#if type.isContainer}<div class="mt-1"><Badge color="indigo">контейнер</Badge></div>{/if}
@@ -94,7 +94,12 @@
 			await api.delete(`/api/types/${type.id}/photo`);
 			await invalidateAll();
 		}}
-	/>
+	>
+		{#snippet corner()}<BarcodeIcon
+				barcode={type.barcode}
+				onclick={() => (barcodeOpen = true)}
+			/>{/snippet}
+	</PhotoField>
 </div>
 
 <!-- Same shape as the action buttons on an item card. -->
