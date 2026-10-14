@@ -224,66 +224,70 @@
 	/>
 {/if}
 
-{#if active && !item.isWorkbench}
-	<ButtonGroup class="my-3 w-full sm:w-auto">
-		{#if data.onBench}
-			<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
-			<Button color="alternative" class={actionClass} onclick={startReturning}>
-				<UndoOutline class={actionIconClass} />
-				Вернуть
+<!-- Actions and the sticker: one column, 12 px apart; sections below start 24 px lower. -->
+<div class="mt-3 flex flex-col gap-3">
+	{#if active && !item.isWorkbench}
+		<ButtonGroup class="w-full sm:w-auto sm:self-start">
+			{#if data.onBench}
+				<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
+				<Button color="alternative" class={actionClass} onclick={startReturning}>
+					<UndoOutline class={actionIconClass} />
+					Вернуть
+				</Button>
+			{:else}
+				<Button color="alternative" class={actionClass} onclick={() => (taking = true)}>
+					<WorkbenchIcon icon={null} class={actionIconClass} />
+					На стол
+				</Button>
+			{/if}
+			<Button color="alternative" class={actionClass} onclick={startMoving}>
+				<ArrowsRepeatOutline class={actionIconClass} />
+				Переложить
 			</Button>
-		{:else}
-			<Button color="alternative" class={actionClass} onclick={() => (taking = true)}>
-				<WorkbenchIcon icon={null} class={actionIconClass} />
-				На стол
+			{#if container}
+				<!-- A container is always one: throwing it away is the only thing to do here. -->
+				<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
+					<TrashBinOutline class={actionIconClass} />
+					Выкинуть
+				</Button>
+			{:else}
+				<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
+				{@const quantityText = pieces(item.quantity)}
+				<Button
+					color="alternative"
+					class={actionClass}
+					aria-label="Количество: {quantityText}. Изменить"
+					onclick={() => (changingQuantity = true)}
+				>
+					<ChevronSortOutline class={actionIconClass} />
+					{quantityText}
+				</Button>
+			{/if}
+		</ButtonGroup>
+	{/if}
+	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
+			{error}
+		</p>{/if}
+	{#if !item.isWorkbench}
+		{#if card.sticker?.status === 'BOUND' || card.stickerOrder !== null}
+			<Card class="max-w-none p-4">
+				<StickerPanel
+					itemId={item.id}
+					quantity={item.quantity}
+					sticker={card.sticker?.status === 'BOUND' ? card.sticker : null}
+					orderWidth={card.stickerOrder ?? undefined}
+					editable={active}
+				/>
+			</Card>
+		{:else if active}
+			<Button color="alternative" class="w-full" onclick={() => (addingSticker = true)}>
+				<PlusOutline class="me-1.5 h-5 w-5" />Наклейка
 			</Button>
 		{/if}
-		<Button color="alternative" class={actionClass} onclick={startMoving}>
-			<ArrowsRepeatOutline class={actionIconClass} />
-			Переложить
-		</Button>
-		{#if container}
-			<!-- A container is always one: throwing it away is the only thing to do here. -->
-			<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
-				<TrashBinOutline class={actionIconClass} />
-				Выкинуть
-			</Button>
-		{:else}
-			<!-- Shows the quantity; opens the sheet that changes it, uses or discards the item. -->
-			{@const quantityText = pieces(item.quantity)}
-			<Button
-				color="alternative"
-				class={actionClass}
-				aria-label="Количество: {quantityText}. Изменить"
-				onclick={() => (changingQuantity = true)}
-			>
-				<ChevronSortOutline class={actionIconClass} />
-				{quantityText}
-			</Button>
-		{/if}
-	</ButtonGroup>
-{/if}
-{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">
-		{error}
-	</p>{/if}
+	{/if}
+</div>
 
 {#if !item.isWorkbench}
-	{#if card.sticker?.status === 'BOUND' || card.stickerOrder !== null}
-		<Card class="mt-3 max-w-none p-4">
-			<StickerPanel
-				itemId={item.id}
-				quantity={item.quantity}
-				sticker={card.sticker?.status === 'BOUND' ? card.sticker : null}
-				orderWidth={card.stickerOrder ?? undefined}
-				editable={active}
-			/>
-		</Card>
-	{:else if active}
-		<Button color="alternative" class="mt-3 w-full" onclick={() => (addingSticker = true)}>
-			<PlusOutline class="me-1.5 h-5 w-5" />Наклейка
-		</Button>
-	{/if}
-
 	{#if card.type && (card.type.description || active)}
 		<div class="mt-6">
 			<Description
