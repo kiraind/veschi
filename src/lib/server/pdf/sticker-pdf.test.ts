@@ -88,7 +88,8 @@ describe('sticker PDF', () => {
 		const codes = generateCodes([], 140);
 		const stickers = codes.map((code, i) => ({
 			code,
-			caption: i < 7 ? `Коробка с микросхемами ${i}` : null
+			caption: i < 7 ? `Коробка с микросхемами ${i}` : null,
+			width: 20 as const
 		}));
 		const pdf = await renderStickerPdf(stickers, 'https://v.ex.io');
 		expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
@@ -99,5 +100,20 @@ describe('sticker PDF', () => {
 			.slice(10)
 			.concat(stickers.slice(0, 10).map((s) => ({ ...s, caption: null })));
 		expect(pageCount(await renderStickerPdf(blank, 'https://v.ex.io'))).toBe(1);
+	});
+
+	it('renders 40 mm stickers next to 20 mm ones', async () => {
+		const codes = generateCodes([], 40);
+		const stickers = codes.map((code, i) => ({
+			code,
+			caption: i === 0 ? 'Шуруповёрт Makita DF333' : null,
+			width: i < 5 ? (40 as const) : (20 as const)
+		}));
+		const pdf = await renderStickerPdf(stickers, 'https://v.ex.io');
+		expect(pageCount(pdf)).toBe(1);
+		// 35 blank 40 mm stickers fill exactly one sheet.
+		const wide = codes.slice(0, 36).map((code) => ({ code, caption: null, width: 40 as const }));
+		expect(pageCount(await renderStickerPdf(wide.slice(0, 35), 'https://v.ex.io'))).toBe(1);
+		expect(pageCount(await renderStickerPdf(wide, 'https://v.ex.io'))).toBe(2);
 	});
 });

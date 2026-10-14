@@ -5,17 +5,16 @@ import {
 	CAPTION_FONT_PT,
 	CAPTION_GAP_MM,
 	CAPTION_LINE_MM,
-	CAPTION_WIDTH_MM,
-	CELL_WIDTH_MM,
-	COLUMNS,
 	MARGIN_X_MM,
 	MARGIN_Y_MM,
 	PAGE_HEIGHT_MM,
 	PAGE_WIDTH_MM,
-	QR_SIZE_MM,
 	STICKER_PADDING_MM,
+	type SheetRow,
+	type StickerWidth,
+	columns,
 	layoutSheets,
-	stickerHeights,
+	qrSize,
 	wrapCaption
 } from '$lib/domain/sticker-sheet';
 
@@ -45,6 +44,7 @@ const CAPTION_FONT = fontPath('DejaVuSans.ttf');
 export interface PdfSticker {
 	code: string;
 	caption: string | null;
+	width: StickerWidth;
 }
 
 /**
@@ -87,23 +87,37 @@ export function qrLayout(text: string): QrLayout {
 	return { size, box: { start, side }, runs };
 }
 
-/** Cut lines: the column edges across the page and the bottom edge of every row. */
-function drawCutLines(doc: PDFKit.PDFDocument, rowEdges: number[]) {
+/**
+ * Cut lines: the bottom edge of every row across the page, and the column
+ * edges of every row. The column edges of the first and the last row run on
+ * to the page edges, through the margins.
+ */
+function drawCutLines(doc: PDFKit.PDFDocument, rows: SheetRow[]) {
 	doc.save().lineWidth(CUT_LINE_PT).strokeColor(CUT_LINE_COLOR);
-	for (let c = 0; c <= COLUMNS; c++) {
-		const x = mm(MARGIN_X_MM + c * CELL_WIDTH_MM);
-		doc.moveTo(x, 0).lineTo(x, mm(PAGE_HEIGHT_MM));
-	}
-	for (const edge of [MARGIN_Y_MM, ...rowEdges]) {
+	rows.forEach((row, i) => {
+		const top = i === 0 ? 0 : row.top;
+		const bottom = i === rows.length - 1 ? PAGE_HEIGHT_MM : row.top + row.height;
+		for (let c = 0; c <= columns(row.width); c++) {
+			const x = mm(MARGIN_X_MM + c * row.width);
+			doc.moveTo(x, mm(top)).lineTo(x, mm(bottom));
+		}
+	});
+	for (const edge of [MARGIN_Y_MM, ...rows.map((row) => row.top + row.height)]) {
 		doc.moveTo(0, mm(edge)).lineTo(mm(PAGE_WIDTH_MM), mm(edge));
 	}
 	doc.stroke().restore();
 }
 
 /** Draws the QR with the ID in two lines (`K7M` over `4QX`) in its centre. */
-function drawQr(doc: PDFKit.PDFDocument, baseUrl: string, code: string, x: number, y: number) {
+function drawQr(
+	doc: PDFKit.PDFDocument,
+	baseUrl: string,
+	{ code, width }: PdfSticker,
+	x: number,
+	y: number
+) {
 	const { size, box, runs } = qrLayout(qrContent(baseUrl, code));
-	const module = mm(QR_SIZE_MM) / size;
+	const module = mm(qrSize(width)) / size;
 	for (const [row, col, length] of runs) {
 		doc.rect(x + col * module, y + row * module, length * module, module);
 	}
@@ -127,18 +141,24 @@ function drawQr(doc: PDFKit.PDFDocument, baseUrl: string, code: string, x: numbe
 	});
 }
 
-function drawCaption(doc: PDFKit.PDFDocument, caption: string, x: number, y: number) {
+function drawCaption(
+	doc: PDFKit.PDFDocument,
+	caption: string,
+	width: StickerWidth,
+	x: number,
+	y: number
+) {
 	doc.font(CAPTION_FONT).fontSize(CAPTION_FONT_PT).fillColor('black');
-	wrapCaption(caption).lines.forEach((line, i) => {
+	wrapCaption(caption, width).lines.forEach((line, i) => {
 		doc.text(line, x, y + i * mm(CAPTION_LINE_MM), {
-			width: mm(CAPTION_WIDTH_MM),
+			width: mm(qrSize(width)),
 			align: 'center',
 			lineBreak: false
 		});
 	});
 }
 
-/** Renders stickers in print order on as many A4 sheets as needed. */
+/** Renders stickers in the given order (see layoutSheets) on as many A4 sheets as needed. */
 export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string): Promise<Buffer> {
 	const doc = new PDFDocument({
 		size: 'A4',
@@ -154,7 +174,8 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 		doc.on('error', reject);
 	});
 
-	const { cells, rowEdges } = layoutSheets(stickerHeights(stickers.map((s) => s.caption)));
+	// Without `fill` the cells are the stickers, in the same order.
+	const { cells, rows } = layoutSheets(stickers);
 	let page = -1;
 	stickers.forEach((sticker, index) => {
 		const cell = cells[index];
@@ -162,13 +183,17 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 		if (cell.page !== page) {
 			page = cell.page;
 			doc.addPage();
-			drawCutLines(doc, rowEdges[page] ?? []);
+			drawCutLines(
+				doc,
+				rows.filter((row) => row.page === page)
+			);
 		}
 		const x = mm(cell.x + STICKER_PADDING_MM);
 		const y = mm(cell.y + STICKER_PADDING_MM);
-		drawQr(doc, qrBaseUrl, sticker.code, x, y);
+		drawQr(doc, qrBaseUrl, sticker, x, y);
 		if (sticker.caption) {
-			drawCaption(doc, sticker.caption, x, y + mm(QR_SIZE_MM + CAPTION_GAP_MM));
+			const top = y + mm(qrSize(sticker.width) + CAPTION_GAP_MM);
+			drawCaption(doc, sticker.caption, sticker.width, x, top);
 		}
 	});
 

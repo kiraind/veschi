@@ -5,6 +5,8 @@
 	import { api, errorText } from '$lib/api';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import QrScanner from './QrScanner.svelte';
+	import StickerWidthPicker from './StickerWidthPicker.svelte';
+	import type { StickerWidth } from '$lib/domain/sticker-sheet';
 	import { confirmAction } from '$lib/confirm.svelte';
 
 	/** The item's sticker with «Привязать» / «Напечатать» / «Отвязать» actions. */
@@ -12,7 +14,7 @@
 		itemId,
 		quantity = 1,
 		sticker,
-		ordered = false,
+		ordered = null,
 		editable
 	}: {
 		itemId: string;
@@ -23,13 +25,18 @@
 			status: 'FREE' | 'BOUND' | 'WRITTEN_OFF';
 			caption: string | null;
 		} | null;
-		/** A sticker is ordered: it is printed and bound with the next batch on «Наклейки». */
-		ordered?: boolean;
+		/**
+		 * Width of the ordered sticker, or null: an ordered sticker is printed and
+		 * bound with the next batch on «Наклейки».
+		 */
+		ordered?: StickerWidth | null;
 		/** False for archived items: their sticker is only shown. */
 		editable: boolean;
 	} = $props();
 
 	let binding = $state(false);
+	/** «Напечатать» was pressed: the width is being chosen. */
+	let choosing = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -39,6 +46,7 @@
 		try {
 			await action();
 			binding = false;
+			choosing = false;
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e);
@@ -53,7 +61,8 @@
 			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
 		});
 
-	const order = () => run(() => api.post('/api/stickers/orders', { itemId }));
+	const order = (width: StickerWidth) =>
+		run(() => api.post('/api/stickers/orders', { itemId, width }));
 	const cancelOrder = () => run(() => api.delete(`/api/stickers/orders/${itemId}`));
 
 	async function unbind() {
@@ -85,9 +94,14 @@
 		</div>
 	{:else}
 		{#if ordered}
-			<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
-				>Наклейка ждёт печати</a
-			>
+			<div class="flex flex-wrap items-center gap-2">
+				<a href="/stickers" class="text-sm text-primary-700 hover:underline dark:text-primary-500"
+					>Наклейка {ordered} мм ждёт печати</a
+				>
+				{#if editable}
+					<StickerWidthPicker value={ordered} onpick={order} disabled={busy} />
+				{/if}
+			</div>
 		{:else if sticker?.status === 'WRITTEN_OFF'}
 			<span class="text-sm text-gray-500 dark:text-gray-400"
 				>Наклейка <span class="font-mono">{formatCode(sticker.code)}</span> списана</span
@@ -95,7 +109,22 @@
 		{:else}
 			<span class="text-sm text-gray-500 dark:text-gray-400">Без наклейки</span>
 		{/if}
-		{#if editable}
+		{#if editable && choosing}
+			<p class="text-sm">Какой ширины напечатать наклейку?</p>
+			<div class="flex flex-wrap gap-2">
+				<StickerWidthPicker value={null} onpick={order} disabled={busy} />
+				<Button
+					size="sm"
+					class="h-10"
+					color="alternative"
+					type="button"
+					onclick={() => (choosing = false)}
+					disabled={busy}
+				>
+					Отмена
+				</Button>
+			</div>
+		{:else if editable}
 			<div class="flex flex-wrap gap-2">
 				<Button
 					size="sm"
@@ -113,7 +142,7 @@
 						class="h-10"
 						color="alternative"
 						type="button"
-						onclick={ordered ? cancelOrder : order}
+						onclick={ordered ? cancelOrder : () => (choosing = true)}
 						disabled={busy}
 					>
 						{ordered ? 'Не печатать' : 'Напечатать'}

@@ -9,7 +9,16 @@ import { itemDisplayName } from '$lib/domain/item';
 import { itemSubject, recordEvent } from './history';
 import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
-import { MAX_SHEETS_PER_BATCH, planSheets } from '$lib/domain/sticker-sheet';
+import {
+	type BlankCounts,
+	DEFAULT_STICKER_WIDTH,
+	MAX_SHEETS_PER_BATCH,
+	STICKER_WIDTHS,
+	type StickerWidth,
+	isStickerWidth,
+	planSheets,
+	toStickerWidth
+} from '$lib/domain/sticker-sheet';
 
 /**
  * Binds a free sticker to an active item that has no sticker yet. Used when
@@ -133,14 +142,20 @@ export interface StickerOrder {
 	caption: string;
 	quantity: number;
 	orderedAt: Date;
+	width: StickerWidth;
 }
 
 /**
- * Orders a sticker for an active item without one: the next batch prints it
- * with the item's name and binds it to the item (issueBatch). Ordering twice
- * changes nothing.
+ * Orders a sticker of the given width for an active item without one: the
+ * next batch prints it with the item's name and binds it to the item
+ * (issueBatch). Ordering again only changes the width.
  */
-export async function orderSticker(actor: Actor, itemId: string): Promise<void> {
+export async function orderSticker(
+	actor: Actor,
+	itemId: string,
+	width: StickerWidth = DEFAULT_STICKER_WIDTH
+): Promise<void> {
+	if (!isStickerWidth(width)) throw new ValidationError('Наклейки бывают шириной 20 или 40 мм');
 	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id: itemId, status: 'ACTIVE', isWorkbench: false, ...visibleTo(actor) },
@@ -148,12 +163,20 @@ export async function orderSticker(actor: Actor, itemId: string): Promise<void> 
 		});
 		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (item.sticker?.status === 'BOUND') throw new ConflictError('У вещи уже есть наклейка');
-		if (item.stickerOrderedAt) return;
-		await tx.item.update({ where: { id: item.id }, data: { stickerOrderedAt: new Date() } });
+		if (item.stickerOrderedAt) {
+			if (item.stickerOrderWidth !== width) {
+				await tx.item.update({ where: { id: item.id }, data: { stickerOrderWidth: width } });
+			}
+			return;
+		}
+		await tx.item.update({
+			where: { id: item.id },
+			data: { stickerOrderedAt: new Date(), stickerOrderWidth: width }
+		});
 		await recordEvent(tx, actor, {
 			kind: 'sticker.ordered',
 			subject: await itemSubject(tx, item.id),
-			data: {}
+			data: width === DEFAULT_STICKER_WIDTH ? {} : { width }
 		});
 	});
 }
@@ -184,7 +207,8 @@ export async function listStickerOrders(actor: Actor, tx: Tx = db): Promise<Stic
 		itemId: i.id,
 		caption: itemDisplayName(i),
 		quantity: i.quantity,
-		orderedAt: i.stickerOrderedAt!
+		orderedAt: i.stickerOrderedAt!,
+		width: toStickerWidth(i.stickerOrderWidth)
 	}));
 }
 
@@ -206,22 +230,35 @@ export interface BatchSummary {
 
 /**
  * Issues a batch of new stickers: one per ordered item (in `orderItemIds`,
- * the orders the person saw), the captions, and `blankCount` blank ones,
- * with extra blank stickers to fill the last A4 sheet unless `fillSheet` is
- * false (FR-9). Every new
- * code differs from every code ever issued in at least 3 positions (FR-11).
- * Ordered stickers carry the item's name and are bound to the item right
- * away (one thing is split off a record holding several); their orders are
- * fulfilled.
+ * the orders the person saw) in the width of its order, the captions in
+ * `captionWidth`, and `blanks[width]` blank ones of each width, with extra
+ * blank stickers to fill the last A4 sheet unless `fillSheet` is false
+ * (FR-9). Every new code differs from every code ever issued in at least 3
+ * positions (FR-11). Ordered stickers carry the item's name and are bound to
+ * the item right away (one thing is split off a record holding several);
+ * their orders are fulfilled.
  */
 export async function issueBatch(
 	actor: Actor,
-	input: { captions: string[]; blankCount: number; orderItemIds?: string[]; fillSheet?: boolean }
+	input: {
+		captions: string[];
+		captionWidth?: StickerWidth;
+		blanks: BlankCounts;
+		orderItemIds?: string[];
+		fillSheet?: boolean;
+	}
 ): Promise<BatchSummary> {
 	if (!config().qrBaseUrl) throw noQrBaseUrl();
+	const captionWidth = input.captionWidth ?? DEFAULT_STICKER_WIDTH;
+	if (!isStickerWidth(captionWidth)) {
+		throw new ValidationError('Наклейки бывают шириной 20 или 40 мм');
+	}
 	const typed = input.captions.map((c) => c.trim()).filter((c) => c.length > 0);
-	if (!Number.isInteger(input.blankCount) || input.blankCount < 0) {
-		throw new ValidationError('Число наклеек без подписи должно быть целым и не меньше 0');
+	for (const width of STICKER_WIDTHS) {
+		const count = input.blanks[width] ?? 0;
+		if (!Number.isInteger(count) || count < 0) {
+			throw new ValidationError('Число наклеек без подписи должно быть целым и не меньше 0');
+		}
 	}
 	const orderIds = [...new Set(input.orderItemIds ?? [])];
 
@@ -233,8 +270,11 @@ export async function issueBatch(
 			if (orders.length !== orderIds.length) {
 				throw new ConflictError('Список наклеек, ждущих печати, изменился, обновите страницу');
 			}
-			const captions = [...orders.map((o) => o.caption), ...typed];
-			const plan = planSheets(captions, input.blankCount, input.fillSheet ?? true);
+			const captioned = [
+				...orders.map((o) => ({ caption: o.caption, width: o.width })),
+				...typed.map((caption) => ({ caption, width: captionWidth }))
+			];
+			const plan = planSheets(captioned, input.blanks, input.fillSheet ?? true);
 			if (plan.total === 0) throw new ValidationError('Нужна хотя бы одна наклейка');
 			if (plan.sheets > MAX_SHEETS_PER_BATCH) {
 				throw new ValidationError(
@@ -257,23 +297,31 @@ export async function issueBatch(
 				targets.push(await stickerTarget(tx, item));
 			}
 			const batch = await tx.stickerBatch.create({ data: { ...ownedBy(actor) } });
+			// Slots are in print order; an ordered sticker's slot points at its order.
+			const orderCodes: string[] = [];
 			await tx.sticker.createMany({
-				data: codes.map((code, position) => ({
-					code,
-					caption: captions[position] ?? null,
-					position,
-					batchId: batch.id,
-					...ownedBy(actor),
-					...(position < targets.length
-						? { status: 'BOUND' as const, itemId: targets[position], fromOrder: true }
-						: {})
-				}))
+				data: plan.slots.map(({ index, width }, position) => {
+					const code = codes[position]!;
+					const ordered = index !== null && index < orders.length;
+					if (ordered) orderCodes[index] = code;
+					return {
+						code,
+						caption: index === null ? null : captioned[index]!.caption,
+						width,
+						position,
+						batchId: batch.id,
+						...ownedBy(actor),
+						...(ordered
+							? { status: 'BOUND' as const, itemId: targets[index], fromOrder: true }
+							: {})
+					};
+				})
 			});
 			for (const [i, order] of orders.entries()) {
 				await recordEvent(tx, actor, {
 					kind: 'sticker.printed',
 					subject: await itemSubject(tx, order.itemId),
-					data: { code: codes[i]!, resultId: targets[i] },
+					data: { code: orderCodes[i]!, resultId: targets[i] },
 					refIds: [batch.id]
 				});
 			}
@@ -320,12 +368,16 @@ export async function unprintBatch(actor: Actor, batchId: string): Promise<void>
 				`Наклейки из этой пачки уже используются (${codes.join(', ')}${more}), значит, она напечатана`
 			);
 		}
-		const reordered = stickers.flatMap((s) => (s.fromOrder && s.itemId ? [s.itemId] : []));
+		const reordered = stickers.filter((s) => s.fromOrder && s.itemId);
 		const orderedAt = new Date();
-		await tx.item.updateMany({
-			where: { id: { in: reordered } },
-			data: { stickerOrderedAt: orderedAt }
-		});
+		for (const width of STICKER_WIDTHS) {
+			const ids = reordered.filter((s) => s.width === width).map((s) => s.itemId!);
+			if (ids.length === 0) continue;
+			await tx.item.updateMany({
+				where: { id: { in: ids } },
+				data: { stickerOrderedAt: orderedAt, stickerOrderWidth: width }
+			});
+		}
 		await tx.sticker.deleteMany({ where: { batchId: batch.id } });
 		await tx.stickerBatch.delete({ where: { id: batch.id } });
 		await recordEvent(tx, actor, {
@@ -341,7 +393,7 @@ export async function unprintBatch(actor: Actor, batchId: string): Promise<void>
 				count: stickers.length,
 				...(reordered.length > 0 ? { ordered: reordered.length } : {})
 			},
-			refIds: reordered
+			refIds: reordered.map((s) => s.itemId!)
 		});
 	});
 }
@@ -408,9 +460,12 @@ export async function getBatchPdf(
 	const stickers = await db.sticker.findMany({
 		where: { batchId: batch.id },
 		orderBy: { position: 'asc' },
-		select: { code: true, caption: true }
+		select: { code: true, caption: true, width: true }
 	});
-	const pdf = await renderStickerPdf(stickers, qrBaseUrl);
+	const pdf = await renderStickerPdf(
+		stickers.map((s) => ({ ...s, width: toStickerWidth(s.width) })),
+		qrBaseUrl
+	);
 	const date = batch.createdAt.toISOString().slice(0, 10);
 	return { filename: `stickers-${date}-${batch.id.slice(-8)}.pdf`, pdf };
 }

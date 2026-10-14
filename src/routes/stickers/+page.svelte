@@ -5,10 +5,13 @@
 	import { CloseOutline, FilePdfOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import StickerWidthPicker from '$lib/components/StickerWidthPicker.svelte';
 	import { plural } from '$lib/domain/plural';
 	import {
 		CAPTION_MAX_LINES,
+		DEFAULT_STICKER_WIDTH,
 		MAX_SHEETS_PER_BATCH,
+		type StickerWidth,
 		wrapCaption,
 		parseCaptions,
 		planSheets
@@ -18,20 +21,26 @@
 	let { data }: { data: PageData } = $props();
 
 	let captionsText = $state('');
+	let captionWidth = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
 	let blankCount = $state(0);
+	let wideBlankCount = $state(0);
 	let fillSheet = $state(true);
 	let busy = $state(false);
 	let error = $state('');
 	let issuedId = $state('');
 
 	const typed = $derived(parseCaptions(captionsText));
-	// Ordered stickers go first, with the item's name as the caption (see issueBatch).
-	const captions = $derived([...data.orders.map((o) => o.caption), ...typed]);
-	const blank = $derived(Number.isInteger(blankCount) && blankCount > 0 ? blankCount : 0);
-	const plan = $derived(planSheets(captions, blank, fillSheet));
+	// Ordered stickers carry the item's name and the width of the order (see issueBatch).
+	const captions = $derived([
+		...data.orders.map((o) => ({ caption: o.caption, width: o.width })),
+		...typed.map((caption) => ({ caption, width: captionWidth }))
+	]);
+	const count = (n: number) => (Number.isInteger(n) && n > 0 ? n : 0);
+	const blanks = $derived({ 20: count(blankCount), 40: count(wideBlankCount) });
+	const plan = $derived(planSheets(captions, blanks, fillSheet));
 	const tooLong = $derived(
 		captions
-			.map((caption) => ({ caption, fitted: wrapCaption(caption) }))
+			.map(({ caption, width }) => ({ caption, fitted: wrapCaption(caption, width) }))
 			.filter(({ fitted }) => fitted.truncated)
 	);
 	const tooMany = $derived(plan.sheets > MAX_SHEETS_PER_BATCH);
@@ -42,6 +51,13 @@
 	);
 	// A leading space: Svelte drops the whitespace between «подписи» and an {#if}.
 	const padText = $derived(` (ещё ${plan.padding} добавлено, чтобы заполнить лист)`);
+	const wideText = $derived(
+		plan.wide === 0
+			? ''
+			: plan.wide === plan.total
+				? ' шириной 40 мм'
+				: ` (из них ${plan.wide} шириной 40 мм)`
+	);
 
 	function batchStats(batch: PageData['batches'][number]): string {
 		return [
@@ -72,13 +88,15 @@
 		try {
 			const batch = await api.post<{ id: string }>('/api/stickers/batches', {
 				captions: typed,
-				blankCount: blank,
+				captionWidth,
+				blanks,
 				fillSheet,
 				orderItemIds: data.orders.map((o) => o.itemId)
 			});
 			issuedId = batch.id;
 			captionsText = '';
 			blankCount = 0;
+			wideBlankCount = 0;
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e, 'Не удалось выпустить наклейки');
@@ -107,6 +125,11 @@
 
 	const cancelOrder = (itemId: string) =>
 		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось убрать из печати');
+	const setOrderWidth = (itemId: string, width: StickerWidth) =>
+		act(
+			() => api.post('/api/stickers/orders', { itemId, width }),
+			'Не удалось поменять ширину наклейки'
+		);
 
 	async function unprint(batchId: string, ordered: number) {
 		const ok = await confirmAction({
@@ -141,10 +164,17 @@
 				</p>
 				<ul class="flex flex-col">
 					{#each data.orders as order (order.itemId)}
-						<li class="flex items-center justify-between gap-2">
-							<a href="/items/{order.itemId}" class="min-w-0 py-2 break-words hover:underline"
-								>{order.caption}</a
+						<li class="flex items-center gap-2">
+							<a
+								href="/items/{order.itemId}"
+								class="min-w-0 flex-1 py-2 break-words hover:underline">{order.caption}</a
 							>
+							<StickerWidthPicker
+								value={order.width}
+								onpick={(width) => setOrderWidth(order.itemId, width)}
+								disabled={busy}
+								label="Ширина наклейки для «{order.caption}»"
+							/>
 							<Button
 								class="h-10 shrink-0"
 								size="sm"
@@ -171,6 +201,16 @@
 				placeholder="Припой&#10;Коробка с NE555"
 			/>
 		</Label>
+		{#if typed.length > 0}
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm">Ширина наклеек с этими подписями</span>
+				<StickerWidthPicker
+					value={captionWidth}
+					onpick={(width) => (captionWidth = width)}
+					label="Ширина наклеек с подписями"
+				/>
+			</div>
+		{/if}
 		{#if tooLong.length > 0}
 			<Alert color="yellow" class="text-sm">
 				Не влезет в {CAPTION_MAX_LINES} строки и будет обрезано:
@@ -181,24 +221,37 @@
 				</ul>
 			</Alert>
 		{/if}
-		<Label>
-			Без подписи
-			<Input
-				class="mt-1"
-				type="number"
-				min="0"
-				step="1"
-				inputmode="numeric"
-				bind:value={blankCount}
-			/>
-		</Label>
+		<div class="grid grid-cols-2 gap-3">
+			<Label>
+				Без подписи, 20 мм
+				<Input
+					class="mt-1"
+					type="number"
+					min="0"
+					step="1"
+					inputmode="numeric"
+					bind:value={blankCount}
+				/>
+			</Label>
+			<Label>
+				Без подписи, 40 мм
+				<Input
+					class="mt-1"
+					type="number"
+					min="0"
+					step="1"
+					inputmode="numeric"
+					bind:value={wideBlankCount}
+				/>
+			</Label>
+		</div>
 		<Checkbox bind:checked={fillSheet}
 			>Заполнить пустое место на листе наклейками без подписи</Checkbox
 		>
 
 		{#if plan.total > 0}
 			<p class="text-sm">
-				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек: {captionedText},
+				{sheetsLabel(plan.sheets)} A4, {plan.total} наклеек{wideText}: {captionedText},
 				{plan.total - plan.captioned} без подписи{#if plan.padding > 0}
 					<span class="text-gray-500 dark:text-gray-400">{padText}</span>{/if}.
 			</p>
