@@ -279,13 +279,9 @@
 			/>
 		</Card>
 	{:else if active}
-		<button
-			type="button"
-			class="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg px-1 text-sm text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white dark:focus-visible:ring-primary-800"
-			onclick={() => (addingSticker = true)}
-		>
-			<PlusOutline class="h-4 w-4" />Наклейка
-		</button>
+		<Button color="alternative" class="mt-3 w-full" onclick={() => (addingSticker = true)}>
+			<PlusOutline class="me-1.5 h-5 w-5" />Наклейка
+		</Button>
 	{/if}
 
 	{#if card.type && (card.type.description || active)}
