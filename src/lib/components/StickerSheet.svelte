@@ -2,7 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { ArrowLeftOutline, PrinterOutline, QrCodeOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
-	import { pieces } from '$lib/domain/plural';
+	import { piecesGenitive } from '$lib/domain/plural';
 	import { STICKER_WIDTHS, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import QrScanner from './QrScanner.svelte';
 	import Sheet from './Sheet.svelte';
@@ -111,7 +111,7 @@
 	{:else if step === 'bind'}
 		{#if quantity > 1}
 			<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-				Наклейка обозначает одну вещь: из {pieces(quantity)} одна станет отдельной записью с наклейкой,
+				Наклейка обозначает одну вещь: из {piecesGenitive(quantity)} одна станет отдельной записью с наклейкой,
 				остальные останутся здесь.
 			</p>
 		{/if}

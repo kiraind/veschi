@@ -14,8 +14,8 @@
 	<h1 class="mb-3 text-2xl font-bold">Наклейка списана</h1>
 	<Card class="max-w-none gap-3 p-4">
 		<p>
-			Наклейка <span class="font-mono">{code}</span>{#if result.caption}
-				«{result.caption}»{/if} больше не используется.
+			Наклейка <span class="font-mono">{code}</span>{result.caption ? ` «${result.caption}»` : ''} больше
+			не используется.
 		</p>
 		{#if result.itemId}
 			<p><a href="/items/{result.itemId}">Вещь в архиве</a></p>

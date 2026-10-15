@@ -14,7 +14,13 @@
 		item,
 		open = $bindable(false)
 	}: {
-		item: { id: string; name: string; quantity: number; hasChildren: boolean };
+		item: {
+			id: string;
+			name: string;
+			quantity: number;
+			hasChildren: boolean;
+			hasSticker: boolean;
+		};
 		open?: boolean;
 	} = $props();
 
@@ -50,11 +56,23 @@
 
 	const use = () => run(() => api.post(`/api/items/${item.id}/consume`, { quantity: useCount }));
 
+	/** A single thing used up (a chip soldered in): to the archive as used, not thrown away. */
+	async function useOne() {
+		const ok = await confirmAction({
+			title: `Использовать «${item.name}»?`,
+			message: 'Вещь уйдёт в архив как использованная, оттуда её можно вернуть.',
+			confirmLabel: 'Использовать'
+		});
+		if (ok) await run(() => api.post(`/api/items/${item.id}/consume`, { quantity: 1 }));
+	}
+
 	async function discard() {
 		if (!item.hasChildren) {
 			const ok = await confirmAction({
 				title: `Выкинуть «${item.name}»?`,
-				message: 'Вещь уйдёт в архив, оттуда её можно вернуть. Наклейка будет списана.',
+				message: item.hasSticker
+					? 'Вещь уйдёт в архив, оттуда её можно вернуть. Наклейка будет списана.'
+					: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
 				confirmLabel: 'Выкинуть'
 			});
 			if (!ok) return;
@@ -98,9 +116,14 @@
 		{/if}
 
 		<p class="text-sm text-gray-500 dark:text-gray-400">
-			Выкинутая вещь попадёт в архив, её наклейка будет списана.
+			{item.hasSticker
+				? 'Выкинутая вещь попадёт в архив, её наклейка будет списана.'
+				: 'Выкинутая вещь попадёт в архив, оттуда её можно вернуть.'}
 		</p>
 		<div class="flex flex-wrap gap-2">
+			{#if item.quantity === 1 && !item.hasChildren}
+				<Button color="alternative" onclick={useOne} disabled={busy}>Использовать</Button>
+			{/if}
 			<Button
 				color="red"
 				outline

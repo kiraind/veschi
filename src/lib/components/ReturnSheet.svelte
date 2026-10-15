@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { pieces } from '$lib/domain/plural';
+	import { piecesAccusative } from '$lib/domain/plural';
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import { pathNodeName } from '$lib/domain/item';
@@ -81,7 +81,7 @@
 			</div>
 		{/if}
 		<p class="mb-2 text-gray-500 dark:text-gray-400">
-			Положите{#if item.quantity > 1}&nbsp;{pieces(amount)}{/if}
+			Положите{#if item.quantity > 1}&nbsp;{piecesAccusative(amount)}{/if}
 			{item.homePath.length ? 'сюда:' : 'на верхний уровень.'}
 		</p>
 		{#if item.homePath.length}

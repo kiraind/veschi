@@ -22,7 +22,7 @@
 		card = true
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
-		/** The item being placed: it cannot go into itself. */
+		/** The item being placed: it cannot go into itself (nor, when choosing a container, into its own contents). */
 		excludeId?: string;
 		/** Containers not offered, e.g. the one the item already lies in. */
 		excludeIds?: string[];
@@ -64,6 +64,7 @@
 				.filter(
 					(l) =>
 						l.itemId !== excludeId &&
+						!(containersOnly && excludeId && l.path.some((p) => p.id === excludeId)) &&
 						!excludeIds.includes(l.itemId) &&
 						(!excludeParentId || l.path.at(-1)?.id !== excludeParentId) &&
 						(!containersOnly || l.isContainer)
@@ -104,6 +105,10 @@
 			const card = await api.get<ItemCard>(`/api/items/${resolved.itemId}`);
 			if (excludeParentId && card.item.parentId === excludeParentId && !card.item.takenById) {
 				message = `«${card.item.displayName}» уже лежит здесь`;
+				return;
+			}
+			if (containersOnly && excludeId && card.path.some((p) => p.id === excludeId)) {
+				message = `«${card.item.displayName}» лежит внутри перекладываемой вещи`;
 				return;
 			}
 			if (containersOnly && !card.item.isContainer) {

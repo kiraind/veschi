@@ -175,7 +175,8 @@
 									id: item.id,
 									name: item.name,
 									quantity: item.quantity,
-									hasChildren: item.hasChildren
+									hasChildren: item.hasChildren,
+									hasSticker: !!item.stickerCode
 								}}
 							/>
 						</Card>

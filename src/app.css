@@ -61,6 +61,19 @@
 		@apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100;
 	}
 
+	/* Hints in empty fields are gray: Flowbite's plugin paints them in the body
+	   colour, and in the light theme «Например, NE555» looked like a typed value.
+	   `:root` outranks the plugin's rule, which comes later in the same layer. */
+	:root input::placeholder,
+	:root textarea::placeholder {
+		color: var(--color-gray-500);
+	}
+
+	:root.dark input::placeholder,
+	:root.dark textarea::placeholder {
+		color: var(--color-gray-400);
+	}
+
 	/* Plain links inside page text; Flowbite components style their own. */
 	a:not([class]) {
 		@apply text-primary-700 hover:underline dark:text-primary-400;

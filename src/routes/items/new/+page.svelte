@@ -5,7 +5,8 @@
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { page } from '$app/state';
-	import { Alert, Button, Card, Checkbox, Helper, Input, Label, Radio } from 'flowbite-svelte';
+	import { Button, Card, Checkbox, Helper, Input, Label, Radio } from 'flowbite-svelte';
+	import Notice from '$lib/components/Notice.svelte';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
@@ -188,13 +189,13 @@
 <h1 class="mb-3 text-2xl font-bold">{isContainer ? 'Новый контейнер' : 'Новая вещь'}</h1>
 
 {#if data.sticker && !freeSticker}
-	<Alert color="yellow" class="mb-4">
+	<Notice tone="warning" class="mb-4">
 		Наклейку нельзя привязать: {data.sticker.status === 'bound'
 			? 'она уже привязана'
 			: data.sticker.status === 'written_off'
 				? 'она списана'
 				: 'такой наклейки нет'}. Вещь будет создана без наклейки.
-	</Alert>
+	</Notice>
 {/if}
 
 <form class="flex flex-col gap-4" onsubmit={submit}>

@@ -398,6 +398,21 @@ describe('workbench service', () => {
 		expect(listed).toMatchObject({ id: box.id, hasChildren: true });
 	});
 
+	it('lists the code of the sticker of each item on the bench', async () => {
+		const tagged = await item('Паяльник');
+		const plain = await item('Пинцет');
+		await db.sticker.create({
+			data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: tagged.id }
+		});
+		await take(actor, tagged.id, { workbenchId: garage });
+		await take(actor, plain.id, { workbenchId: garage });
+		const listed = await listWorkbench(actor);
+		expect(Object.fromEntries(listed.map((i) => [i.id, i.stickerCode]))).toEqual({
+			[tagged.id]: 'K7M4QX',
+			[plain.id]: null
+		});
+	});
+
 	it('moves an item between benches keeping its original home', async () => {
 		const home = (await createWorkbench(actor, { name: 'Дом' })).id;
 		const drawer = await item('Ящик');

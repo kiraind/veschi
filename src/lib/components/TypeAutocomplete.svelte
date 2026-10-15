@@ -60,11 +60,23 @@
 	 * Leaving the field with the exact name of an existing type picks that type,
 	 * so its own mark «контейнер» and photo apply instead of a new type's.
 	 */
-	function leave() {
-		const name = typeName.trim().toLocaleLowerCase('ru');
-		const exact = suggestions.find((t) => t.name.toLocaleLowerCase('ru') === name);
-		if (exact && !typeId) pick(exact);
+	async function leave() {
+		const typed = typeName.trim();
+		const name = typed.toLocaleLowerCase('ru');
+		const isExact = (t: TypeSummary) => t.name.toLocaleLowerCase('ru') === name;
+		const loaded = suggestions.find(isExact);
 		focused = false;
+		if (!typed || typeId) return;
+		// Suggestions come 200 ms after typing: a name pasted and left at once has none yet.
+		const exact =
+			loaded ??
+			(
+				await api
+					.get<TypeSummary[]>(`/api/types?q=${encodeURIComponent(typed)}`)
+					.catch(() => [] as TypeSummary[])
+			).find(isExact);
+		// Not if the field changed or a type was picked meanwhile.
+		if (exact && !typeId && typeName.trim() === typed) pick(exact);
 	}
 
 	async function reset() {

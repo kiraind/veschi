@@ -16,3 +16,13 @@ export function plural(n: number, [one, few, many]: readonly [string, string, st
 export function pieces(n: number): string {
 	return `${n} ${plural(n, ['штука', 'штуки', 'штук'])}`;
 }
+
+/** The same in the accusative, after «использовать», «положите», «на … меньше»: «1 штуку», «3 штуки», «10 штук». */
+export function piecesAccusative(n: number): string {
+	return `${n} ${plural(n, ['штуку', 'штуки', 'штук'])}`;
+}
+
+/** The same in the genitive, after «из»: «из 1 штуки», «из 3 штук», «из 21 штуки». */
+export function piecesGenitive(n: number): string {
+	return `${n} ${plural(n, ['штуки', 'штук', 'штук'])}`;
+}

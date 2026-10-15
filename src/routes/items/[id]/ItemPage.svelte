@@ -23,7 +23,8 @@
 	import { pieces } from '$lib/domain/plural';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
-	import { Alert, Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
+	import { Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
+	import Notice from '$lib/components/Notice.svelte';
 	import {
 		ChevronSortOutline,
 		CloseOutline,
@@ -173,14 +174,20 @@
 <svelte:head><title>{item.displayName} — Вещи</title></svelte:head>
 
 {#if !active}
-	<Alert color="red" class="mb-4">
+	<Notice tone="danger" class="mb-4">
 		<p class="font-semibold">В архиве</p>
 		<p class="mb-2">Вещь выкинута или использована. Её можно вернуть в каталог.</p>
 		<Button size="sm" class="h-10" onclick={restore} disabled={busy}>Восстановить</Button>
-	</Alert>
+	</Notice>
 {/if}
 
-<p class="text-sm text-gray-500 dark:text-gray-400"><PathTrail path={card.path} /></p>
+<p class="text-sm text-gray-500 dark:text-gray-400">
+	<!-- An archived item lies nowhere: its path is where it was. -->
+	{#if !active}<span>Лежала:</span>{/if}<PathTrail
+		path={card.path}
+		emptyText={active ? 'Верхний уровень' : 'верхний уровень'}
+	/>
+</p>
 
 <div class="mt-1 mb-3">
 	<!-- Named by the text alone: the pen is not part of the heading's name. -->
@@ -204,7 +211,7 @@
 				color="gray"
 				class="dark:bg-gray-700 dark:text-gray-200">{pieces(item.quantity)}</Badge
 			>{/if}
-		{#if item.takenById}<Badge color="yellow">на столе</Badge>{/if}
+		{#if item.takenById && active}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
 </div>
 
