@@ -49,14 +49,12 @@
 						onclick={() => toggle(entry.id)}
 						title={state ? 'Свернуть' : 'Показать содержимое'}
 					>
-						{#if entry.thingCount > 0}<span
-								><span class="sr-only">внутри </span>{pieces(entry.thingCount)}</span
-							>{/if}
 						{#if state}
 							<ChevronDownOutline class="h-4 w-4" />
 						{:else}
 							<ChevronRightOutline class="h-4 w-4" />
 						{/if}
+						{entry.childCount}
 					</button>
 				{/if}
 			</div>

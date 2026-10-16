@@ -275,28 +275,6 @@ describe('items', () => {
 			expect(nested.map((c) => [c.name, c.quantity])).toEqual([['LM317', 3]]);
 		});
 
-		it('counts things inside a container at any depth, not records or boxes', async () => {
-			const cabinet = await box('Шкаф');
-			const shelf = await box('Полка', cabinet);
-			const chips = await box('Коробка', shelf);
-			await box('Пустой пакет', chips);
-			await createItem(actor, { newTypeName: 'NE555', quantity: 8, parentId: chips });
-			await createItem(actor, { newTypeName: 'LM317', quantity: 3, parentId: chips });
-			await createItem(actor, { newTypeName: 'Батарейки', quantity: 4, parentId: shelf });
-			const gone = await createItem(actor, { newTypeName: 'Сгоревший', parentId: chips });
-			await db.item.update({ where: { id: gone.id }, data: { status: 'ARCHIVED' } });
-
-			expect((await listContents(actor, null)).map((c) => [c.name, c.thingCount])).toEqual([
-				['Шкаф', 15]
-			]);
-			expect((await listContents(actor, shelf)).map((c) => [c.name, c.thingCount])).toEqual([
-				['Коробка', 11],
-				['Батарейки', 0]
-			]);
-			const bag = (await listContents(actor, chips)).find((c) => c.name === 'Пустой пакет');
-			expect(bag?.thingCount).toBe(0);
-		});
-
 		it('lists top-level items without workbenches', async () => {
 			await box('Шкаф');
 			await db.item.create({ data: { ownerId: actor.userId, name: 'Гараж', isWorkbench: true } });
