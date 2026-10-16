@@ -2,6 +2,7 @@
 	import { pieces } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { formatPath } from '$lib/domain/item';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import DiscardSheet from '$lib/components/DiscardSheet.svelte';
 	import MoveSheet from '$lib/components/MoveSheet.svelte';
 	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
@@ -113,6 +114,10 @@
 										{#if item.quantity > 1}<Badge
 												color="gray"
 												class="dark:bg-gray-700 dark:text-gray-200">{pieces(item.quantity)}</Badge
+											>{/if}
+										{#if item.stickerCode}<span
+												class="font-mono text-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
+												>{formatCode(item.stickerCode)}</span
 											>{/if}
 									</div>
 									<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
