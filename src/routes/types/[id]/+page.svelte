@@ -15,6 +15,7 @@
 	import TypeBarcode from '$lib/components/TypeBarcode.svelte';
 	import BarcodeIcon from '$lib/components/BarcodeIcon.svelte';
 	import InCollections from '$lib/components/InCollections.svelte';
+	import MissingParamsNotice from '$lib/components/MissingParamsNotice.svelte';
 	import type { PageData } from './$types';
 	import { confirmAction } from '$lib/confirm.svelte';
 
@@ -61,6 +62,8 @@
 			error = errorText(e);
 		}
 	}
+	/** The parameter list, so the notice at the top can open a missing value. */
+	let paramSection = $state<ParamSection>();
 </script>
 
 <svelte:head><title>{type.name} — Вещи</title></svelte:head>
@@ -82,6 +85,7 @@
 {#if type.isContainer}<div class="mt-1"><Badge color="indigo">контейнер</Badge></div>{/if}
 
 <div class="mt-3">
+	<MissingParamsNotice missing={data.card.missing} onfill={(r) => paramSection?.fill(r)} />
 	<PhotoField
 		photoKey={type.photoKey}
 		container={type.isContainer}
@@ -142,6 +146,7 @@
 
 <h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 <ParamSection
+	bind:this={paramSection}
 	params={data.card.params}
 	target={{ kind: 'type', id: type.id }}
 	required={data.card.typeRequired}
