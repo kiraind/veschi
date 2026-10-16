@@ -109,8 +109,8 @@
 		sheetOpen = true;
 	}
 
-	/** Opens the editor of a required value not filled yet. */
-	function fill(r: RequiredParam) {
+	/** Opens the editor of a required value not filled yet (also from the card's notice). */
+	export function fill(r: RequiredParam) {
 		startAdding();
 		pickDef(r.def);
 	}
@@ -190,26 +190,34 @@
 
 <div class="flex flex-col gap-2">
 	{#each missing as r (r.def.id)}
-		<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
-			<div class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{r.def.name}</div>
-			<div class="min-w-0 text-amber-700 dark:text-amber-400">
+		{#snippet missingRow()}
+			<span class="text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">{r.def.name}</span>
+			<span class="min-w-0 text-amber-700 dark:text-amber-400">
 				не заполнено
 				<span class="block text-xs text-gray-500 dark:text-gray-400">
 					обязателен {inCategories(r.categories)}
 				</span>
+			</span>
+		{/snippet}
+		{#if editable}
+			<!-- The whole row fills the value, not only the pen. -->
+			<button
+				type="button"
+				class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3 rounded-lg text-left hover:bg-amber-50 dark:hover:bg-gray-800"
+				onclick={() => fill(r)}
+				aria-label="Заполнить «{r.def.name}»"
+			>
+				{@render missingRow()}
+				<span
+					class="flex h-10 w-10 items-center justify-center text-amber-700 dark:text-amber-400"
+					title="Заполнить"><PenOutline class="h-5 w-5" /></span
+				>
+			</button>
+		{:else}
+			<div class="grid grid-cols-[minmax(6rem,40%)_1fr_auto] items-center gap-x-3">
+				{@render missingRow()}
 			</div>
-			{#if editable}
-				<div class="flex">
-					<button
-						type="button"
-						class="flex h-10 w-10 items-center justify-center rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-gray-700"
-						onclick={() => fill(r)}
-						title="Заполнить"
-						aria-label="Заполнить «{r.def.name}»"><PenOutline class="h-5 w-5" /></button
-					>
-				</div>
-			{/if}
-		</div>
+		{/if}
 	{/each}
 	{#if params.length === 0 && missing.length === 0 && emptyText}
 		<p class="text-sm text-gray-500 dark:text-gray-400">{emptyText}</p>

@@ -26,6 +26,7 @@
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
 	import Notice from '$lib/components/Notice.svelte';
+	import MissingParamsNotice from '$lib/components/MissingParamsNotice.svelte';
 	import {
 		ChevronSortOutline,
 		CloseOutline,
@@ -57,6 +58,10 @@
 	let changingQuantity = $state(false);
 	let discarding = $state(false);
 	let addingSticker = $state(false);
+
+	/** The two parameter lists, so the notice at the top can open a missing value. */
+	let itemParamSection = $state<ParamSection>();
+	let typeParamSection = $state<ParamSection>();
 
 	/** Why the quantity of this item is always 1, if it is. */
 	const quantityLock = $derived(
@@ -220,6 +225,14 @@
 		{#if item.takenById && active}<Badge color="yellow">на столе</Badge>{/if}
 	</div>
 </div>
+
+{#if active && !item.isWorkbench}
+	<MissingParamsNotice
+		missing={[...card.missingItemParams, ...card.missingTypeParams]}
+		onfill={(r) =>
+			(card.missingItemParams.includes(r) ? itemParamSection : typeParamSection)?.fill(r)}
+	/>
+{/if}
 
 {#if card.type}
 	{@const type = card.type}
@@ -408,6 +421,7 @@
 
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
 	<ParamSection
+		bind:this={itemParamSection}
 		params={card.itemParams}
 		target={{ kind: 'item', id: item.id }}
 		editable={active}
@@ -419,6 +433,7 @@
 	{#if card.type}
 		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
 		<ParamSection
+			bind:this={typeParamSection}
 			params={card.typeParams}
 			target={{ kind: 'type', id: card.type.id }}
 			editable={active}
