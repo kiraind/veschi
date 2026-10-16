@@ -7,6 +7,7 @@
 	import QrScanner from './QrScanner.svelte';
 	import type { ItemCard } from '$lib/server/services/items';
 	import type { SearchGroup } from '$lib/server/services/search';
+	import type { PlaceSuggestion } from '$lib/server/services/places';
 
 	/**
 	 * Choose a container (or, with `containersOnly = false`, any item): search
@@ -19,7 +20,8 @@
 		excludeParentId,
 		title = 'Куда положить?',
 		containersOnly = true,
-		card = true
+		card = true,
+		suggestFor
 	}: {
 		onpick: (container: { id: string; name: string }) => void;
 		/** The item being placed: it cannot go into itself (nor, when choosing a container, into its own contents). */
@@ -32,10 +34,41 @@
 		containersOnly?: boolean;
 		/** In a card of its own; false inside a sheet. */
 		card?: boolean;
+		/** The item being moved: while nothing is typed, recent and neighbouring places are offered. */
+		suggestFor?: string;
 	} = $props();
 
+	type Result = { id: string; name: string; path: string; code: string | null };
+	let suggestions = $state<{ recent: Result[]; nearby: Result[] } | null>(null);
+
+	$effect(() => {
+		if (!suggestFor) return;
+		const toResult = (s: PlaceSuggestion): Result => ({
+			id: s.itemId,
+			name: s.name,
+			path: formatPath(s.path),
+			code: s.stickerCode
+		});
+		let stale = false;
+		api
+			.get<{ recent: PlaceSuggestion[]; nearby: PlaceSuggestion[] }>(
+				`/api/items/${suggestFor}/places`
+			)
+			.then((found) => {
+				if (stale) return;
+				const offered = (s: PlaceSuggestion) => !excludeIds.includes(s.itemId);
+				suggestions = {
+					recent: found.recent.filter(offered).map(toResult),
+					nearby: found.nearby.filter(offered).map(toResult)
+				};
+			})
+			// Only a convenience: without it the field works as before.
+			.catch(() => {});
+		return () => (stale = true);
+	});
+
 	let query = $state('');
-	let results = $state<{ id: string; name: string; path: string; code: string | null }[]>([]);
+	let results = $state<Result[]>([]);
 	let scanning = $state(false);
 	let message = $state('');
 	let request = 0;
@@ -123,6 +156,32 @@
 	}
 </script>
 
+{#snippet list(items: Result[])}
+	<ul
+		class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+	>
+		{#each items as result (result.id)}
+			<li>
+				<button
+					type="button"
+					class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+					onclick={() => onpick(result)}
+				>
+					<span class="break-words"
+						>{result.name}{#if result.code}<span
+								class="ms-2 font-mono text-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
+								>{formatCode(result.code)}</span
+							>{/if}</span
+					>
+					{#if result.path}
+						<span class="text-sm text-gray-500 dark:text-gray-400">{result.path}</span>
+					{/if}
+				</button>
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
 {#snippet picker()}
 	<p class="font-medium">{title}</p>
 	<div class="flex flex-wrap gap-2">
@@ -149,29 +208,16 @@
 	{/if}
 	{#if message}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{message}</p>{/if}
 	{#if results.length > 0}
-		<ul
-			class="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
-		>
-			{#each results as result (result.id)}
-				<li>
-					<button
-						type="button"
-						class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
-						onclick={() => onpick(result)}
-					>
-						<span class="break-words"
-							>{result.name}{#if result.code}<span
-									class="ms-2 font-mono text-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
-									>{formatCode(result.code)}</span
-								>{/if}</span
-						>
-						{#if result.path}
-							<span class="text-sm text-gray-500 dark:text-gray-400">{result.path}</span>
-						{/if}
-					</button>
-				</li>
-			{/each}
-		</ul>
+		{@render list(results)}
+	{:else if !query.trim() && suggestions && !scanning}
+		{#if suggestions.recent.length}
+			<p class="text-sm text-gray-500 dark:text-gray-400">Недавние</p>
+			{@render list(suggestions.recent)}
+		{/if}
+		{#if suggestions.nearby.length}
+			<p class="text-sm text-gray-500 dark:text-gray-400">Рядом</p>
+			{@render list(suggestions.nearby)}
+		{/if}
 	{:else if query.trim()}
 		<p class="text-sm text-gray-500 dark:text-gray-400">
 			{containersOnly ? 'Контейнеров не найдено.' : 'Ничего не найдено.'}
