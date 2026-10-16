@@ -27,11 +27,14 @@ WORKDIR /comfy
 RUN git clone --depth 1 --branch ${COMFYUI_VERSION} https://github.com/comfyanonymous/ComfyUI.git . \
     && pip install -r requirements.txt
 
-# Only the BiRefNet node of the pack is used; its other nodes (SAM, GroundingDINO…)
-# need heavy packages and are skipped by the pack's loader when those are missing.
+# Only the BiRefNet node of the pack is used. Its other nodes (SAM, GroundingDINO…)
+# need heavy packages, and the pack's loader gives up on the whole pack at the first
+# module that fails to import, so every module but BiRefNet and its utils is removed.
 RUN git clone https://github.com/1038lab/ComfyUI-RMBG.git custom_nodes/ComfyUI-RMBG \
     && git -C custom_nodes/ComfyUI-RMBG checkout ${RMBG_COMMIT} \
-    && pip install huggingface-hub timm kornia opencv-python-headless
+    && find custom_nodes/ComfyUI-RMBG/py -name '*.py' \
+        ! -name AILab_BiRefNet.py ! -name AILab_utils.py -delete \
+    && pip install huggingface-hub timm kornia einops opencv-python-headless
 COPY patch-rmbg.py /tmp/patch-rmbg.py
 RUN python /tmp/patch-rmbg.py custom_nodes/ComfyUI-RMBG/py/AILab_BiRefNet.py
 
