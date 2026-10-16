@@ -10,8 +10,8 @@
 	import { Badge, Button, Card } from 'flowbite-svelte';
 	import {
 		ArrowsRepeatOutline,
+		ArrowUpFromBracketOutline,
 		CogOutline,
-		TrashBinOutline,
 		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import type { PageData } from './$types';
@@ -25,20 +25,20 @@
 		}))
 	);
 
-	/** The action buttons of an item; labels are dropped when they don't fit in one row. */
-	const RETURN_LABEL = 'Вернуть на место';
-	const RELOCATE_LABEL = 'Вернуть в другое место';
-	const DISCARD_LABEL = 'Использовать / выкинуть';
-	const ACTION_LABELS = [RETURN_LABEL, RELOCATE_LABEL, DISCARD_LABEL];
-	let actionsWidth = $state(0);
-	let labelledWidth = $state(0);
-	const compact = $derived(labelledWidth > actionsWidth);
-	const actionClass = $derived(compact ? 'h-11 px-2' : 'h-11 whitespace-nowrap');
-	const actionIconClass = $derived(compact ? 'h-5 w-5' : 'me-2 h-5 w-5 flex-none');
+	/**
+	 * The action buttons of an item: short labels, the same on every screen. On
+	 * phones the label goes under the icon, so three buttons fit in a row.
+	 */
+	const RETURN_LABEL = 'На место';
+	const RELOCATE_LABEL = 'Переложить';
+	const DISCARD_LABEL = 'Удалить';
+	const actionClass =
+		'h-14 flex-col gap-1 px-1 text-xs leading-none sm:h-11 sm:flex-row sm:gap-2 sm:px-5 sm:text-sm';
+	const actionIconClass = 'h-5 w-5 flex-none';
 
 	type Listed = PageData['items'][number];
 
-	/** «Вернуть на место» first shows where exactly to put the item; «Готово» returns it. */
+	/** «На место» first shows where exactly to put the item; «Готово» returns it. */
 	let returning = $state<Listed | null>(null);
 	let returningOpen = $state(false);
 	/** How much «Вернуть на место» puts back (the sheet asks it). */
@@ -50,11 +50,11 @@
 		returningOpen = true;
 	}
 
-	/** «Вернуть в другое место»: the same sheet as «Переложить» on the item page. */
+	/** «Переложить»: the same sheet as on the item page. */
 	let relocating = $state<Listed | null>(null);
 	let relocatingOpen = $state(false);
 
-	/** «Использовать / выкинуть» opens its sheet. */
+	/** «Удалить» opens the sheet «Использовать / выкинуть». */
 	let discarding = $state<Listed | null>(null);
 	let discardingOpen = $state(false);
 
@@ -119,56 +119,35 @@
 								</div>
 							</div>
 
-							<div class="relative" bind:clientWidth={actionsWidth}>
-								<!-- The same buttons with labels, unseen: their width decides whether labels fit. -->
-								<div
-									class="invisible absolute inset-x-0 top-0 h-0 overflow-hidden"
-									aria-hidden="true"
+							<div class="grid grid-cols-3 gap-2 sm:flex">
+								<Button
+									class={actionClass}
+									title="Вернуть на место"
+									onclick={() => askReturn(item)}
+									disabled={!item.canReturn}
 								>
-									<div class="flex w-max gap-2 whitespace-nowrap" bind:clientWidth={labelledWidth}>
-										{#each ACTION_LABELS as label (label)}
-											<span class="inline-flex items-center px-5 text-sm font-medium"
-												><span class="me-2 h-5 w-5"></span>{label}</span
-											>
-										{/each}
-									</div>
-								</div>
-								<div class="grid grid-cols-3 gap-2 {compact ? '' : 'sm:flex'}">
-									<Button
-										class={actionClass}
-										title={RETURN_LABEL}
-										aria-label={RETURN_LABEL}
-										onclick={() => askReturn(item)}
-										disabled={!item.canReturn}
-									>
-										<UndoOutline class={actionIconClass} />
-										{#if !compact}{RETURN_LABEL}{/if}
-									</Button>
-									<Button
-										color="alternative"
-										class={actionClass}
-										title={RELOCATE_LABEL}
-										aria-label={RELOCATE_LABEL}
-										onclick={() => askRelocate(item)}
-									>
-										<ArrowsRepeatOutline class={actionIconClass} />
-										{#if !compact}{RELOCATE_LABEL}{/if}
-									</Button>
-									<Button
-										color="alternative"
-										class={actionClass}
-										title={DISCARD_LABEL}
-										aria-label={DISCARD_LABEL}
-										onclick={() => askDiscard(item)}
-									>
-										<TrashBinOutline class={actionIconClass} />
-										{#if !compact}{DISCARD_LABEL}{/if}
-									</Button>
-								</div>
+									<UndoOutline class={actionIconClass} />{RETURN_LABEL}
+								</Button>
+								<Button
+									color="alternative"
+									class={actionClass}
+									title="Переложить в другое место"
+									onclick={() => askRelocate(item)}
+								>
+									<ArrowsRepeatOutline class={actionIconClass} />{RELOCATE_LABEL}
+								</Button>
+								<Button
+									color="alternative"
+									class={actionClass}
+									title="Использовать или выкинуть"
+									onclick={() => askDiscard(item)}
+								>
+									<ArrowUpFromBracketOutline class={actionIconClass} />{DISCARD_LABEL}
+								</Button>
 							</div>
 							{#if !item.canReturn}
 								<p class="text-sm text-gray-500 dark:text-gray-400">
-									{item.returnBlockedReason}. Верните вещь в другое место.
+									{item.returnBlockedReason}. Переложите вещь в другое место.
 								</p>
 							{/if}
 						</Card>
@@ -203,7 +182,7 @@
 {#if relocating}
 	<MoveSheet
 		bind:open={relocatingOpen}
-		title="Вернуть в другое место «{relocating.name}»"
+		title="Переложить «{relocating.name}»"
 		item={{
 			id: relocating.id,
 			quantity: relocating.quantity,
