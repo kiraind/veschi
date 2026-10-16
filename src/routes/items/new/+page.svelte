@@ -64,6 +64,7 @@
 	/** A new type is a container type (an existing type has its own mark). */
 	let newTypeIsContainer = $state(page.url.searchParams.get('container') === '1');
 	const isContainer = $derived(selectedType ? selectedType.isContainer : newTypeIsContainer);
+	const heading = $derived(isContainer ? 'Новый контейнер' : 'Новая вещь');
 	/** An existing type keeps its photo; a photo can be added when it has none. */
 	const askPhoto = $derived(!selectedType?.photoKey);
 	let photo = $state<File | null>(null);
@@ -186,9 +187,9 @@
 	}
 </script>
 
-<svelte:head><title>Новая вещь — Вещи</title></svelte:head>
+<svelte:head><title>{heading} — veschi</title></svelte:head>
 
-<h1 class="mb-3 text-2xl font-bold">{isContainer ? 'Новый контейнер' : 'Новая вещь'}</h1>
+<h1 class="mb-3 text-2xl font-bold">{heading}</h1>
 
 {#if data.sticker && !freeSticker}
 	<Notice tone="warning" class="mb-4">
