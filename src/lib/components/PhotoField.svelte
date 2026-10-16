@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import {
 		CameraPhotoOutline,
@@ -25,7 +26,8 @@
 		onremove,
 		caption,
 		alt = 'Фото',
-		container = false
+		container = false,
+		corner
 	}: {
 		photoKey?: string | null;
 		previewUrl?: string | null;
@@ -36,6 +38,8 @@
 		alt?: string;
 		/** The placeholder without a photo is a box instead of a picture. */
 		container?: boolean;
+		/** Another round button, right above the photo menu button. */
+		corner?: Snippet;
 	} = $props();
 
 	const uid = $props.id();
@@ -96,6 +100,8 @@
 				<span class="sr-only">Загрузка…</span>
 			</div>
 		{/if}
+
+		{#if corner}<div class="absolute end-2 bottom-15">{@render corner()}</div>{/if}
 
 		{#if editable}
 			<button

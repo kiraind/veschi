@@ -18,6 +18,7 @@ const CODE_RE = /^[2-9A-HJKMNP-Z]{6}$/;
 export const TOP_LEVEL_ROUTES = [
 	'api',
 	'archive',
+	'barcode',
 	'categories',
 	'collections',
 	'containers',

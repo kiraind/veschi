@@ -5,6 +5,7 @@
  * and deletions.
  */
 import { pieces } from './plural';
+import { formatBarcode } from './barcode';
 import { formatCode } from './sticker-code';
 import { pathNodeName } from './item';
 
@@ -101,6 +102,8 @@ export interface HistoryDataMap {
 	'type.updated': { changes: Change[] };
 	'type.deleted': Record<string, never>;
 	'type.photo': { removed: boolean };
+	/** A packaging barcode (stored form) was linked to the type (replacing `previous`) or unlinked. */
+	'type.barcode': { code: string; removed: boolean; previous?: string };
 	'paramDef.created': Record<string, never>;
 	'paramDef.updated': { changes: Change[] };
 	'paramDef.deleted': Record<string, never>;
@@ -160,6 +163,7 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'type.updated': 'changes',
 	'type.deleted': 'changes',
 	'type.photo': 'changes',
+	'type.barcode': 'changes',
 	'paramDef.created': 'changes',
 	'paramDef.updated': 'changes',
 	'paramDef.deleted': 'changes',
@@ -503,6 +507,18 @@ export function describeEvent(e: HistoryEventView): EventText {
 			return {
 				title: [t('Фото типа '), subject, t(d.removed ? ' удалено' : ' обновлено')],
 				details: []
+			};
+		}
+		case 'type.barcode': {
+			const d = e.data as HistoryData<'type.barcode'>;
+			return {
+				title: [
+					t(
+						`Штрихкод ${formatBarcode(d.code)} ${d.removed ? 'отвязан от типа ' : 'привязан к типу '}`
+					),
+					subject
+				],
+				details: d.previous ? [[t(`Был ${formatBarcode(d.previous)}`)]] : []
 			};
 		}
 		case 'paramDef.created':

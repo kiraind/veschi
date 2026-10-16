@@ -2,8 +2,8 @@
  * Browser-side client for the JSON API under /api. All changes go through this
  * one layer (groundwork for the future offline mode, see docs/spec.md).
  */
-import { browser } from '$app/environment';
 import { untrack } from 'svelte';
+import { browser } from '$app/environment';
 import { connection } from '$lib/connection.svelte';
 import { isGatewayStatus } from '$lib/domain/offline';
 
@@ -66,8 +66,8 @@ async function request<T>(
 /** Reports to `connection` whether the request reached the server (in the browser only). */
 async function track(pending: Promise<Response>): Promise<Response> {
 	if (!browser) return pending;
-	// Untracked: `++` reads the counter, and an $effect that loads something would
-	// then depend on it and rerun after every request it makes, without end.
+	// Untracked: `++` reads the counter, and an $effect that loads data through the
+	// API would then depend on it and rerun on every request it makes itself.
 	untrack(() => connection.pending++);
 	try {
 		const response = await pending;

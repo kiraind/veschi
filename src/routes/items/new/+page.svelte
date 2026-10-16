@@ -4,6 +4,7 @@
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { formatPath } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
+	import { formatBarcode } from '$lib/domain/barcode';
 	import { page } from '$app/state';
 	import { Button, Card, Checkbox, Helper, Input, Label, Radio } from 'flowbite-svelte';
 	import Notice from '$lib/components/Notice.svelte';
@@ -153,7 +154,8 @@
 				quantity: isContainer || freeSticker ? 1 : quantity,
 				parentId: parent?.id ?? null,
 				workbenchId: bench?.id,
-				stickerCode: freeSticker?.code
+				stickerCode: freeSticker?.code,
+				barcode: data.barcode ?? undefined
 			});
 			if (photo && askPhoto) {
 				const body = new FormData();
@@ -201,6 +203,14 @@
 <form class="flex flex-col gap-4" onsubmit={submit}>
 	{#if freeSticker?.code}
 		<p>Наклейка <strong class="font-mono">{formatCode(freeSticker.code)}</strong></p>
+	{/if}
+	{#if data.barcode}
+		<p>
+			Штрихкод <strong class="font-mono whitespace-nowrap">{formatBarcode(data.barcode)}</strong>
+			<span class="block text-sm text-gray-500 dark:text-gray-400"
+				>Привяжется к типу вещи: следующий скан откроет этот тип.</span
+			>
+		</p>
 	{/if}
 
 	<TypeAutocomplete bind:typeId bind:typeName bind:selected={selectedType} />

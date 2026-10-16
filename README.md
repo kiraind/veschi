@@ -14,7 +14,7 @@ docker compose up --build
 
 ## Образ
 
-Образ публикуется в GitHub Container Registry: `ghcr.io/kiraind/veschi` (теги `latest` и `sha-<коммит>` — из ветки `master`).
+Образ публикуется в GitHub Container Registry: `ghcr.io/kiraind/veschi`. `latest` и номера версий (`1.2.3`, `1.2`, `1`) — последний релиз (см. [Релизы](#релизы)); `master` и `sha-<коммит>` — сборки из ветки `master` между релизами.
 
 ```sh
 docker run -d -p 3000:3000 \
@@ -93,4 +93,20 @@ GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) на ка�
 - `checks` — `npm run lint`, `npm run check`, юнит-тесты;
 - `integration` — интеграционные тесты против PostgreSQL 16;
 - `build` — сборка приложения;
-- `docker` — сборка образа и смоук-тест (`docker/smoke-test.sh`); при push в `master` образ публикуется в `ghcr.io/kiraind/veschi` с тегами `sha-<коммит>`, `master` и `latest`.
+- `docker` — сборка образа и смоук-тест (`docker/smoke-test.sh`); при push в `master` образ публикуется в `ghcr.io/kiraind/veschi` с тегами `sha-<коммит>` и `master`.
+
+## Релизы
+
+Версии — [semver](https://semver.org/lang/ru/), первая — `1.0.0`. Релиз выпускается вручную: Actions → **Release** → Run workflow (ветка `master`) и выбор, что поднять:
+
+- `patch` — исправления (`1.2.3` → `1.2.4`);
+- `minor` (по умолчанию) — новые возможности (`1.2.3` → `1.3.0`);
+- `major` — несовместимые изменения (`1.2.3` → `2.0.0`).
+
+Номер считается от последнего тега `vX.Y.Z`, руками его не задают. Workflow ([.github/workflows/release.yml](.github/workflows/release.yml)) выпускает только коммит, на котором CI в `master` зелёный, и только если с прошлого релиза что-то изменилось. Он:
+
+1. поднимает версию в `package.json` и коммитит «Релиз X.Y.Z» в `master` с тегом `vX.Y.Z`;
+2. собирает образ и прогоняет смоук-тест — если он упал, ничего не публикуется;
+3. переносит ветку `latest` на этот коммит: `latest` всегда указывает на последний релиз;
+4. создаёт GitHub Release с заметками из PR, вошедших в релиз;
+5. публикует образ с тегами `X.Y.Z`, `X.Y`, `X` и `latest`.

@@ -6,7 +6,9 @@
 /**
  * Service worker of the PWA. Data lives on the server, so the worker only makes
  * the app shell load fast and lets the last seen pages open without a network:
- * - app files (Vite build output and static/) are precached per version;
+ * - app files (Vite build output and static/) are precached per version, except
+ *   WebAssembly: the barcode reader is large and needed only by phones without a
+ *   built-in barcode detector, so the browser's HTTP cache keeps it after first use;
  * - page navigations go to the network first and fall back to the last copy;
  *   with no copy, a «Нет связи» page explains what happened (`offlinePage`);
  * - /api/ and /files/ are never touched (always network, never cached).
@@ -29,7 +31,7 @@ const ASSETS_CACHE = `assets-${version}`;
  * a copy needs the scripts and styles of its version, and those are dropped with it.
  */
 const PAGES_CACHE = `pages-${version}`;
-const ASSETS = new Set([...build, ...files]);
+const ASSETS = new Set([...build, ...files].filter((path) => !path.endsWith('.wasm')));
 
 /**
  * A page that hasn't started to arrive by then is replaced by its saved copy or the

@@ -1,13 +1,36 @@
 <script lang="ts">
 	import { Button, Input } from 'flowbite-svelte';
 	import Notice from './Notice.svelte';
+	import { normalizeBarcode, NOT_A_BARCODE } from '$lib/domain/barcode';
 	import { extractCode } from '$lib/domain/scan';
 	import { normalizeCode } from '$lib/domain/sticker-code';
+	import { createFrameDecoder, type FrameDecoder } from '$lib/scan-decoder';
 
-	let { onscan, active = true }: { onscan: (code: string) => void; active?: boolean } = $props();
+	/**
+	 * Camera scanner with a field for typing the code. `onscan` gets sticker
+	 * IDs (QR codes), `onbarcode` packaging barcodes (EAN/UPC) in stored form;
+	 * the scanner looks for the kinds it has a handler for.
+	 */
+	let {
+		onscan,
+		onbarcode,
+		active = true,
+		submitLabel = 'Открыть'
+	}: {
+		onscan?: (code: string) => void;
+		onbarcode?: (code: string) => void;
+		active?: boolean;
+		/** The button next to the field for a typed code. */
+		submitLabel?: string;
+	} = $props();
 
 	/** The same code is reported again only after this pause, so one QR does not fire repeatedly. */
 	const REPEAT_MS = 2000;
+
+	/** What the person can type instead, for the field and the camera messages. */
+	const manualWhat = $derived(
+		onscan && onbarcode ? 'ID или штрихкод' : onbarcode ? 'цифры штрихкода' : 'ID'
+	);
 
 	let video: HTMLVideoElement | undefined = $state();
 	let cameraError = $state('');
@@ -19,62 +42,17 @@
 	let frame = 0;
 	/** Bumped by stop(), so a camera granted after deactivation is released at once. */
 	let session = 0;
-	let canvas: HTMLCanvasElement | null = null;
 	let last = { code: '', at: 0 };
-	/** Finds a QR code in the current video frame; set up when the camera starts. */
-	let decoder: Promise<(video: HTMLVideoElement) => Promise<string | null>> | null = null;
-	let decode: ((video: HTMLVideoElement) => Promise<string | null>) | null = null;
+	/** Finds a code in the current video frame; set up when the camera starts. */
+	let decoder: Promise<FrameDecoder> | null = null;
+	let decode: FrameDecoder | null = null;
 	let decoding = false;
 
-	/** jsQR gets frames scaled down to this many pixels on the longer side: a full HD frame
-	 *  costs several times more, and a 20 mm sticker still reads from about 8% of the width. */
-	const SCAN_SIZE = 960;
-
-	/**
-	 * The browser's own QR detector where there is one (Chrome on Android), otherwise
-	 * jsQR, loaded only now: it is the largest script of the app and most pages never scan.
-	 */
-	async function createDecoder(): Promise<(video: HTMLVideoElement) => Promise<string | null>> {
-		const Detector = (
-			globalThis as {
-				BarcodeDetector?: {
-					new (options: { formats: string[] }): {
-						detect(source: CanvasImageSource): Promise<{ rawValue: string }[]>;
-					};
-					getSupportedFormats(): Promise<string[]>;
-				};
-			}
-		).BarcodeDetector;
-		if (
-			Detector &&
-			(await Detector.getSupportedFormats().catch((): string[] => [])).includes('qr_code')
-		) {
-			const detector = new Detector({ formats: ['qr_code'] });
-			return async (source) => (await detector.detect(source))[0]?.rawValue ?? null;
-		}
-		const { default: jsQR } = await import('jsqr');
-		return async (source) => {
-			const scale = Math.min(1, SCAN_SIZE / Math.max(source.videoWidth, source.videoHeight));
-			const width = Math.round(source.videoWidth * scale);
-			const height = Math.round(source.videoHeight * scale);
-			canvas ??= document.createElement('canvas');
-			canvas.width = width;
-			canvas.height = height;
-			const ctx = canvas.getContext('2d', { willReadFrequently: true });
-			if (!ctx) return null;
-			ctx.drawImage(source, 0, 0, width, height);
-			const qr = jsQR(ctx.getImageData(0, 0, width, height).data, width, height, {
-				inversionAttempts: 'dontInvert'
-			});
-			return qr?.data ?? null;
-		};
-	}
-
-	function report(code: string) {
+	function report(code: string, handler: (code: string) => void) {
 		const now = Date.now();
 		if (code === last.code && now - last.at < REPEAT_MS) return;
 		last = { code, at: now };
-		onscan(code);
+		handler(code);
 	}
 
 	function tick() {
@@ -83,14 +61,22 @@
 		decoding = true;
 		const id = session;
 		decode(video)
-			.then((data) => {
-				if (data === null || id !== session) return;
-				const code = extractCode(data);
-				if (code) {
-					hint = '';
-					report(code);
+			.then((found) => {
+				if (found === null || id !== session) return;
+				if (found.kind === 'qr') {
+					const code = extractCode(found.text);
+					if (code && onscan) {
+						hint = '';
+						report(code, onscan);
+					} else {
+						hint = 'Это не наклейка Вещей';
+					}
 				} else {
-					hint = 'Это не наклейка Вещей';
+					const code = normalizeBarcode(found.text, { upcE: found.upcE });
+					if (code && onbarcode) {
+						hint = '';
+						report(code, onbarcode);
+					}
 				}
 			})
 			.catch(() => {})
@@ -100,23 +86,23 @@
 	function describeError(e: unknown): string {
 		const name = e instanceof DOMException ? e.name : '';
 		if (name === 'NotAllowedError' || name === 'SecurityError') {
-			return 'Нет доступа к камере. Разрешите его в настройках браузера или введите ID вручную.';
+			return `Нет доступа к камере. Разрешите его в настройках браузера или введите ${manualWhat} вручную.`;
 		}
 		if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-			return 'Камера не найдена. Введите ID вручную.';
+			return `Камера не найдена. Введите ${manualWhat} вручную.`;
 		}
-		return 'Камера недоступна. Введите ID вручную.';
+		return `Камера недоступна. Введите ${manualWhat} вручную.`;
 	}
 
 	async function start() {
 		const id = ++session;
 		cameraError = '';
 		if (!navigator.mediaDevices?.getUserMedia) {
-			cameraError = 'Браузер не даёт доступ к камере (нужен HTTPS). Введите ID вручную.';
+			cameraError = `Браузер не даёт доступ к камере (нужен HTTPS). Введите ${manualWhat} вручную.`;
 			return;
 		}
 		// Loaded while the person answers the camera prompt; a failed load is retried next time.
-		decoder ??= createDecoder().catch((e) => {
+		decoder ??= createFrameDecoder({ stickers: !!onscan, barcodes: !!onbarcode }).catch((e) => {
 			decoder = null;
 			throw e;
 		});
@@ -161,14 +147,25 @@
 
 	function submitManual(event: SubmitEvent) {
 		event.preventDefault();
-		const code = normalizeCode(manual) ?? extractCode(manual);
-		if (!code) {
+		// A sticker ID has 6 characters and a barcode 8 or more digits, so they never clash.
+		const sticker = onscan ? (normalizeCode(manual) ?? extractCode(manual)) : null;
+		const digits = /^[\d\s-]+$/.test(manual.trim());
+		if (sticker && onscan) {
+			manualError = '';
+			manual = '';
+			onscan(sticker);
+		} else if (onbarcode && (digits || !onscan)) {
+			const code = normalizeBarcode(manual);
+			if (!code) {
+				manualError = NOT_A_BARCODE;
+				return;
+			}
+			manualError = '';
+			manual = '';
+			onbarcode(code);
+		} else {
 			manualError = 'ID — 6 символов, например K7M-4QX (без 0, O, 1, I, L)';
-			return;
 		}
-		manualError = '';
-		manual = '';
-		onscan(code);
 	}
 </script>
 
@@ -199,14 +196,23 @@
 			<Input
 				class="font-mono"
 				bind:value={manual}
-				placeholder="ID с наклейки, например K7M-4QX"
+				placeholder={onscan && onbarcode
+					? 'ID наклейки или цифры штрихкода'
+					: onbarcode
+						? 'Цифры под штрихкодом'
+						: 'ID с наклейки, например K7M-4QX'}
+				inputmode={onscan ? undefined : 'numeric'}
 				autocapitalize="characters"
 				autocomplete="off"
 				spellcheck="false"
-				aria-label="ID наклейки"
+				aria-label={onscan && onbarcode
+					? 'ID наклейки или штрихкод'
+					: onbarcode
+						? 'Штрихкод'
+						: 'ID наклейки'}
 			/>
 		</div>
-		<Button type="submit">Открыть</Button>
+		<Button type="submit">{submitLabel}</Button>
 	</form>
 	{#if manualError}
 		<p class="text-sm text-red-600 dark:text-red-500" role="alert">{manualError}</p>
