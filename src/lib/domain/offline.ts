@@ -65,7 +65,7 @@ export function offlinePage(reason: OfflineReason): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>${title} — Вещи</title>
+<title>${title} — veschi</title>
 <style>
 	:root { color-scheme: light dark; --bg: #f9fafb; --card: #fff; --text: #111827; --muted: #6b7280; --border: #e5e7eb; --accent: #1d4ed8; --accent-text: #fff; --danger: #dc2626; }
 	@media (prefers-color-scheme: dark) {

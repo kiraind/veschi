@@ -8,7 +8,7 @@
 	const code = $derived(result.code ? formatCode(result.code) : '');
 </script>
 
-<svelte:head><title>Наклейка {code}</title></svelte:head>
+<svelte:head><title>Наклейка {code} — veschi</title></svelte:head>
 
 {#if result.status === 'written_off'}
 	<h1 class="mb-3 text-2xl font-bold">Наклейка списана</h1>

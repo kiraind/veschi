@@ -18,7 +18,7 @@
 		type ParamLevel
 	} from '$lib/domain/categories';
 	import { paramKindLabel, type ParamDefView } from '$lib/domain/params';
-	import { plural } from '$lib/domain/plural';
+	import { pieces, plural } from '$lib/domain/plural';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -110,7 +110,7 @@
 		}`;
 </script>
 
-<svelte:head><title>{category.name} — Категории</title></svelte:head>
+<svelte:head><title>{category.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a
@@ -208,9 +208,7 @@
 				>{type.name}</a
 			>
 			<span class="text-sm text-gray-500 dark:text-gray-400">
-				· {type.itemCount
-					? `${type.itemCount} ${plural(type.itemCount, ['вещь', 'вещи', 'вещей'])}`
-					: 'нет вещей'}
+				· {type.total ? pieces(type.total) : 'нет вещей'}
 			</span>
 			{#if type.missing.length}
 				<p class="text-sm text-amber-700 dark:text-amber-400">
@@ -227,7 +225,7 @@
 <div class="mt-3">
 	{#if addingType}
 		<div class="flex flex-col gap-2">
-			<TypeAutocomplete bind:typeId bind:typeName label="Добавить тип" />
+			<TypeAutocomplete bind:typeId bind:typeName label="Добавить тип" required={false} autofocus />
 			<div>
 				<Button color="alternative" onclick={() => (addingType = false)}>Отмена</Button>
 			</div>

@@ -9,7 +9,7 @@
 	import Sheet from './Sheet.svelte';
 
 	/**
-	 * «Переложить» (on the item page) and «Вернуть в другое место» (on the
+	 * «Переложить» (on the item page and on the
 	 * workbench): asks how much when there is more than one, then where — a
 	 * container found by name or sticker ID, scanned, or the top level.
 	 */

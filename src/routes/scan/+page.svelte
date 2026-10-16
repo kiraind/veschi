@@ -3,7 +3,7 @@
 	import QrScanner from '$lib/components/QrScanner.svelte';
 </script>
 
-<svelte:head><title>Скан</title></svelte:head>
+<svelte:head><title>Скан — veschi</title></svelte:head>
 
 <h1 class="mb-3 text-2xl font-bold">Сканировать</h1>
 <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">

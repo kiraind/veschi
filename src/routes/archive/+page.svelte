@@ -40,7 +40,7 @@
 	}
 </script>
 
-<svelte:head><title>Архив — Вещи</title></svelte:head>
+<svelte:head><title>Архив — veschi</title></svelte:head>
 
 <a
 	href="/history"

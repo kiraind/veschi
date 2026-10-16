@@ -9,8 +9,14 @@
 	/** «Что сделать с содержимым?» when a container is thrown away. */
 	let {
 		contents = $bindable('parent'),
-		workbenchId = $bindable(null)
-	}: { contents?: Contents; workbenchId?: string | null } = $props();
+		workbenchId = $bindable(null),
+		parentLabel = 'Переложить туда, где лежал контейнер'
+	}: {
+		contents?: Contents;
+		workbenchId?: string | null;
+		/** The first option, naming the place when it is known («Переложить в «Шкаф»»). */
+		parentLabel?: string;
+	} = $props();
 
 	let benches = $state<{ id: string; name: string }[] | null>(null);
 	let error = $state('');
@@ -38,7 +44,7 @@
 		Что сделать с содержимым?
 	</legend>
 	<Radio value="parent" bind:group={contents} classes={{ label: radioLabel }}>
-		Переложить туда, где лежал контейнер
+		{parentLabel}
 	</Radio>
 	<Radio
 		value="workbench"

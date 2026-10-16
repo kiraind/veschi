@@ -5,7 +5,7 @@
 	const notFound = $derived(page.status === 404);
 </script>
 
-<svelte:head><title>{notFound ? 'Не найдено' : 'Ошибка'} — Вещи</title></svelte:head>
+<svelte:head><title>{notFound ? 'Не найдено' : 'Ошибка'} — veschi</title></svelte:head>
 
 <h1 class="mb-2 text-2xl font-bold">{notFound ? 'Не найдено' : 'Что-то пошло не так'}</h1>
 <p class="mb-4 text-gray-500 dark:text-gray-400">

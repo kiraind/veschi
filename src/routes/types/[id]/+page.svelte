@@ -63,7 +63,7 @@
 	}
 </script>
 
-<svelte:head><title>{type.name} — Вещи</title></svelte:head>
+<svelte:head><title>{type.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a
