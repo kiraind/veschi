@@ -28,16 +28,16 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// The form starts from the page data once (sticker caption → name, ?parent → container).
+	// The form starts from the page data once (sticker caption → type, ?parent → container).
 	// svelte-ignore state_referenced_locally
 	const freeSticker = data.sticker?.status === 'free' ? data.sticker : null;
 	// svelte-ignore state_referenced_locally
 	let typeId = $state<string | null>(data.type?.id ?? null);
 	// svelte-ignore state_referenced_locally
-	let typeName = $state(data.type?.name ?? '');
+	let typeName = $state(data.type?.name ?? data.newTypeName ?? '');
 	// svelte-ignore state_referenced_locally
 	let selectedType = $state<TypeInfo | null>(data.type);
-	let name = $state(freeSticker?.caption ?? '');
+	let name = $state('');
 	let quantity = $state(1);
 	// svelte-ignore state_referenced_locally
 	let parent = $state(
