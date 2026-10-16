@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { Button } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PrinterOutline, QrCodeOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { piecesGenitive } from '$lib/domain/plural';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import { STICKER_WIDTHS, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import QrScanner from './QrScanner.svelte';
 	import Sheet from './Sheet.svelte';
@@ -11,17 +13,21 @@
 	 * «+ Наклейка» on the card of an item without a sticker: bind a free sticker
 	 * by scanning it, or print one of the chosen width with the next batch.
 	 * For a sticker waiting for print it binds one instead or changes the width.
+	 * With a bound sticker it shows the sticker and unbinds it.
 	 */
 	let {
 		open = $bindable(false),
 		itemId,
 		quantity = 1,
-		ordered = null
+		ordered = null,
+		bound = null
 	}: {
 		open?: boolean;
 		itemId: string;
 		/** Width of the sticker waiting for print, if there is one. */
 		ordered?: StickerWidth | null;
+		/** Code of the sticker bound to the item, if there is one. */
+		bound?: string | null;
 		/** A sticker marks one thing: binding it to several splits one off (see bindSticker). */
 		quantity?: number;
 	} = $props();
@@ -63,6 +69,8 @@
 			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
 		});
 
+	const unbind = () => run(() => api.post('/api/stickers/unbind', { itemId }));
+
 	const order = (width: StickerWidth) =>
 		run(() => api.post('/api/stickers/orders', { itemId, width }));
 
@@ -72,8 +80,11 @@
 	const hintClass = 'block text-sm text-gray-500 dark:text-gray-400';
 </script>
 
-<Sheet bind:open title={step === 'print' ? 'Какой ширины?' : 'Наклейка'}>
-	{#if step !== 'choose'}
+<Sheet
+	bind:open
+	title={bound ? `Наклейка ${formatCode(bound)}` : step === 'print' ? 'Какой ширины?' : 'Наклейка'}
+>
+	{#if !bound && step !== 'choose'}
 		<button
 			type="button"
 			class="mb-2 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
@@ -86,7 +97,17 @@
 		</button>
 	{/if}
 
-	{#if step === 'choose'}
+	{#if bound}
+		<div class="flex flex-col gap-4">
+			<p class="text-gray-500 dark:text-gray-400">
+				Наклейка привязана к этой вещи. Если она потерялась или испортилась, отвяжите её: она будет
+				списана, а к вещи можно будет привязать новую.
+			</p>
+			<Button color="red" outline class="h-11 self-start" onclick={unbind} disabled={busy}
+				>Отвязать наклейку</Button
+			>
+		</div>
+	{:else if step === 'choose'}
 		<div class="flex flex-col gap-1">
 			<button type="button" class={optionClass} onclick={() => (step = 'bind')}>
 				<QrCodeOutline class={iconClass} />
@@ -115,7 +136,7 @@
 				остальные останутся здесь.
 			</p>
 		{/if}
-		<QrScanner onscan={bind} active={open && step === 'bind'} />
+		<QrScanner onscan={bind} active={open && step === 'bind'} submitLabel="Привязать" />
 	{:else}
 		<div class="flex flex-col gap-1">
 			{#each STICKER_WIDTHS as width (width)}
