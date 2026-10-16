@@ -2,7 +2,13 @@
 	import { pieces, piecesAccusative } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Input, Label } from 'flowbite-svelte';
-	import { MinusOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import {
+		CheckCircleOutline,
+		EditOutline,
+		MinusOutline,
+		PlusOutline,
+		TrashBinOutline
+	} from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import Sheet from './Sheet.svelte';
@@ -10,7 +16,8 @@
 	/**
 	 * The quantity button on the card of a thing (containers have «Выкинуть»
 	 * instead, see ContainerDiscardSheet): the quantity with − and +. More than
-	 * now → «Сохранить»; less → «Использовать N» / «Выкинуть N» take N away; as
+	 * now → «Сохранить»; less → «Использовать N» / «Выкинуть N» take N away, or
+	 * «Исправить количество» just sets it (miscounted: no use in the history); as
 	 * it is → «Использовать» / «Выкинуть» send the whole item to the archive.
 	 * `lock` explains why the quantity of this item is always 1 (a sticker).
 	 */
@@ -84,6 +91,12 @@
 		});
 		if (ok) run(() => api.post(`/api/items/${item.id}/discard`, {}), true);
 	}
+
+	/** One way to make it fewer: an icon, what it does and when to pick it. */
+	const optionClass =
+		'flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left first:rounded-t-lg last:rounded-b-lg hover:bg-gray-100 focus:bg-gray-100 focus:outline-none disabled:opacity-50 dark:hover:bg-gray-700 dark:focus:bg-gray-700';
+	const iconClass = 'h-6 w-6 flex-none text-gray-500 dark:text-gray-400';
+	const hintClass = 'block text-sm text-gray-500 dark:text-gray-400';
 </script>
 
 <Sheet bind:open title="Количество: {item.name}">
@@ -143,13 +156,32 @@
 				>
 			</div>
 		{:else if taken > 0}
-			<div class="flex flex-wrap gap-2">
-				<Button onclick={() => takeAway(false)} disabled={busy}
-					>Использовать {piecesAccusative(taken)}</Button
-				>
-				<Button color="red" outline onclick={() => takeAway(true)} disabled={busy}
-					>Выкинуть {piecesAccusative(taken)}</Button
-				>
+			<div
+				class="flex flex-col divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700"
+			>
+				<button type="button" class={optionClass} disabled={busy} onclick={() => takeAway(false)}>
+					<CheckCircleOutline class={iconClass} />
+					<span>
+						<span class="block font-medium">Использовать {piecesAccusative(taken)}</span>
+						<span class={hintClass}>Израсходовали</span>
+					</span>
+				</button>
+				<button type="button" class={optionClass} disabled={busy} onclick={() => takeAway(true)}>
+					<TrashBinOutline class="h-6 w-6 flex-none text-red-600 dark:text-red-500" />
+					<span>
+						<span class="block font-medium text-red-600 dark:text-red-500"
+							>Выкинуть {piecesAccusative(taken)}</span
+						>
+						<span class={hintClass}>Сломались или больше не нужны</span>
+					</span>
+				</button>
+				<button type="button" class={optionClass} disabled={busy} onclick={save}>
+					<EditOutline class={iconClass} />
+					<span>
+						<span class="block font-medium">Исправить количество</span>
+						<span class={hintClass}>Ошиблись при подсчёте</span>
+					</span>
+				</button>
 			</div>
 		{:else if valid}
 			<div class="flex flex-wrap gap-2">
