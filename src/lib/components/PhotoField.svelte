@@ -11,6 +11,7 @@
 	import CameraCapture from './CameraCapture.svelte';
 	import NoPhoto from './NoPhoto.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import { isCutoutKey } from '$lib/domain/photos';
 
 	/**
 	 * A photo (or a placeholder) with a small round button over its corner that opens
@@ -27,7 +28,8 @@
 		caption,
 		alt = 'Фото',
 		container = false,
-		corner
+		corner,
+		status = null
 	}: {
 		photoKey?: string | null;
 		previewUrl?: string | null;
@@ -40,10 +42,13 @@
 		container?: boolean;
 		/** Another round button, right above the photo menu button. */
 		corner?: Snippet;
+		/** A step of processing in progress, shown over the photo («Убираем фон…»). */
+		status?: string | null;
 	} = $props();
 
 	const uid = $props.id();
 	const src = $derived(previewUrl ?? (photoKey ? `/files/${photoKey}` : null));
+	const cutout = $derived(!previewUrl && isCutoutKey(photoKey));
 
 	let menuOpen = $state(false);
 	let cameraOpen = $state(false);
@@ -77,7 +82,12 @@
 	<!-- Photos are square (uploads are padded to a square on the server). -->
 	<!-- Full width on phones, up to 256 px on wider screens. -->
 	<div class="relative aspect-square w-full sm:max-w-64">
-		{#if src}
+		{#if src && cutout}
+			<!-- Without background: the shadow is on the object, the backdrop on the wrapper. -->
+			<div class="h-full w-full rounded-lg bg-gray-100 dark:bg-gray-800">
+				<img class="photo-cutout h-full w-full object-contain" {src} {alt} />
+			</div>
+		{:else if src}
 			<img
 				class="h-full w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
 				{src}
@@ -98,6 +108,15 @@
 			>
 				<Spinner size="8" />
 				<span class="sr-only">Загрузка…</span>
+			</div>
+		{/if}
+
+		{#if status && !busy}
+			<div
+				class="absolute start-2 top-2 flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-xs text-gray-700 shadow dark:bg-gray-800/90 dark:text-gray-200"
+				role="status"
+			>
+				<Spinner size="4" />{status}
 			</div>
 		{/if}
 

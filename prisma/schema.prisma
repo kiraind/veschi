@@ -124,7 +124,16 @@ model ItemType {
   // Items of a container type can hold other items (and always have quantity 1).
   isContainer Boolean  @default(false)
   // Object key of the single photo in S3/MinIO; shared by every item of the type.
+  // It is the version shown: one of the keys below, picked by photoChoice
+  // (src/lib/server/photos/versions.ts).
   photoKey    String?
+  // Versions of the photo (docs/decisions.md, «Обработка фото»): the upload as
+  // it came (kept only while processing is on, for the processor), the upload
+  // re-encoded to a square WebP, and the cutout without background.
+  photoSourceKey   String?
+  photoOriginalKey String?
+  photoCutoutKey   String?
+  photoChoice      PhotoChoice @default(AUTO)
   // Barcode from the packaging (EAN-13, EAN-8, UPC, GTIN-14), never issued by
   // the app; one per type and one type per barcode of an owner. Stored form of
   // src/lib/domain/barcode.ts (digits, UPC-A as EAN-13).
@@ -139,6 +148,7 @@ model ItemType {
   paramRefs         ParamRef[]        @relation("ParamRefType")
   categories        TypeCategory[]
   collectionEntries CollectionEntry[]
+  photoJobs         PhotoJob[]
 
   @@unique([ownerId, barcode])
   @@unique([householdId, barcode])
@@ -146,6 +156,50 @@ model ItemType {
   @@index([householdId])
   // Access check of every photo request (/files).
   @@index([photoKey])
+  @@index([photoOriginalKey])
+  @@index([photoCutoutKey])
+}
+
+/** Which version of a type photo is shown; AUTO is the cutout once it is ready. */
+enum PhotoChoice {
+  AUTO
+  ORIGINAL
+  CUTOUT
+}
+
+enum PhotoStage {
+  CUTOUT
+}
+
+enum PhotoJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+/** A queued step of photo processing (src/lib/server/photos/queue.ts). */
+model PhotoJob {
+  id        String         @id @default(cuid())
+  typeId    String
+  // The photo the job is for; a result for a replaced photo is thrown away.
+  sourceKey String
+  stage     PhotoStage
+  status    PhotoJobStatus @default(PENDING)
+  // Fresh uploads (1) go before the backfill of old photos (0).
+  priority  Int            @default(0)
+  attempts  Int            @default(0)
+  runAfter  DateTime       @default(now())
+  startedAt DateTime?
+  error     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  type ItemType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([typeId])
 }
 
 enum ItemStatus {

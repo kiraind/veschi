@@ -1,7 +1,6 @@
 import { pieces } from '$lib/domain/plural';
-import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
-import type { ItemType } from '@prisma/client';
+import type { ItemType, PhotoChoice } from '@prisma/client';
 import { z } from 'zod';
 import { barcodeQuery } from '$lib/domain/barcode';
 import { escapeLike } from '$lib/domain/search';
@@ -19,10 +18,17 @@ import { categoryInfoOf, type CategoryInfo } from './categories';
 import { collectionNamesHolding } from './collections';
 import { missingParams, type RequiredParam } from '$lib/domain/categories';
 import { assertNothingInside, countContents, getPaths, type PathNode } from './paths';
-
-/** Side of a stored photo (square), px: full size and thumbnail. */
-const PHOTO_MAX_SIDE = 2048;
-const PHOTO_THUMB_SIDE = 320;
+import { config } from '$lib/server/env';
+import type { PhotoState } from '$lib/domain/photos';
+import {
+	PHOTO_MAX_PIXELS,
+	PHOTO_MAX_SIDE,
+	PHOTO_THUMB_SIDE,
+	type PhotoVariants
+} from '$lib/server/photos/encode';
+import { cancelPhotoJobs, enqueuePhotoJob } from '$lib/server/photos/queue';
+import { newPhotoKeys, photoKeysOf, shownKey, sourceOf } from '$lib/server/photos/versions';
+import { wakePhotoWorker } from '$lib/server/photos/worker';
 
 export const typeNameSchema = z.string().trim().min(1, 'Укажите название').max(200);
 export const typeDescriptionSchema = z
@@ -279,17 +285,8 @@ export async function deleteType(actor: Actor, id: string): Promise<void> {
 		await tx.itemType.delete({ where: { id } });
 		return { type, fileKeys };
 	});
-	await deleteUnreferencedFiles([...fileKeys, ...(type.photoKey ? [type.photoKey] : [])]);
+	await deleteUnreferencedFiles([...fileKeys, ...photoKeysOf(type)]);
 }
-
-/** A photo in the two stored sizes: full (for the photo itself) and a thumbnail (lists). */
-export interface PhotoVariants {
-	full: Buffer;
-	thumb: Buffer;
-}
-
-/** Larger pictures are rejected before decoding: a small PNG can unpack to gigabytes. */
-const PHOTO_MAX_PIXELS = 50_000_000;
 
 /** Photos are processed one at a time, so parallel uploads cannot add up their memory. */
 let photoQueue: Promise<unknown> = Promise.resolve();
@@ -341,35 +338,109 @@ export function toWebp(data: Buffer): Promise<PhotoVariants> {
 	});
 }
 
-/** Sets the type's photo; the previous photo is deleted. Returns the new key. */
+/**
+ * Sets the type's photo; the previous photo and its versions are deleted.
+ * With processing on, the upload is kept as it came and its cutout is queued.
+ * Returns the key shown now (the original until the cutout is ready).
+ */
 export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Promise<string> {
 	const type = await findType(actor, id);
 	const { full, thumb } = await toWebp(data);
-	const photoKey = `types/${id}/${randomUUID()}.webp`;
-	await storage().put(photoKey, full, 'image/webp');
-	await storage().put(thumbKeyOf(photoKey), thumb, 'image/webp');
+	const processing = config().PHOTO_PROCESSING !== 'off';
+	const keys = newPhotoKeys(id);
+	await storage().put(keys.original, full, 'image/webp');
+	await storage().put(thumbKeyOf(keys.original), thumb, 'image/webp');
+	if (processing) await storage().put(keys.source, data, 'application/octet-stream');
+	const sourceKey = processing ? keys.source : null;
 	await writeTransaction(async (tx) => {
-		await tx.itemType.update({ where: { id }, data: { photoKey } });
+		await tx.itemType.update({
+			where: { id },
+			data: {
+				photoKey: keys.original,
+				photoOriginalKey: keys.original,
+				photoSourceKey: sourceKey,
+				photoCutoutKey: null,
+				photoChoice: 'AUTO'
+			}
+		});
+		await cancelPhotoJobs(tx, id);
+		if (sourceKey) {
+			await enqueuePhotoJob(tx, { typeId: id, sourceKey, stage: 'CUTOUT', priority: 1 });
+		}
 		await recordEvent(tx, actor, {
 			kind: 'type.photo',
 			subject: typeRef(type),
 			data: { removed: false }
 		});
 	});
-	if (type.photoKey) await deleteStored(type.photoKey);
-	return photoKey;
+	for (const key of photoKeysOf(type)) await deleteStored(key);
+	if (sourceKey) wakePhotoWorker();
+	return keys.original;
 }
 
 export async function removeTypePhoto(actor: Actor, id: string): Promise<void> {
 	const type = await findType(actor, id);
 	if (!type.photoKey) return;
 	await writeTransaction(async (tx) => {
-		await tx.itemType.update({ where: { id }, data: { photoKey: null } });
+		await tx.itemType.update({
+			where: { id },
+			data: {
+				photoKey: null,
+				photoOriginalKey: null,
+				photoSourceKey: null,
+				photoCutoutKey: null,
+				photoChoice: 'AUTO'
+			}
+		});
+		await cancelPhotoJobs(tx, id);
 		await recordEvent(tx, actor, {
 			kind: 'type.photo',
 			subject: typeRef(type),
 			data: { removed: true }
 		});
 	});
-	await deleteStored(type.photoKey);
+	for (const key of photoKeysOf(type)) await deleteStored(key);
+}
+
+/** The photo versions of a type and their processing, for the type page. */
+export async function getPhotoState(actor: Actor, id: string): Promise<PhotoState | null> {
+	const type = await findType(actor, id);
+	if (!type.photoOriginalKey) return null;
+	const source = sourceOf(type);
+	const last = await db.photoJob.findFirst({
+		where: { typeId: id, sourceKey: source ?? undefined, status: { not: 'CANCELLED' } },
+		orderBy: { createdAt: 'desc' }
+	});
+	return {
+		choice: type.photoChoice,
+		available: type.photoCutoutKey ? ['CUTOUT', 'ORIGINAL'] : ['ORIGINAL'],
+		processing: last?.status === 'PENDING' || last?.status === 'RUNNING',
+		failed: last?.status === 'FAILED',
+		enabled: config().PHOTO_PROCESSING !== 'off'
+	};
+}
+
+/** Picks the version shown; the cutout falls back to the original until it is ready. */
+export async function setPhotoChoice(actor: Actor, id: string, choice: PhotoChoice): Promise<void> {
+	await writeTransaction(async (tx) => {
+		const type = await findType(actor, id, tx);
+		if (!type.photoOriginalKey) throw new ValidationError('У типа нет фото');
+		await tx.itemType.update({
+			where: { id },
+			data: { photoChoice: choice, photoKey: shownKey(type, choice) }
+		});
+	});
+}
+
+/** Queues the processing of the type photo again (after a failure, or for a better result). */
+export async function reprocessTypePhoto(actor: Actor, id: string): Promise<void> {
+	if (config().PHOTO_PROCESSING === 'off') throw new ValidationError('Обработка фото выключена');
+	await writeTransaction(async (tx) => {
+		const type = await findType(actor, id, tx);
+		const sourceKey = sourceOf(type);
+		if (!sourceKey) throw new ValidationError('У типа нет фото');
+		await cancelPhotoJobs(tx, id);
+		await enqueuePhotoJob(tx, { typeId: id, sourceKey, stage: 'CUTOUT', priority: 1 });
+	});
+	wakePhotoWorker();
 }

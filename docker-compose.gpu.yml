@@ -1,0 +1,31 @@
+# Photo processing on the server's NVIDIA card, on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Needs the NVIDIA driver and nvidia-container-toolkit on the host (README,
+# «Обработка фото»). Without a GPU, add `command: ['--cpu']` to photo-processor.
+
+services:
+  photo-processor:
+    build: photo-processor
+    image: ghcr.io/kiraind/veschi-photo-processor:latest
+    restart: unless-stopped
+    # ComfyUI has no authentication: the port stays inside the compose network.
+    volumes:
+      - photo-models:/comfy/models
+    tmpfs:
+      - /tmp/comfy:size=2g
+    mem_limit: 9g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  app:
+    environment:
+      PHOTO_PROCESSING: cutout
+      PHOTO_PROCESSOR_URL: http://photo-processor:8188
+
+volumes:
+  photo-models:

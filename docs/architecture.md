@@ -22,6 +22,7 @@ src/
       storage/       Storage: S3Storage (MinIO) и MemoryStorage (тесты, dev без MinIO)
       services/      единственный слой бизнес-логики; интеграционные тесты *.int.test.ts
       pdf/           генерация PDF с наклейками
+      photos/        обработка фото типов: очередь PhotoJob, воркер, клиент ComfyUI, свет и кадр (sharp)
       testing/       хелперы интеграционных тестов (сброс БД, createTestActor)
     components/      Svelte-компоненты
     api.ts           браузерный клиент JSON API (`api.get/post/...`, ApiError, `errorText`)
@@ -33,6 +34,7 @@ src/
     files/[...key]      отдача файлов из хранилища с проверкой доступа
     **/+page.svelte     страницы; чтение через +page.server.ts → services
 assets/fonts/        шрифты для PDF (копируются в образ)
+photo-processor/     образ обработчика фото: ComfyUI с ComfyUI-RMBG под старые карты NVIDIA
 prisma/              схема и миграции
 ```
 

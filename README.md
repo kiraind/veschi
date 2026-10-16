@@ -42,12 +42,35 @@ docker run -d -p 3000:3000 \
 | `ADMIN_NAME`                     | отображаемое имя первого пользователя                                                                       | `ADMIN_LOGIN` |
 | `BODY_SIZE_LIMIT`                | предельный размер запроса; должен быть больше лимита файла (50 МБ)                                          | `52M`         |
 | `ADDRESS_HEADER`                 | заголовок с адресом клиента от прокси (`X-Forwarded-For`): по адресу считаются неудачные попытки входа      | —             |
+| `PHOTO_PROCESSING`               | `cutout` — убирать фон с фото типов через ComfyUI (см. [Обработка фото](#обработка-фото)), `off` — нет      | `off`         |
+| `PHOTO_PROCESSOR_URL`            | адрес ComfyUI; обязателен, если обработка включена                                                          | —             |
+| `PHOTO_PROCESSOR_API_KEY`        | ключ API Comfy Cloud; для своего ComfyUI не нужен                                                           | —             |
 
 Пример со всеми переменными — [.env.example](.env.example).
 
 В продакшене (`NODE_ENV=production`, как в образе) без `ORIGIN` и `QR_BASE_URL` наклейки не печатаются: QR-коды вели бы на `localhost`, а напечатанное потом не исправить.
 
 Забыли пароль — перезапустите контейнер с `ADMIN_RESET_PASSWORD=1` и новым `ADMIN_PASSWORD`, войдите и уберите флаг (иначе пароль будет сбрасываться при каждом старте). Обычная смена пароля — в «Настройках»; перезапуск без флага её не трогает.
+
+## Обработка фото
+
+С `PHOTO_PROCESSING=cutout` приложение убирает фон с фото типов: фото сначала показывается как есть, а через несколько секунд заменяется вырезанной вещью с выровненным светом, кадрированной с полями 6%. Вырезку рисует [ComfyUI](https://github.com/comfyanonymous/ComfyUI) с моделью BiRefNet из набора нод [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG); свет, кадр и WebP приложение делает само. Очередь задач хранится в PostgreSQL и переживает перезапуск. При первом включении в очередь встают и все старые фото. На странице типа можно выбрать, что показывать: «Без фона» или «Оригинал»; оригинал всегда хранится. Выключить обработку можно в любой момент: уже вырезанные фото останутся.
+
+**Comfy Cloud** — для начала, без своей видеокарты: нужна подписка и ключ API из аккаунта Comfy Cloud. Ноды ComfyUI-RMBG там уже установлены.
+
+```sh
+PHOTO_PROCESSING=cutout
+PHOTO_PROCESSOR_URL=https://cloud.comfy.org
+PHOTO_PROCESSOR_API_KEY=<ключ>
+```
+
+**Свой сервер с видеокартой NVIDIA** — образ `ghcr.io/kiraind/veschi-photo-processor` из папки [photo-processor](photo-processor): ComfyUI с ComfyUI-RMBG, рассчитанный на старые карты вроде GTX 1050 Ti с 4 ГБ: PyTorch линии CUDA 12.6, BiRefNet в FP32 на 832 px.
+
+1. Драйвер NVIDIA ветки 580 — последней с поддержкой карт GTX 10xx (на Ubuntu `nvidia-driver-580`, закрепить: `apt-mark hold`); проверка — `nvidia-smi`.
+2. [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), затем `sudo nvidia-ctk runtime configure --runtime=docker` и перезапуск Docker; проверка — `docker run --rm --gpus all ubuntu nvidia-smi`.
+3. `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d` — добавляет сервис `photo-processor` и включает обработку в `app`. Модель (около 1 ГБ) скачивается при первой обработке в том `photo-models`.
+
+Порт ComfyUI (8188) наружу не открывается: у ComfyUI нет авторизации. Переключиться с облака на свой сервер — поменять `PHOTO_PROCESSOR_URL` и убрать `PHOTO_PROCESSOR_API_KEY`. Посмотреть, что происходит, — `docker compose logs -f app photo-processor`: приложение пишет время каждой обработки и ошибки.
 
 ## Разработка
 
@@ -93,7 +116,8 @@ GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) на ка�
 - `checks` — `npm run lint`, `npm run check`, юнит-тесты;
 - `integration` — интеграционные тесты против PostgreSQL 16;
 - `build` — сборка приложения;
-- `docker` — сборка образа и смоук-тест (`docker/smoke-test.sh`); при push в `master` образ публикуется в `ghcr.io/kiraind/veschi` с тегами `sha-<коммит>` и `master`.
+- `docker` — сборка образа и смоук-тест (`docker/smoke-test.sh`); при push в `master` образ публикуется в `ghcr.io/kiraind/veschi` с тегами `sha-<коммит>` и `master`;
+- `photo-processor` — при изменениях в `photo-processor/`: сборка образа обработки фото и проверка, что ComfyUI стартует (на CPU) с нодой BiRefNet; при push в `master` образ публикуется в `ghcr.io/kiraind/veschi-photo-processor`.
 
 ## Релизы
 
