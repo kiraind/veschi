@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Button, Modal } from 'flowbite-svelte';
+	import { Button, CloseButton, Modal } from 'flowbite-svelte';
 	import { ExclamationCircleOutline } from 'flowbite-svelte-icons';
 	import { confirmState } from '$lib/confirm.svelte';
 
@@ -15,7 +15,8 @@
 	});
 </script>
 
-<Modal bind:open size="xs" classes={{ body: 'flex flex-col gap-4 p-4 md:p-5' }}>
+<!-- Our own cross: Flowbite's one is labelled «Close» for screen readers. -->
+<Modal bind:open size="xs" dismissable={false} classes={{ body: 'flex flex-col gap-4 p-4 md:p-5' }}>
 	{#if pending}
 		<div class="flex items-start gap-3">
 			{#if pending.danger}
@@ -40,5 +41,7 @@
 				{pending.confirmLabel}
 			</Button>
 		</div>
+		<!-- Last, so the dialog still puts the focus on the first answer button. -->
+		<CloseButton name="Закрыть" class="absolute end-2.5 top-2.5" />
 	{/if}
 </Modal>

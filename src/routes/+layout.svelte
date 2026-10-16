@@ -29,6 +29,7 @@
 	import BoxIcon from '$lib/components/icons/BoxIcon.svelte';
 	import DeskIcon from '$lib/components/icons/DeskIcon.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
+	import { tabs } from '$lib/tabs.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -70,15 +71,16 @@
 				: 'group-hover:bg-gray-100 dark:group-hover:bg-gray-700'
 		}`;
 
-	function isActive(href: string): boolean {
-		const path = page.url.pathname;
-		if (href === '/') return path === '/';
-		// Item cards belong to «Контейнеры».
-		if (href === '/containers' && path.startsWith('/items')) return true;
-		// The archive opens from «История».
-		if (href === '/history' && path.startsWith('/archive')) return true;
-		return path === href || path.startsWith(`${href}/`);
-	}
+	// Each section keeps its own stack of pages; item cards and other shared pages light up
+	// the tab they were opened from (see $lib/tabs.svelte).
+	tabs.track([...primary, ...secondary].map((l) => l.href).concat('/settings'));
+
+	const isActive = (href: string) => tabs.active() === href;
+	/** For Flowbite's own highlighting: the link of the active tab. */
+	const activeHref = $derived.by(() => {
+		const tab = tabs.active();
+		return tab === null ? undefined : tabs.href(tab);
+	});
 
 	const moreActive = $derived(
 		[...secondary.map((l) => l.href), '/settings'].some((href) => isActive(href))
@@ -98,11 +100,12 @@
 		fluid
 	>
 		<NavBrand href="/">
-			<span class="text-lg font-semibold whitespace-nowrap dark:text-white">Veschi</span>
+			<span class="text-lg font-semibold whitespace-nowrap dark:text-white">veschi</span>
 		</NavBrand>
 		<div class="flex items-center md:order-2">
 			<a
-				href="/settings"
+				href={tabs.href('/settings')}
+				onclick={(e) => tabs.tap('/settings', e)}
 				title="Настройки"
 				class="flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
 				aria-current={isActive('/settings') ? 'page' : undefined}
@@ -111,10 +114,11 @@
 				<span class="max-w-32 truncate">{data.user.name}</span>
 			</a>
 		</div>
-		<NavUl class="order-1 hidden md:block" activeUrl={page.url.pathname}>
+		<NavUl class="order-1 hidden md:block" activeUrl={activeHref}>
 			{#each [...primary, ...secondary] as link (link.href)}
 				<NavLi
-					href={link.href}
+					href={tabs.href(link.href)}
+					onclick={(e: MouseEvent) => tabs.tap(link.href, e)}
 					class={isActive(link.href) ? 'md:text-primary-700 dark:md:text-primary-400' : ''}
 				>
 					{link.label}
@@ -144,7 +148,8 @@
 				{@const Icon = link.icon}
 				{@const active = isActive(link.href)}
 				<a
-					href={link.href}
+					href={tabs.href(link.href)}
+					onclick={(e) => tabs.tap(link.href, e)}
 					class="group {tabClass(active)}"
 					aria-current={active ? 'page' : undefined}
 				>
@@ -163,7 +168,7 @@
 	<Sheet bind:open={moreOpen} title="Ещё">
 		<Sidebar
 			alwaysOpen
-			activeUrl={page.url.pathname}
+			activeUrl={activeHref}
 			position="static"
 			class="w-full bg-transparent dark:bg-transparent"
 			classes={{ div: 'bg-transparent px-0 py-0 dark:bg-transparent' }}
@@ -171,11 +176,19 @@
 			<SidebarGroup>
 				{#each secondary as link (link.href)}
 					{@const Icon = link.icon}
-					<SidebarItem href={link.href} label={link.label}>
+					<SidebarItem
+						href={tabs.href(link.href)}
+						label={link.label}
+						onclick={(e: MouseEvent) => tabs.tap(link.href, e)}
+					>
 						{#snippet icon()}<Icon class="h-5 w-5" />{/snippet}
 					</SidebarItem>
 				{/each}
-				<SidebarItem href="/settings" label="Настройки">
+				<SidebarItem
+					href={tabs.href('/settings')}
+					label="Настройки"
+					onclick={(e: MouseEvent) => tabs.tap('/settings', e)}
+				>
 					{#snippet icon()}<CogOutline class="h-5 w-5" />{/snippet}
 				</SidebarItem>
 			</SidebarGroup>

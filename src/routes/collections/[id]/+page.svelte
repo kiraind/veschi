@@ -15,8 +15,8 @@
 	import Thumb from '$lib/components/Thumb.svelte';
 	import {
 		entryCountText,
-		shortCountText,
-		shortage,
+		missingText,
+		totalShortage,
 		stockText,
 		type CollectionEntryView
 	} from '$lib/domain/collections';
@@ -28,7 +28,7 @@
 
 	const collection = $derived(data.card.collection);
 	const entries = $derived(data.card.entries);
-	const shortCount = $derived(entries.filter((e) => shortage(e) > 0).length);
+	const missing = $derived(totalShortage(entries));
 
 	let renaming = $state(false);
 	let describing = $state(false);
@@ -87,7 +87,7 @@
 	}
 </script>
 
-<svelte:head><title>{collection.name} — Коллекции</title></svelte:head>
+<svelte:head><title>{collection.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a
@@ -109,9 +109,9 @@
 
 <h2 class="mt-6 mb-2 flex flex-wrap items-baseline gap-x-3 text-lg font-semibold">
 	{entries.length ? entryCountText(entries.length) : 'Вещи'}
-	{#if shortCount}
+	{#if missing}
 		<span class="text-sm font-normal text-amber-700 dark:text-amber-400"
-			>{shortCountText(shortCount)}</span
+			>{missingText(missing)}</span
 		>
 	{:else if entries.length}
 		<span class="text-sm font-normal text-gray-500 dark:text-gray-400">всё есть</span>

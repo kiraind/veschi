@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPath, itemDisplayName } from './item';
+import { compareNames, formatPath, itemDisplayName } from './item';
 
 describe('itemDisplayName', () => {
 	it('prefers the own name', () => {
@@ -22,5 +22,20 @@ describe('formatPath', () => {
 
 	it('names workbenches', () => {
 		expect(formatPath([{ name: 'Гараж', isWorkbench: true }])).toBe('Рабочий стол Гараж');
+	});
+});
+
+describe('compareNames', () => {
+	it('sorts alphabetically, ignoring case, with numbers by value', () => {
+		const names = ['Винт M10', 'резистор', 'Арбуз', 'Винт M3', 'Полка 10', 'Полка 2', 'ёлка'];
+		expect(names.sort(compareNames)).toEqual([
+			'Арбуз',
+			'Винт M3',
+			'Винт M10',
+			'ёлка',
+			'Полка 2',
+			'Полка 10',
+			'резистор'
+		]);
 	});
 });

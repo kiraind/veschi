@@ -31,6 +31,12 @@
    (light, dark or the system setting; see app.html and $lib/theme). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Flowbite buttons mark focus with `focus-within:` (a grey ring and blue text).
+   A tap or click focuses a button too, and a dialog focuses its first button on
+   open, so «Назад» or «Отмена» looked pressed without being pressed. Keep that
+   look for keyboard focus only (a focused text field always counts). */
+@custom-variant focus-within (&:is(:focus-visible, :has(:focus-visible)));
+
 @theme {
 	--color-primary-50: #eff6ff;
 	--color-primary-100: #dbeafe;

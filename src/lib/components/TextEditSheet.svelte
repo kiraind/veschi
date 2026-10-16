@@ -65,7 +65,13 @@
 				>{label}{#if required}<RequiredMark />{/if}</Label
 			>
 			{#if multiline}
-				<Textarea id="text-{id}" class="mt-1" bind:value={text} rows={5} {placeholder} />
+				<Textarea
+					id="text-{id}"
+					class="mt-1 w-full dark:border-gray-600 dark:bg-gray-700"
+					bind:value={text}
+					rows={5}
+					{placeholder}
+				/>
 			{:else}
 				<Input id="text-{id}" class="mt-1" bind:value={text} {placeholder} {required} />
 			{/if}

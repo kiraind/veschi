@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { Card } from 'flowbite-svelte';
+	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import Thumb from './Thumb.svelte';
-	import PathTrail from './PathTrail.svelte';
+	import { formatPath } from '$lib/domain/item';
 	import { pieces } from '$lib/domain/plural';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import type { SearchGroup } from '$lib/server/services/search';
 
 	/**
-	 * Search results grouped by type: the total quantity and, for every record,
-	 * the container path where it lies (tap the quantity to open the record).
+	 * Search results grouped by type: the type (a link to its page) with the total
+	 * quantity and, for every record, a row opening that record: how many, its
+	 * sticker ID and the container path where it lies.
 	 */
 	let { groups }: { groups: SearchGroup[] } = $props();
 </script>
@@ -15,33 +18,44 @@
 <ul class="flex flex-col gap-3">
 	{#each groups as group (group.typeId)}
 		<li>
-			<Card class="max-w-none gap-3 p-4">
-				<div class="flex items-center gap-3">
+			<Card class="max-w-none gap-2 p-4">
+				<a href="/types/{group.typeId}" class="group flex items-center gap-3">
 					<Thumb photoKey={group.photoKey} size={56} container={group.isContainer} />
 					<div class="min-w-0">
-						<a href="/types/{group.typeId}" class="wrap-anywhere"
-							><strong>{group.typeName}</strong></a
+						<strong
+							class="wrap-anywhere text-primary-700 group-hover:underline dark:text-primary-500"
+							>{group.typeName}</strong
 						>
 						<div class="text-sm text-gray-500 dark:text-gray-400">
 							всего {pieces(group.total)}
 						</div>
 					</div>
-				</div>
-				<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+				</a>
+				<ul class="-mx-2 divide-y divide-gray-200 dark:divide-gray-700">
 					{#each group.locations as location (location.itemId)}
-						<li class="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 wrap-anywhere">
-							<span class="min-w-0">
-								<PathTrail path={location.path} emptyText="верхний уровень" />
-								{#if location.name !== group.typeName}
-									<span class="text-sm text-gray-500 dark:text-gray-400">· {location.name}</span>
-								{/if}
-							</span>
+						<li>
 							<a
-								class="inline-flex min-h-10 items-center rounded-full bg-primary-100 px-3 text-sm font-medium whitespace-nowrap text-primary-800 hover:bg-primary-200 dark:bg-primary-900 dark:text-primary-300 dark:hover:bg-primary-800"
 								href="/items/{location.itemId}"
-								title="Открыть карточку"
+								class="flex min-h-12 items-center gap-2 rounded-lg px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
 							>
-								{pieces(location.quantity)}
+								<span class="min-w-0 flex-1">
+									<span class="block wrap-anywhere text-gray-900 dark:text-white">
+										<span class="font-medium">{pieces(location.quantity)}</span>
+										{#if location.name !== group.typeName}
+											<span class="text-gray-500 dark:text-gray-400">· {location.name}</span>
+										{/if}
+										{#if location.stickerCode}
+											<span
+												class="ms-1 font-mono text-sm whitespace-nowrap text-gray-500 dark:text-gray-400"
+												>{formatCode(location.stickerCode)}</span
+											>
+										{/if}
+									</span>
+									<span class="block text-sm wrap-anywhere text-gray-500 dark:text-gray-400">
+										{location.path.length ? formatPath(location.path) : 'верхний уровень'}
+									</span>
+								</span>
+								<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
 							</a>
 						</li>
 					{/each}

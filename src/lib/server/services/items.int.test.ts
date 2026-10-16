@@ -114,9 +114,39 @@ describe('items', () => {
 			expect(item).toMatchObject({ parentId: bench, takenById: actor.userId, homeId: null });
 			expect(item.takenAt).toBeInstanceOf(Date);
 			const [listed] = await listWorkbench(actor, { itemId: id });
-			expect(listed).toMatchObject({ id, workbenchId: bench, homePath: [], canReturn: true });
+			expect(listed).toMatchObject({
+				id,
+				workbenchId: bench,
+				homePath: [],
+				canReturn: true,
+				isNew: true
+			});
 			const user = await db.user.findUniqueOrThrow({ where: { id: actor.userId } });
 			expect(user.lastWorkbenchId).toBe(bench);
+		});
+
+		it('keeps a new item new across benches and forgets it once put away', async () => {
+			const bench = (await createWorkbench(actor, { name: 'Стол' })).id;
+			const garage = (await createWorkbench(actor, { name: 'Гараж' })).id;
+			const { id } = await createItem(actor, {
+				typeId: thingType,
+				workbenchId: bench,
+				quantity: 3
+			});
+			const { itemId: part } = await take(actor, id, { workbenchId: garage, quantity: 1 });
+			const listed = await listWorkbench(actor);
+			expect(listed.map((i) => [i.id, i.isNew]).sort()).toEqual(
+				[
+					[id, true],
+					[part, true]
+				].sort()
+			);
+
+			// Put away and taken back from the top level: it came from somewhere now.
+			await moveItem(actor, part, null);
+			await take(actor, part, { workbenchId: bench });
+			const [again] = await listWorkbench(actor, { itemId: part });
+			expect(again).toMatchObject({ isNew: false, homePath: [] });
 		});
 
 		it('rejects a workbench that is not one, and a container together with a bench', async () => {
@@ -275,6 +305,22 @@ describe('items', () => {
 			expect(nested.map((c) => [c.name, c.quantity])).toEqual([['LM317', 3]]);
 		});
 
+		it('lists contents alphabetically, containers among the rest', async () => {
+			const chips = await box('Коробка');
+			await createItem(actor, { newTypeName: 'Винт M10', quantity: 5, parentId: chips });
+			await createItem(actor, { newTypeName: 'резистор', quantity: 2, parentId: chips });
+			await box('Пакет', chips);
+			await createItem(actor, { newTypeName: 'Винт M3', quantity: 7, parentId: chips });
+			await createItem(actor, { newTypeName: 'Арбуз', parentId: chips });
+			expect((await listContents(actor, chips)).map((c) => c.name)).toEqual([
+				'Арбуз',
+				'Винт M3',
+				'Винт M10',
+				'Пакет',
+				'резистор'
+			]);
+		});
+
 		it('lists top-level items without workbenches', async () => {
 			await box('Шкаф');
 			await db.item.create({ data: { ownerId: actor.userId, name: 'Гараж', isWorkbench: true } });
@@ -394,13 +440,13 @@ describe('items', () => {
 			expect((await listContents(actor, null))[0]?.photoKey).toBe('types/x.webp');
 		});
 
-		it('lists containers before other things', async () => {
+		it('lists containers and other things in one alphabetical order', async () => {
 			await createItem(actor, { typeId: thingType, name: 'А-вещь' });
 			await box('Я-коробка');
 			const names = (await listContents(actor, null)).map((e) => [e.name, e.isContainer]);
 			expect(names).toEqual([
-				['Я-коробка', true],
-				['А-вещь', false]
+				['А-вещь', false],
+				['Я-коробка', true]
 			]);
 		});
 	});

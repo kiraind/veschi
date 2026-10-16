@@ -28,7 +28,7 @@
 	}
 </script>
 
-<svelte:head><title>Параметры — Вещи</title></svelte:head>
+<svelte:head><title>Параметры — veschi</title></svelte:head>
 
 <h1 class="mb-4 text-2xl font-bold">Параметры</h1>
 

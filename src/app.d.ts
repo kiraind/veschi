@@ -14,7 +14,10 @@ declare global {
 			sessionId: string | null;
 		}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** The tab this history entry was opened in (`$lib/tabs.svelte`). */
+			tab?: string | null;
+		}
 		// interface Platform {}
 	}
 }

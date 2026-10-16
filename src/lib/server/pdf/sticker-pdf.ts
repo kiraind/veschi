@@ -197,7 +197,7 @@ export async function renderStickerPdf(stickers: PdfSticker[], qrBaseUrl: string
 		margin: 0,
 		autoFirstPage: false,
 		font: CAPTION_FONT,
-		info: { Title: 'Наклейки', Creator: 'Вещи' }
+		info: { Title: 'Наклейки', Creator: 'veschi' }
 	});
 	const chunks: Buffer[] = [];
 	doc.on('data', (chunk: Buffer) => chunks.push(chunk));

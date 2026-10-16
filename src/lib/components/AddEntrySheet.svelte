@@ -109,7 +109,7 @@
 							name: t.name,
 							photoKey: t.photoKey,
 							isContainer: t.isContainer,
-							total: t.itemCount,
+							total: t.total,
 							items: []
 						});
 					}

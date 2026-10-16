@@ -93,7 +93,7 @@
 	}
 </script>
 
-<svelte:head><title>История — Вещи</title></svelte:head>
+<svelte:head><title>История — veschi</title></svelte:head>
 
 {#snippet segments(list: Segment[])}
 	{#each list as s, i (i)}

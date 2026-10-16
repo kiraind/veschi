@@ -10,7 +10,7 @@
 	const loose = $derived(data.items.filter((i) => !i.isContainer));
 </script>
 
-<svelte:head><title>Контейнеры</title></svelte:head>
+<svelte:head><title>Контейнеры — veschi</title></svelte:head>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 	<h1 class="text-2xl font-bold">Контейнеры</h1>

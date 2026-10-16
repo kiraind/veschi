@@ -29,6 +29,7 @@
 		ChevronSortOutline,
 		CloseOutline,
 		PrinterOutline,
+		ArrowDownToBracketOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
 		TrashBinOutline,
@@ -171,7 +172,7 @@
 	}
 </script>
 
-<svelte:head><title>{item.displayName} — Вещи</title></svelte:head>
+<svelte:head><title>{item.displayName} — veschi</title></svelte:head>
 
 {#if !active}
 	<Notice tone="danger" class="mb-4">
@@ -239,7 +240,13 @@
 <div class="mt-3 flex flex-col gap-3">
 	{#if active && !item.isWorkbench}
 		<ButtonGroup class="w-full sm:w-auto sm:self-start">
-			{#if data.onBench}
+			{#if data.onBench?.isNew}
+				<!-- Created right on a workbench: no place to go back to, so it is put somewhere. -->
+				<Button color="alternative" class={actionClass} onclick={startMoving}>
+					<ArrowDownToBracketOutline class={actionIconClass} />
+					Положить
+				</Button>
+			{:else if data.onBench}
 				<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
 				<Button color="alternative" class={actionClass} onclick={startReturning}>
 					<UndoOutline class={actionIconClass} />
@@ -251,10 +258,12 @@
 					На стол
 				</Button>
 			{/if}
-			<Button color="alternative" class={actionClass} onclick={startMoving}>
-				<ArrowsRepeatOutline class={actionIconClass} />
-				Переложить
-			</Button>
+			{#if !data.onBench?.isNew}
+				<Button color="alternative" class={actionClass} onclick={startMoving}>
+					<ArrowsRepeatOutline class={actionIconClass} />
+					Переложить
+				</Button>
+			{/if}
 			{#if container}
 				<!-- A container is always one: throwing it away is the only thing to do here. -->
 				<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
@@ -467,7 +476,7 @@
 	/>
 	<MoveSheet
 		bind:open={moving}
-		title="Переложить «{item.displayName}»"
+		title="{data.onBench?.isNew ? 'Положить' : 'Переложить'} «{item.displayName}»"
 		item={{
 			id: item.id,
 			quantity: item.quantity,

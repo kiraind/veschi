@@ -49,6 +49,21 @@ describe('search', () => {
 		expect(await search(actor, 'K7')).toEqual([]);
 	});
 
+	it('ignores spaces, hyphens and dots in names and parameter values', async () => {
+		await setKeyedParams(actor, { typeId: ne555Type }, [
+			{ key: 'корпус', valueType: 'STRING', text: 'DIP-8' },
+			{ key: 'диаметр', valueType: 'NUMBER', value: 1.5 }
+		]);
+		for (const q of ['ne 555', 'NE-555', 'n.e.555', 'dip8', 'DIP 8', 'корпус: dip 8']) {
+			expect((await search(actor, q)).map((g) => g.typeName)).toEqual(['NE555']);
+		}
+		// A decimal point is not a separator.
+		expect(await search(actor, '15')).toEqual([]);
+		expect((await search(actor, '1.5')).map((g) => g.typeName)).toEqual(['NE555']);
+		// Separators alone are no query to match everything with.
+		expect(await search(actor, ' - . ')).toEqual([]);
+	});
+
 	it('finds «ne555» as one type with the total and every location with its path', async () => {
 		const results = await search(actor, 'ne555');
 		expect(results).toHaveLength(1);

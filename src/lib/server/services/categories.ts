@@ -161,7 +161,8 @@ export interface CategoryCard {
 	/** Required parameters in list order. */
 	params: { def: ParamDefView; level: ParamLevel }[];
 	/** Types in the category; `missing` — names of «у типа» parameters it has no value of. */
-	types: { id: string; name: string; itemCount: number; missing: string[] }[];
+	/** `total` — pieces of the type in active items. */
+	types: { id: string; name: string; total: number; missing: string[] }[];
 	/**
 	 * Active items of its types without an own value of an «у каждой вещи»
 	 * parameter (at most MAX_INCOMPLETE_ITEMS; `incompleteItemCount` is all of them).
@@ -178,10 +179,7 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 			where: { categoryId: id },
 			include: {
 				type: {
-					include: {
-						params: { select: { defId: true } },
-						_count: { select: { items: { where: { status: 'ACTIVE' } } } }
-					}
+					include: { params: { select: { defId: true } } }
 				}
 			},
 			orderBy: { type: { name: 'asc' } }
@@ -222,13 +220,22 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 		.map((i) => ({ id: i.id, name: itemDisplayName(i), missing: missingNames('ITEM', i.params) }))
 		.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
+	const sums = links.length
+		? await db.item.groupBy({
+				by: ['typeId'],
+				where: { typeId: { in: links.map((l) => l.typeId) }, status: 'ACTIVE' },
+				_sum: { quantity: true }
+			})
+		: [];
+	const totals = new Map(sums.map((s) => [s.typeId, s._sum.quantity ?? 0]));
+
 	return {
 		category: { id: category.id, name: category.name, description: category.description },
 		params,
 		types: links.map(({ type }) => ({
 			id: type.id,
 			name: type.name,
-			itemCount: type._count.items,
+			total: totals.get(type.id) ?? 0,
 			missing: missingNames('TYPE', type.params)
 		})),
 		incompleteItems: incompleteItems.slice(0, MAX_INCOMPLETE_ITEMS),

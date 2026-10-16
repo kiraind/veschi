@@ -10,6 +10,8 @@ export interface Placement {
 	takenById: string | null;
 	takenAt: Date | null;
 	homeId: string | null;
+	/** Created right on a workbench and not put anywhere since; omitted = false. */
+	createdOnBench?: boolean;
 	/** Omitted → a whole record keeps its own splitFromId. */
 	splitFromId?: string | null;
 }
@@ -19,6 +21,7 @@ export const notTaken = {
 	takenById: null,
 	takenAt: null,
 	homeId: null,
+	createdOnBench: false,
 	splitFromId: null
 } as const;
 
@@ -142,6 +145,7 @@ async function findTwin(
 			parentId: placement.parentId,
 			takenById: placement.takenById,
 			homeId: placement.homeId,
+			createdOnBench: placement.createdOnBench ?? false,
 			splitFromId: placement.splitFromId,
 			sticker: null,
 			children: { none: {} },

@@ -193,11 +193,12 @@
 
 	<form class="flex flex-wrap gap-2" onsubmit={submitManual}>
 		<div class="min-w-48 flex-1">
+			<!-- Typed codes are monospaced; the hint is in the regular font so it fits on a phone. -->
 			<Input
-				class="font-mono"
+				class="font-mono placeholder:font-sans"
 				bind:value={manual}
 				placeholder={onscan && onbarcode
-					? 'ID наклейки или цифры штрихкода'
+					? 'ID или цифры штрихкода'
 					: onbarcode
 						? 'Цифры под штрихкодом'
 						: 'ID с наклейки, например K7M-4QX'}
