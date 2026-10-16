@@ -314,50 +314,8 @@
 	{/if}
 </div>
 
-{#if !item.isWorkbench}
-	{#if card.type && (card.type.description || active)}
-		<div class="mt-6">
-			<Description
-				text={card.type.description}
-				onedit={active ? () => (describing = true) : undefined}
-			/>
-		</div>
-	{/if}
-
-	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
-	<ParamSection
-		params={card.itemParams}
-		target={{ kind: 'item', id: item.id }}
-		editable={active}
-		emptyText=""
-		required={card.itemRequired}
-		missing={active ? card.missingItemParams : []}
-	/>
-
-	{#if card.type}
-		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
-		<ParamSection
-			params={card.typeParams}
-			target={{ kind: 'type', id: card.type.id }}
-			editable={active}
-			exclude={card.itemParams.map((p) => p.defId)}
-			required={card.typeRequired}
-			missing={active ? card.missingTypeParams : []}
-		/>
-	{/if}
-
-	{#if active || data.collections.length}
-		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
-		<InCollections
-			target={{ itemId: item.id }}
-			collections={data.collections}
-			editable={active}
-			showQuantity={false}
-		/>
-	{/if}
-{/if}
-
 {#if container}
+	<!-- What a container is scanned for (FR-8): right under the actions, before the details. -->
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Содержимое</h2>
 	{#if card.children.length > 0}
 		<ItemContents entries={card.children} />
@@ -405,6 +363,51 @@
 				onpick={pickChild}
 			/>
 		{/if}
+	{/if}
+{/if}
+
+{#if !item.isWorkbench}
+	{#if card.type && (card.type.description || active)}
+		<div class="mt-6">
+			<!-- Under the contents a bare description would read as part of them. -->
+			{#if container}<h2 class="mb-2 text-lg font-semibold">Описание</h2>{/if}
+			<Description
+				text={card.type.description}
+				onedit={active ? () => (describing = true) : undefined}
+			/>
+		</div>
+	{/if}
+
+	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
+	<ParamSection
+		params={card.itemParams}
+		target={{ kind: 'item', id: item.id }}
+		editable={active}
+		emptyText=""
+		required={card.itemRequired}
+		missing={active ? card.missingItemParams : []}
+	/>
+
+	{#if card.type}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
+		<ParamSection
+			params={card.typeParams}
+			target={{ kind: 'type', id: card.type.id }}
+			editable={active}
+			exclude={card.itemParams.map((p) => p.defId)}
+			required={card.typeRequired}
+			missing={active ? card.missingTypeParams : []}
+		/>
+	{/if}
+
+	{#if active || data.collections.length}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
+		<InCollections
+			target={{ itemId: item.id }}
+			collections={data.collections}
+			editable={active}
+			showQuantity={false}
+		/>
 	{/if}
 {/if}
 
