@@ -2,7 +2,7 @@
 	import { pieces } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { formatPath } from '$lib/domain/item';
-	import DiscardDialog from '$lib/components/DiscardDialog.svelte';
+	import DiscardSheet from '$lib/components/DiscardSheet.svelte';
 	import MoveSheet from '$lib/components/MoveSheet.svelte';
 	import ReturnSheet from '$lib/components/ReturnSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
@@ -24,9 +24,6 @@
 			items: data.items.filter((i) => i.workbenchId === bench.id)
 		}))
 	);
-
-	/** The item whose «Использовать / выкинуть» form is open. */
-	let discardingId = $state<string | null>(null);
 
 	/** The action buttons of an item; labels are dropped when they don't fit in one row. */
 	const RETURN_LABEL = 'Вернуть на место';
@@ -57,9 +54,17 @@
 	let relocating = $state<Listed | null>(null);
 	let relocatingOpen = $state(false);
 
+	/** «Использовать / выкинуть» opens its sheet. */
+	let discarding = $state<Listed | null>(null);
+	let discardingOpen = $state(false);
+
+	function askDiscard(item: Listed) {
+		discarding = item;
+		discardingOpen = true;
+	}
+
 	function askRelocate(item: Listed) {
 		relocating = item;
-		discardingId = null;
 		relocatingOpen = true;
 	}
 </script>
@@ -154,7 +159,7 @@
 										class={actionClass}
 										title={DISCARD_LABEL}
 										aria-label={DISCARD_LABEL}
-										onclick={() => (discardingId = discardingId === item.id ? null : item.id)}
+										onclick={() => askDiscard(item)}
 									>
 										<TrashBinOutline class={actionIconClass} />
 										{#if !compact}{DISCARD_LABEL}{/if}
@@ -166,19 +171,6 @@
 									{item.returnBlockedReason}. Верните вещь в другое место.
 								</p>
 							{/if}
-
-							<DiscardDialog
-								bind:open={
-									() => discardingId === item.id, (v) => (discardingId = v ? item.id : null)
-								}
-								item={{
-									id: item.id,
-									name: item.name,
-									quantity: item.quantity,
-									hasChildren: item.hasChildren,
-									hasSticker: !!item.stickerCode
-								}}
-							/>
 						</Card>
 					</li>
 				{/each}
@@ -194,6 +186,18 @@
 		bind:amount={returnAmount}
 		askAmount
 		onreturned={invalidateAll}
+	/>
+{/if}
+{#if discarding}
+	<DiscardSheet
+		bind:open={discardingOpen}
+		item={{
+			id: discarding.id,
+			name: discarding.name,
+			quantity: discarding.quantity,
+			hasChildren: discarding.hasChildren,
+			hasSticker: !!discarding.stickerCode
+		}}
 	/>
 {/if}
 {#if relocating}

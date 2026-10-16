@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Card, Input, Label } from 'flowbite-svelte';
+	import { Button, Input, Label } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
+	import Sheet from './Sheet.svelte';
 
 	/**
-	 * «Выкинуть» of an item on a workbench: use part of it, or throw all of it
-	 * away (asking what to do with a container's contents, or confirming).
+	 * The sheet «Использовать / выкинуть» of an item on a workbench: use part of
+	 * it, or throw all of it away (asking what to do with a container's contents,
+	 * or confirming).
 	 */
 	let {
 		item,
@@ -86,10 +88,8 @@
 	}
 </script>
 
-{#if open}
-	<Card class="max-w-none gap-3 p-4">
-		<strong class="wrap-anywhere">{item.name}</strong>
-
+<Sheet bind:open title="Использовать или выкинуть: {item.name}">
+	<div class="flex flex-col gap-3">
 		{#if item.quantity > 1}
 			<div class="flex flex-wrap items-end gap-2">
 				<Label class="min-w-40 flex-1">
@@ -135,5 +135,5 @@
 			<Button color="alternative" onclick={() => (open = false)} disabled={busy}>Отмена</Button>
 		</div>
 		{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
-	</Card>
-{/if}
+	</div>
+</Sheet>
