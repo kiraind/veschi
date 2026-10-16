@@ -3,7 +3,8 @@ import {
 	entryCountText,
 	entryInputSchema,
 	entryUpdateSchema,
-	shortCountText,
+	missingText,
+	totalShortage,
 	shortage,
 	stockText,
 	type EntryStock
@@ -65,7 +66,12 @@ describe('stock of a line', () => {
 		expect(entryCountText(1)).toBe('1 позиция');
 		expect(entryCountText(3)).toBe('3 позиции');
 		expect(entryCountText(5)).toBe('5 позиций');
-		expect(shortCountText(1)).toBe('не хватает 1 позиции');
-		expect(shortCountText(2)).toBe('не хватает 2 позиций');
+	});
+
+	it('counts what is short in pieces', () => {
+		expect(totalShortage([typeLine(3, 1), itemLine(1, 1, true), typeLine(2, 5)])).toBe(3);
+		expect(missingText(1)).toBe('не хватает 1 штуки');
+		expect(missingText(2)).toBe('не хватает 2 штук');
+		expect(missingText(21)).toBe('не хватает 21 штуки');
 	});
 });

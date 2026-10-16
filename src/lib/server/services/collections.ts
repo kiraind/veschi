@@ -13,7 +13,7 @@ import {
 	collectionUpdateSchema,
 	entryInputSchema,
 	entryUpdateSchema,
-	shortage,
+	totalShortage,
 	type CollectionEntryView,
 	type CollectionRef,
 	type CollectionSummary
@@ -144,7 +144,7 @@ export async function listCollections(actor: Actor): Promise<CollectionSummary[]
 			name: c.name,
 			description: c.description,
 			entryCount: entries.length,
-			shortCount: entries.filter((e) => shortage(e) > 0).length,
+			missing: totalShortage(entries),
 			photos: entries
 				.slice(0, LIST_PHOTOS)
 				.map((e) => ({ photoKey: e.photoKey, isContainer: e.isContainer }))
