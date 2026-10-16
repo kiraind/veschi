@@ -69,7 +69,7 @@
 	}
 </script>
 
-<svelte:head><title>Рабочий стол — Вещи</title></svelte:head>
+<svelte:head><title>Рабочий стол — veschi</title></svelte:head>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 	<h1 class="text-2xl font-bold">Рабочий стол</h1>

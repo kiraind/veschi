@@ -87,7 +87,7 @@
 	}
 </script>
 
-<svelte:head><title>{collection.name} — Коллекции</title></svelte:head>
+<svelte:head><title>{collection.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a

@@ -38,7 +38,7 @@
 	}
 </script>
 
-<svelte:head><title>Типы вещей — Вещи</title></svelte:head>
+<svelte:head><title>Типы вещей — veschi</title></svelte:head>
 
 <h1 class="mb-4 text-2xl font-bold">Типы вещей</h1>
 

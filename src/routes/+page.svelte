@@ -73,7 +73,7 @@
 	});
 </script>
 
-<svelte:head><title>Поиск — Вещи</title></svelte:head>
+<svelte:head><title>Поиск — veschi</title></svelte:head>
 
 {#snippet actions(cls: string)}
 	<Button href="/scan" class={cls}><QrCodeOutline class="me-2 h-5 w-5" />Сканировать</Button>

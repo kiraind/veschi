@@ -125,7 +125,7 @@
 			: 'без зоны';
 </script>
 
-<svelte:head><title>Рабочие столы — Вещи</title></svelte:head>
+<svelte:head><title>Рабочие столы — veschi</title></svelte:head>
 
 <p class="mb-3">
 	<a

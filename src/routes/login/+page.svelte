@@ -12,11 +12,11 @@
 	const message = $derived(offlineMessage ?? form?.message);
 </script>
 
-<svelte:head><title>Вход — Вещи</title></svelte:head>
+<svelte:head><title>Вход — veschi</title></svelte:head>
 
 <div class="flex min-h-[70vh] items-center justify-center">
 	<Card class="w-full max-w-sm p-6">
-		<h1 class="mb-4 text-center text-2xl font-bold">Вещи</h1>
+		<h1 class="mb-4 text-center text-2xl font-bold">veschi</h1>
 		<form
 			method="POST"
 			use:enhance={() => {
