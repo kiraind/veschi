@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { likePattern, parseSearchQuery, searchPlaceholder } from './search';
+import { likePattern, looseText, parseSearchQuery, searchPlaceholder } from './search';
 
 describe('parseSearchQuery', () => {
 	it('keeps plain text', () => {
@@ -50,5 +50,20 @@ describe('searchPlaceholder', () => {
 
 	it('skips keys with a colon: they would not parse back', () => {
 		expect(searchPlaceholder([], [{ key: 'a:b', value: 'c' }])).toContain('«корпус: DIP-8»');
+	});
+});
+
+describe('looseText', () => {
+	it('drops spaces, hyphens and dots from part codes', () => {
+		for (const s of ['DIP-8', 'DIP 8', 'dip8', 'DIP.8', 'DIP\u20138']) {
+			expect(looseText(s).toUpperCase()).toBe('DIP8');
+		}
+		expect(looseText('ne 555')).toBe('ne555');
+		expect(looseText('Т.  С. - 2')).toBe('ТС2');
+	});
+
+	it('keeps a decimal point between digits', () => {
+		expect(looseText('1.5 мм')).toBe('1.5мм');
+		expect(looseText('v.1.5.')).toBe('v1.5');
 	});
 });
