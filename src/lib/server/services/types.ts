@@ -91,6 +91,17 @@ export async function getType(actor: Actor, id: string): Promise<TypeInfo> {
 	return typeInfo(await findType(actor, id));
 }
 
+/** The type with exactly this name (case-insensitive), the oldest one if several. */
+export async function findTypeByName(actor: Actor, rawName: string): Promise<TypeInfo | null> {
+	const name = rawName.trim();
+	if (!name) return null;
+	const type = await db.itemType.findFirst({
+		where: { name: { equals: escapeLike(name), mode: 'insensitive' }, ...visibleTo(actor) },
+		orderBy: { createdAt: 'asc' }
+	});
+	return type ? typeInfo(type) : null;
+}
+
 /**
  * Types sorted by name; with `query`, a name or description substring filter
  * (autocomplete), digits also match barcodes.
