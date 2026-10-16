@@ -1,5 +1,4 @@
 <script lang="ts">
-	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { enhance } from '$app/forms';
 	import { connection } from '$lib/connection.svelte';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
@@ -34,7 +33,7 @@
 			class="flex flex-col gap-4"
 		>
 			<Label>
-				Логин<RequiredMark />
+				Логин
 				<Input
 					class="mt-1"
 					name="login"
@@ -44,7 +43,7 @@
 				/>
 			</Label>
 			<Label>
-				Пароль<RequiredMark />
+				Пароль
 				<Input
 					class="mt-1"
 					name="password"
