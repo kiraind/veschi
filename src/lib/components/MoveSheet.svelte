@@ -9,7 +9,8 @@
 	/**
 	 * «Переложить» (on the item page) and «Вернуть в другое место» (on the
 	 * workbench): asks how much when there is more than one, then where — a
-	 * container found by name or sticker ID, scanned, or the top level.
+	 * container found by name or sticker ID, scanned, one of the recent and
+	 * neighbouring places offered before anything is typed, or the top level.
 	 */
 	let {
 		open = $bindable(false),
@@ -70,6 +71,7 @@
 			card={false}
 			excludeId={item.id}
 			excludeIds={item.parentId && !item.onBench ? [item.parentId] : []}
+			suggestFor={item.id}
 			onpick={(c) => moveTo(c.id)}
 		/>
 		{#if item.parentId}
