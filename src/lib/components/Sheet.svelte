@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { Drawer } from 'flowbite-svelte';
 	import { CloseOutline } from 'flowbite-svelte-icons';
 
@@ -9,6 +10,13 @@
 		title,
 		children
 	}: { open?: boolean; title: string; children: Snippet } = $props();
+
+	// A link in the sheet leads to another page: close the sheet first. Left
+	// open, Flowbite's dialog plays its closing animation after the page is
+	// gone and reads its destroyed state (Svelte warns «derived_inert»).
+	beforeNavigate(() => {
+		open = false;
+	});
 </script>
 
 <Drawer
