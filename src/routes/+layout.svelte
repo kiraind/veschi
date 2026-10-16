@@ -38,9 +38,9 @@
 	/** On phones the first ones go to the bottom bar, the rest to «Ещё». */
 	const primary: Link[] = [
 		{ href: '/', label: 'Поиск', icon: SearchOutline },
-		{ href: '/collections', label: 'Коллекции', icon: ClipboardListOutline },
 		{ href: '/workbench', label: 'Стол', icon: DeskIcon },
-		{ href: '/containers', label: 'Контейнеры', icon: BoxIcon }
+		{ href: '/containers', label: 'Контейнеры', icon: BoxIcon },
+		{ href: '/collections', label: 'Коллекции', icon: ClipboardListOutline }
 	];
 	const secondary: Link[] = [
 		{ href: '/stickers', label: 'Наклейки', icon: TagOutline },
