@@ -80,7 +80,7 @@
 	}
 </script>
 
-<svelte:head><title>{def.name} — Параметры</title></svelte:head>
+<svelte:head><title>{def.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a

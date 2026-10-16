@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '$lib/server/db';
 import { visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
-import { likePattern, parseSearchQuery } from '$lib/domain/search';
+import { LOOSE_SEPARATORS, likePattern, looseText, parseSearchQuery } from '$lib/domain/search';
 import { codeQuery } from '$lib/domain/sticker-code';
 import { barcodeQuery } from '$lib/domain/barcode';
 import { getPaths, type PathNode } from './paths';
@@ -78,8 +78,19 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 }
 
 /**
+ * `expr` contains `text`, ignoring case and, for part codes, spaces, hyphens
+ * and dots («dip8», «DIP 8» and «DIP-8» find each other).
+ */
+function contains(expr: Prisma.Sql, text: string): Prisma.Sql {
+	const loose = looseText(text);
+	if (!loose) return Prisma.sql`${expr} ILIKE ${likePattern(text)}`;
+	return Prisma.sql`(${expr} ILIKE ${likePattern(text)}
+		OR regexp_replace(${expr}, ${LOOSE_SEPARATORS}, '', 'g') ILIKE ${likePattern(loose)})`;
+}
+
+/**
  * Case-insensitive substring search over item own names, type names and
- * descriptions, category names and parameter keys and values; «ключ: значение» also matches parameters with
+ * descriptions, category names and parameter keys and values, also with spaces, hyphens and dots ignored; «ключ: значение» also matches parameters with
  * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker; 4+ digits match items of the type with such a packaging barcode. Active ordinary items only. Results are grouped by type.
  */
 export async function search(actor: Actor, input: string): Promise<SearchGroup[]> {
@@ -96,14 +107,16 @@ export async function searchWithLimit(
 ): Promise<{ groups: SearchGroup[]; truncated: boolean }> {
 	const query = parseSearchQuery(input);
 	if (!query.text) return { groups: [], truncated: false };
-	const pattern = likePattern(query.text);
+	const text = query.text;
 	const conditions = [
-		Prisma.sql`i.name ILIKE ${pattern}`,
-		Prisma.sql`t.name ILIKE ${pattern}`,
-		Prisma.sql`t.description ILIKE ${pattern}`,
+		contains(Prisma.sql`i.name`, text),
+		contains(Prisma.sql`t.name`, text),
+		contains(Prisma.sql`t.description`, text),
 		Prisma.sql`EXISTS (SELECT 1 FROM "TypeCategory" tc JOIN "Category" c ON c.id = tc."categoryId"
-			WHERE tc."typeId" = t.id AND c.name ILIKE ${pattern})`,
-		hasParam(Prisma.sql`(d.name ILIKE ${pattern} OR ${PARAM_VALUE_TEXT} ILIKE ${pattern})`)
+			WHERE tc."typeId" = t.id AND ${contains(Prisma.sql`c.name`, text)})`,
+		hasParam(
+			Prisma.sql`(${contains(Prisma.sql`d.name`, text)} OR ${contains(PARAM_VALUE_TEXT, text)})`
+		)
 	];
 	const code = codeQuery(query.text);
 	if (code) conditions.push(Prisma.sql`s.code LIKE ${likePattern(code)}`);
@@ -114,7 +127,7 @@ export async function searchWithLimit(
 	if (query.param) {
 		conditions.push(
 			hasParam(
-				Prisma.sql`(d.name ILIKE ${likePattern(query.param.key)} AND ${PARAM_VALUE_TEXT} ILIKE ${likePattern(query.param.value)})`
+				Prisma.sql`(${contains(Prisma.sql`d.name`, query.param.key)} AND ${contains(PARAM_VALUE_TEXT, query.param.value)})`
 			)
 		);
 	}
@@ -139,7 +152,7 @@ export async function searchWithLimit(
 		WHERE ${visibleSql(actor)}
 			AND i.status = 'ACTIVE' AND NOT i."isWorkbench"
 			AND (${Prisma.join(conditions, ' OR ')})
-		ORDER BY lower(t.name) = lower(${query.text}) DESC, t.name, t.id, i.id
+		ORDER BY lower(regexp_replace(t.name, ${LOOSE_SEPARATORS}, '', 'g')) = lower(${looseText(query.text)}) DESC, t.name, t.id, i.id
 		LIMIT ${MAX_MATCHES + 1}
 	`;
 	const truncated = rows.length > MAX_MATCHES;
@@ -171,8 +184,8 @@ export async function searchWithLimit(
 		});
 	}
 
-	const exact = query.text.toLocaleLowerCase('ru');
-	const isExact = (g: SearchGroup) => g.typeName.toLocaleLowerCase('ru') === exact;
+	const exact = looseText(query.text).toLocaleLowerCase('ru');
+	const isExact = (g: SearchGroup) => looseText(g.typeName).toLocaleLowerCase('ru') === exact;
 	const result = [...groups.values()].sort(
 		(a, b) => Number(isExact(b)) - Number(isExact(a)) || a.typeName.localeCompare(b.typeName, 'ru')
 	);

@@ -92,6 +92,7 @@ export async function discard(
 				takenById: actor.userId,
 				takenAt: now,
 				homeId: item.takenById ? item.homeId : item.parentId,
+				createdOnBench: item.takenById ? item.createdOnBench : false,
 				splitFromId: null
 			}
 		});
@@ -107,6 +108,7 @@ export async function discard(
 						takenById: item.takenById,
 						takenAt: now,
 						homeId: item.homeId,
+						createdOnBench: item.createdOnBench,
 						splitFromId: null
 					}
 				: { parentId: item.parentId }
@@ -155,7 +157,14 @@ export async function restore(actor: Actor, itemId: string, tx?: Tx): Promise<vo
 	if (parent?.status !== 'ACTIVE' || !isContainerItem(parent)) {
 		await tx.item.update({
 			where: { id: item.id },
-			data: { parentId: null, takenById: null, takenAt: null, homeId: null, splitFromId: null }
+			data: {
+				parentId: null,
+				takenById: null,
+				takenAt: null,
+				homeId: null,
+				createdOnBench: false,
+				splitFromId: null
+			}
 		});
 	}
 

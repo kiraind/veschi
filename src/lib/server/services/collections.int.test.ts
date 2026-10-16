@@ -90,12 +90,12 @@ describe('collections', () => {
 			'Полка'
 		]);
 		expect(await listCollections(actor)).toMatchObject([
-			{ name: 'Умные весы', entryCount: 3, shortCount: 2 }
+			{ name: 'Умные весы', entryCount: 3, missing: 3 }
 		]);
 
 		await updateEntry(actor, scales.id, espLine.id, { quantity: 5 });
 		await removeEntry(actor, scales.id, boardLine.id);
-		expect((await listCollections(actor))[0]).toMatchObject({ entryCount: 2, shortCount: 0 });
+		expect((await listCollections(actor))[0]).toMatchObject({ entryCount: 2, missing: 0 });
 		await expect(updateEntry(actor, scales.id, boardLine.id, { quantity: 1 })).rejects.toThrow(
 			'нет'
 		);

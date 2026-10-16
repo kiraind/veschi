@@ -1,5 +1,4 @@
 <script lang="ts">
-	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { enhance } from '$app/forms';
 	import { connection } from '$lib/connection.svelte';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
@@ -12,11 +11,11 @@
 	const message = $derived(offlineMessage ?? form?.message);
 </script>
 
-<svelte:head><title>Вход — Вещи</title></svelte:head>
+<svelte:head><title>Вход — veschi</title></svelte:head>
 
 <div class="flex min-h-[70vh] items-center justify-center">
 	<Card class="w-full max-w-sm p-6">
-		<h1 class="mb-4 text-center text-2xl font-bold">Вещи</h1>
+		<h1 class="mb-4 text-center text-2xl font-bold">veschi</h1>
 		<form
 			method="POST"
 			use:enhance={() => {
@@ -34,7 +33,7 @@
 			class="flex flex-col gap-4"
 		>
 			<Label>
-				Логин<RequiredMark />
+				Логин
 				<Input
 					class="mt-1"
 					name="login"
@@ -44,7 +43,7 @@
 				/>
 			</Label>
 			<Label>
-				Пароль<RequiredMark />
+				Пароль
 				<Input
 					class="mt-1"
 					name="password"

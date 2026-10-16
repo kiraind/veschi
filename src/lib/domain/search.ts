@@ -37,6 +37,23 @@ export function likePattern(s: string): string {
 	return `%${escapeLike(s)}%`;
 }
 
+/**
+ * What a loose comparison drops: spaces, hyphens and dots (but not a decimal point
+ * between digits, so «1.5» stays apart from «15»). The same regular expression
+ * runs in PostgreSQL (`regexp_replace`), so it uses only syntax both understand.
+ */
+export const LOOSE_SEPARATORS = '\\s+|[-\u2010\u2011\u2013]+|(?<!\\d)\\.|\\.(?!\\d)';
+
+const LOOSE_RE = new RegExp(LOOSE_SEPARATORS, 'g');
+
+/**
+ * Text for comparing part codes regardless of how they are written:
+ * «DIP 8», «dip8» and «DIP-8» all become «DIP8» (case is left to ILIKE).
+ */
+export function looseText(s: string): string {
+	return s.replace(LOOSE_RE, '');
+}
+
 /** Longest example that still fits the search field on a phone. */
 const MAX_EXAMPLE_LENGTH = 20;
 

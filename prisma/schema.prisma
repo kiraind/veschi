@@ -173,6 +173,9 @@ model Item {
   // Who took the item to a workbench.
   takenById   String?
   takenAt     DateTime?
+  // Created right on a workbench and not put anywhere since: it has no home to
+  // go back to («Откуда: новая», «Положить» instead of «На место»).
+  createdOnBench Boolean @default(false)
   status      ItemStatus @default(ACTIVE)
   archivedAt  DateTime?
 

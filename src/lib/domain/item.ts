@@ -17,3 +17,13 @@ export function pathNodeName(node: { name: string; isWorkbench?: boolean }): str
 export function formatPath(path: { name: string; isWorkbench?: boolean }[]): string {
 	return path.map(pathNodeName).join(' → ');
 }
+
+const nameCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+
+/**
+ * Alphabetical order of names as people read it: case is ignored and numbers
+ * compare by value («Винт M3» before «Винт M10», «Полка 2» before «Полка 10»).
+ */
+export function compareNames(a: string, b: string): number {
+	return nameCollator.compare(a, b);
+}

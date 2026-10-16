@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { pieces } from '$lib/domain/plural';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import { Badge } from 'flowbite-svelte';
 	import { ChevronDownOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
@@ -36,7 +37,11 @@
 				<Thumb photoKey={entry.photoKey} size={40} container={entry.isContainer} />
 				<a
 					class="min-w-0 flex-1 font-medium break-words text-gray-900 hover:underline dark:text-white"
-					href="/items/{entry.id}">{entry.name}</a
+					href="/items/{entry.id}"
+					>{entry.name}{#if entry.stickerCode}<span
+							class="ms-2 font-mono text-sm font-normal whitespace-nowrap text-gray-500 dark:text-gray-400"
+							>{formatCode(entry.stickerCode)}</span
+						>{/if}</a
 				>
 				{#if entry.onWorkbench}<Badge color="yellow">на столе</Badge>{/if}
 				{#if entry.quantity > 1}<Badge color="gray" class="dark:bg-gray-700 dark:text-gray-200"

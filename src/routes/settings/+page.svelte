@@ -38,7 +38,7 @@
 	}
 </script>
 
-<svelte:head><title>Настройки — Вещи</title></svelte:head>
+<svelte:head><title>Настройки — veschi</title></svelte:head>
 
 <h1 class="mb-3 text-2xl font-bold">Настройки</h1>
 

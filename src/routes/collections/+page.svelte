@@ -5,7 +5,7 @@
 	import { api, errorText } from '$lib/api';
 	import InfoHint from '$lib/components/InfoHint.svelte';
 	import Thumb from '$lib/components/Thumb.svelte';
-	import { entryCountText, shortCountText, type CollectionRef } from '$lib/domain/collections';
+	import { entryCountText, missingText, type CollectionRef } from '$lib/domain/collections';
 	import { normalizeParamKey } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
@@ -39,7 +39,7 @@
 	}
 </script>
 
-<svelte:head><title>Коллекции — Вещи</title></svelte:head>
+<svelte:head><title>Коллекции — veschi</title></svelte:head>
 
 <h1 class="mb-4 text-2xl font-bold">
 	Коллекции<InfoHint title="Что такое коллекция">
@@ -93,9 +93,9 @@
 								<Thumb photoKey={photo.photoKey} size={32} container={photo.isContainer} />
 							{/each}
 						</span>
-						{#if c.shortCount}
+						{#if c.missing}
 							<span class="text-sm text-amber-700 dark:text-amber-400">
-								{shortCountText(c.shortCount)}
+								{missingText(c.missing)}
 							</span>
 						{:else}
 							<span class="text-sm text-gray-500 dark:text-gray-400">всё есть</span>

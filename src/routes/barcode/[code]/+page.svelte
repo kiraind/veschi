@@ -34,7 +34,9 @@
 	}
 </script>
 
-<svelte:head><title>Штрихкод {code ? formatBarcode(code) : data.input}</title></svelte:head>
+<svelte:head>
+	<title>Штрихкод {code ? formatBarcode(code) : data.input} — veschi</title>
+</svelte:head>
 
 {#if result.status === 'unknown'}
 	<h1 class="mb-3 text-2xl font-bold">Новый штрихкод</h1>

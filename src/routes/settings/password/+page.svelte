@@ -36,7 +36,7 @@
 	}
 </script>
 
-<svelte:head><title>Смена пароля — Вещи</title></svelte:head>
+<svelte:head><title>Смена пароля — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a

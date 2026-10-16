@@ -118,7 +118,7 @@ describe('categories', () => {
 
 		const card = await getCategoryCard(actor, food.id);
 		expect(card.types).toEqual([
-			{ id: milk.id, name: 'Молоко', itemCount: 2, missing: ['Калорийность'] }
+			{ id: milk.id, name: 'Молоко', total: 2, missing: ['Калорийность'] }
 		]);
 		expect(card.incompleteItems).toEqual([
 			{ id: old.id, name: 'Молоко', missing: ['Срок годности'] }

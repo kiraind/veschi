@@ -77,6 +77,7 @@ async function stickerTarget(tx: Tx, item: Item): Promise<string> {
 			takenById: item.takenById,
 			takenAt: item.takenAt,
 			homeId: item.homeId,
+			createdOnBench: item.createdOnBench,
 			splitFromId: item.splitFromId
 		},
 		{ merge: false }

@@ -30,6 +30,7 @@
 		ChevronSortOutline,
 		CloseOutline,
 		PrinterOutline,
+		ArrowDownToBracketOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
 		TrashBinOutline,
@@ -176,7 +177,7 @@
 	}
 </script>
 
-<svelte:head><title>{item.displayName} — Вещи</title></svelte:head>
+<svelte:head><title>{item.displayName} — veschi</title></svelte:head>
 
 {#if !active}
 	<Notice tone="danger" class="mb-4">
@@ -252,7 +253,13 @@
 <div class="mt-3 flex flex-col gap-3">
 	{#if active && !item.isWorkbench}
 		<ButtonGroup class="w-full sm:w-auto sm:self-start">
-			{#if data.onBench}
+			{#if data.onBench?.isNew}
+				<!-- Created right on a workbench: no place to go back to, so it is put somewhere. -->
+				<Button color="alternative" class={actionClass} onclick={startMoving}>
+					<ArrowDownToBracketOutline class={actionIconClass} />
+					Положить
+				</Button>
+			{:else if data.onBench}
 				<!-- On a workbench: the button puts it back, as «Вернуть» on the workbench page. -->
 				<Button color="alternative" class={actionClass} onclick={startReturning}>
 					<UndoOutline class={actionIconClass} />
@@ -264,10 +271,12 @@
 					На стол
 				</Button>
 			{/if}
-			<Button color="alternative" class={actionClass} onclick={startMoving}>
-				<ArrowsRepeatOutline class={actionIconClass} />
-				Переложить
-			</Button>
+			{#if !data.onBench?.isNew}
+				<Button color="alternative" class={actionClass} onclick={startMoving}>
+					<ArrowsRepeatOutline class={actionIconClass} />
+					Переложить
+				</Button>
+			{/if}
 			{#if container}
 				<!-- A container is always one: throwing it away is the only thing to do here. -->
 				<Button color="alternative" class={actionClass} onclick={discardContainer} disabled={busy}>
@@ -327,52 +336,8 @@
 	{/if}
 </div>
 
-{#if !item.isWorkbench}
-	{#if card.type && (card.type.description || active)}
-		<div class="mt-6">
-			<Description
-				text={card.type.description}
-				onedit={active ? () => (describing = true) : undefined}
-			/>
-		</div>
-	{/if}
-
-	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
-	<ParamSection
-		bind:this={itemParamSection}
-		params={card.itemParams}
-		target={{ kind: 'item', id: item.id }}
-		editable={active}
-		emptyText=""
-		required={card.itemRequired}
-		missing={active ? card.missingItemParams : []}
-	/>
-
-	{#if card.type}
-		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
-		<ParamSection
-			bind:this={typeParamSection}
-			params={card.typeParams}
-			target={{ kind: 'type', id: card.type.id }}
-			editable={active}
-			exclude={card.itemParams.map((p) => p.defId)}
-			required={card.typeRequired}
-			missing={active ? card.missingTypeParams : []}
-		/>
-	{/if}
-
-	{#if active || data.collections.length}
-		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
-		<InCollections
-			target={{ itemId: item.id }}
-			collections={data.collections}
-			editable={active}
-			showQuantity={false}
-		/>
-	{/if}
-{/if}
-
 {#if container}
+	<!-- What a container is scanned for (FR-8): right under the actions, before the details. -->
 	<h2 class="mt-6 mb-2 text-lg font-semibold">Содержимое</h2>
 	{#if card.children.length > 0}
 		<ItemContents entries={card.children} />
@@ -420,6 +385,53 @@
 				onpick={pickChild}
 			/>
 		{/if}
+	{/if}
+{/if}
+
+{#if !item.isWorkbench}
+	{#if card.type && (card.type.description || active)}
+		<div class="mt-6">
+			<!-- Under the contents a bare description would read as part of them. -->
+			{#if container}<h2 class="mb-2 text-lg font-semibold">Описание</h2>{/if}
+			<Description
+				text={card.type.description}
+				onedit={active ? () => (describing = true) : undefined}
+			/>
+		</div>
+	{/if}
+
+	<h2 class="mt-6 mb-2 text-lg font-semibold">Индивидуальные параметры</h2>
+	<ParamSection
+		bind:this={itemParamSection}
+		params={card.itemParams}
+		target={{ kind: 'item', id: item.id }}
+		editable={active}
+		emptyText=""
+		required={card.itemRequired}
+		missing={active ? card.missingItemParams : []}
+	/>
+
+	{#if card.type}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">Параметры</h2>
+		<ParamSection
+			bind:this={typeParamSection}
+			params={card.typeParams}
+			target={{ kind: 'type', id: card.type.id }}
+			editable={active}
+			exclude={card.itemParams.map((p) => p.defId)}
+			required={card.typeRequired}
+			missing={active ? card.missingTypeParams : []}
+		/>
+	{/if}
+
+	{#if active || data.collections.length}
+		<h2 class="mt-6 mb-2 text-lg font-semibold">В коллекциях</h2>
+		<InCollections
+			target={{ itemId: item.id }}
+			collections={data.collections}
+			editable={active}
+			showQuantity={false}
+		/>
 	{/if}
 {/if}
 
@@ -482,7 +494,7 @@
 	/>
 	<MoveSheet
 		bind:open={moving}
-		title="Переложить «{item.displayName}»"
+		title="{data.onBench?.isNew ? 'Положить' : 'Переложить'} «{item.displayName}»"
 		item={{
 			id: item.id,
 			quantity: item.quantity,

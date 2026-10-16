@@ -4,7 +4,7 @@ import { idSchema } from '$lib/domain/id';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
-import { itemDisplayName } from '$lib/domain/item';
+import { compareNames, itemDisplayName } from '$lib/domain/item';
 import { inheritedParams, paramListSchema, type ParamView } from '$lib/domain/params';
 import { diffFields } from '$lib/domain/history';
 import { itemRef, itemSubject, placeRef, recordEvent } from './history';
@@ -198,7 +198,13 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				name: data.name,
 				quantity: data.quantity,
 				...(bench
-					? { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId: null }
+					? {
+							parentId: bench.id,
+							takenById: actor.userId,
+							takenAt: new Date(),
+							homeId: null,
+							createdOnBench: true
+						}
 					: { parentId: data.parentId ?? null })
 			}
 		});
@@ -287,7 +293,7 @@ export async function moveItem(
 	});
 }
 
-/** Active items directly inside a container, or at the top level when parentId is null. */
+/** Active items directly inside a container, or at the top level when parentId is null; alphabetical. */
 export async function listContents(
 	actor: Actor,
 	parentId: string | null,
@@ -335,7 +341,12 @@ async function contentsOf(
 			onWorkbench: i.takenById !== null
 		}))
 		.sort(
-			(a, b) => Number(b.isContainer) - Number(a.isContainer) || a.name.localeCompare(b.name, 'ru')
+			(a, b) =>
+				compareNames(a.name, b.name) ||
+				// The same thing in several records: the bigger one first, then by sticker ID.
+				b.quantity - a.quantity ||
+				(a.stickerCode ?? '').localeCompare(b.stickerCode ?? '') ||
+				a.id.localeCompare(b.id)
 		);
 }
 
