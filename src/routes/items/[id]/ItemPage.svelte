@@ -172,7 +172,7 @@
 	}
 </script>
 
-<svelte:head><title>{item.displayName} — Вещи</title></svelte:head>
+<svelte:head><title>{item.displayName} — veschi</title></svelte:head>
 
 {#if !active}
 	<Notice tone="danger" class="mb-4">

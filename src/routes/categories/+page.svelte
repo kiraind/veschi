@@ -37,7 +37,7 @@
 	}
 </script>
 
-<svelte:head><title>Категории — Вещи</title></svelte:head>
+<svelte:head><title>Категории — veschi</title></svelte:head>
 
 <h1 class="mb-4 text-2xl font-bold">
 	Категории<InfoHint title="Что такое категория">

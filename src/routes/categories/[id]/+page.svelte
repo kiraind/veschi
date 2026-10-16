@@ -110,7 +110,7 @@
 		}`;
 </script>
 
-<svelte:head><title>{category.name} — Категории</title></svelte:head>
+<svelte:head><title>{category.name} — veschi</title></svelte:head>
 
 <p class="mb-2">
 	<a

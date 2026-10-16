@@ -143,7 +143,7 @@
 	}
 </script>
 
-<svelte:head><title>Наклейки</title></svelte:head>
+<svelte:head><title>Наклейки — veschi</title></svelte:head>
 
 <h1 class="mb-3 text-2xl font-bold">Наклейки</h1>
 

@@ -102,7 +102,7 @@
 		fluid
 	>
 		<NavBrand href="/">
-			<span class="text-lg font-semibold whitespace-nowrap dark:text-white">Veschi</span>
+			<span class="text-lg font-semibold whitespace-nowrap dark:text-white">veschi</span>
 		</NavBrand>
 		<div class="flex items-center md:order-2">
 			<a

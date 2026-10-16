@@ -39,7 +39,7 @@
 	}
 </script>
 
-<svelte:head><title>Коллекции — Вещи</title></svelte:head>
+<svelte:head><title>Коллекции — veschi</title></svelte:head>
 
 <h1 class="mb-4 text-2xl font-bold">
 	Коллекции<InfoHint title="Что такое коллекция">
