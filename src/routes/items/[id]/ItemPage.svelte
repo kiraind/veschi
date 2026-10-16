@@ -470,6 +470,8 @@
 	<ContainerDiscardSheet
 		bind:open={discarding}
 		item={{ id: item.id, name: item.displayName }}
+		parent={card.path.at(-1) ?? null}
+		inside={card.children}
 		ondiscarded={afterArchive}
 	/>
 	<TakeToWorkbench

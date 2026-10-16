@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { pieces, plural } from '$lib/domain/plural';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
 
@@ -11,13 +12,39 @@
 	let {
 		open = $bindable(false),
 		item,
+		parent,
+		inside,
 		ondiscarded
 	}: {
 		open?: boolean;
 		item: { id: string; name: string };
+		/** Where the container lies; null — the top level. */
+		parent: { name: string; isWorkbench: boolean } | null;
+		/** What lies directly in it. */
+		inside: { name: string; quantity: number }[];
 		/** Called after the container went to the archive (the page may be gone). */
 		ondiscarded: () => Promise<void>;
 	} = $props();
+
+	/** How many things and which: the first few by name; «(100 штук)» is not broken. */
+	const SHOWN = 3;
+	const insideText = $derived(
+		`Внутри ${inside.length} ${plural(inside.length, ['вещь', 'вещи', 'вещей'])}: ` +
+			inside
+				.slice(0, SHOWN)
+				.map((e) =>
+					e.quantity > 1 ? `${e.name}\u00a0(${pieces(e.quantity).replace(' ', '\u00a0')})` : e.name
+				)
+				.join(', ') +
+			(inside.length > SHOWN ? ` и ещё ${inside.length - SHOWN}` : '')
+	);
+	const parentLabel = $derived(
+		!parent
+			? 'Переложить на верхний уровень'
+			: parent.isWorkbench
+				? `Переложить на стол «${parent.name}»`
+				: `Переложить в «${parent.name}»`
+	);
 
 	let contents = $state<Contents>('parent');
 	let workbenchId = $state<string | null>(null);
@@ -51,7 +78,8 @@
 
 <Sheet bind:open title="Выкинуть «{item.name}»?">
 	<div class="flex flex-col gap-4">
-		<DiscardContents bind:contents bind:workbenchId />
+		<p class="text-gray-500 dark:text-gray-400">{insideText}</p>
+		<DiscardContents bind:contents bind:workbenchId {parentLabel} />
 		<div class="flex flex-wrap gap-2">
 			<Button
 				color="red"
