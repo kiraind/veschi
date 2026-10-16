@@ -38,11 +38,13 @@ describe('types', () => {
 		const knife = await createType(actor, { name: 'Нож Victorinox' });
 		await createType(actor, { name: 'NE555' });
 		await createItem(actor, { typeId: knife.id });
+		await createItem(actor, { typeId: knife.id, quantity: 2, name: 'Запасные' });
 		await updateType(actor, knife.id, { name: 'Нож Victorinox Huntsman' });
 
-		expect((await listTypes(actor)).map((t) => [t.name, t.itemCount])).toEqual([
+		// Pieces, not records.
+		expect((await listTypes(actor)).map((t) => [t.name, t.total])).toEqual([
 			['NE555', 0],
-			['Нож Victorinox Huntsman', 1]
+			['Нож Victorinox Huntsman', 3]
 		]);
 		expect((await listTypes(actor, 'hunts')).map((t) => t.id)).toEqual([knife.id]);
 		const other = await createTestActor('other');

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { idSchema } from '$lib/domain/id';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { NotFoundError, ValidationError } from '$lib/server/errors';
-import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
+import { ownedBy, visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import { inheritedParams, paramListSchema, type ParamView } from '$lib/domain/params';
 import { diffFields } from '$lib/domain/history';
@@ -92,6 +92,11 @@ export interface ContentEntry {
 	isContainer: boolean;
 	/** Active items directly inside; > 0 means it can be expanded. */
 	childCount: number;
+	/**
+	 * Things inside at any depth: the sum of quantities of non-container items
+	 * (boxes and shelves are places, not things).
+	 */
+	thingCount: number;
 	stickerCode: string | null;
 	onWorkbench: boolean;
 }
@@ -322,6 +327,11 @@ async function contentsOf(
 			})
 		: [];
 	const childCount = new Map(counts.map((c) => [c.parentId, c._count._all]));
+	const things = await thingCounts(
+		actor,
+		counts.flatMap((c) => (c.parentId ? [c.parentId] : [])),
+		tx
+	);
 	return items
 		.map((i) => ({
 			id: i.id,
@@ -331,12 +341,38 @@ async function contentsOf(
 			quantity: i.quantity,
 			isContainer: isContainerItem(i),
 			childCount: childCount.get(i.id) ?? 0,
+			thingCount: things.get(i.id) ?? 0,
 			stickerCode: i.sticker?.status === 'BOUND' ? i.sticker.code : null,
 			onWorkbench: i.takenById !== null
 		}))
 		.sort(
 			(a, b) => Number(b.isContainer) - Number(a.isContainer) || a.name.localeCompare(b.name, 'ru')
 		);
+}
+
+/** For each container: pieces of non-container items inside it at any depth. */
+async function thingCounts(
+	actor: Actor,
+	containerIds: string[],
+	tx: Tx = db
+): Promise<Map<string, number>> {
+	if (!containerIds.length) return new Map();
+	const rows = await tx.$queryRaw<{ root: string; things: number }[]>`
+		WITH RECURSIVE inside AS (
+			SELECT i."parentId" AS root, i.id, i.quantity, i."typeId"
+			FROM "Item" i
+			WHERE i."parentId" = ANY(${containerIds}::text[]) AND i.status = 'ACTIVE' AND ${visibleSql(actor)}
+			UNION ALL
+			SELECT inside.root, i.id, i.quantity, i."typeId"
+			FROM "Item" i JOIN inside ON i."parentId" = inside.id
+			WHERE i.status = 'ACTIVE' AND ${visibleSql(actor)}
+		)
+		SELECT inside.root, COALESCE(SUM(inside.quantity), 0)::int AS things
+		FROM inside JOIN "ItemType" t ON t.id = inside."typeId"
+		WHERE NOT t."isContainer"
+		GROUP BY inside.root
+	`;
+	return new Map(rows.map((r) => [r.root, r.things]));
 }
 
 /** Name and path of an item, without the rest of its card (the container of a new item). */
