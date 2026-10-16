@@ -3,6 +3,8 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Radio } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { pieces } from '$lib/domain/plural';
+	import { toast } from '$lib/toast.svelte';
 	import { pickWorkbench, quantityError } from '$lib/domain/workbench';
 	import { currentPosition } from '$lib/position';
 	import Sheet from './Sheet.svelte';
@@ -79,6 +81,10 @@
 			await api.post(`/api/items/${item.id}/take`, { workbenchId: selectedId, quantity });
 			open = false;
 			await invalidateAll();
+			toast({
+				message: `${item.quantity > 1 ? pieces(quantity) : `«${item.name}»`} на столе «${selected?.name}»`,
+				link: { href: '/workbench', label: 'Открыть' }
+			});
 		} catch (e) {
 			error = errorText(e);
 		} finally {

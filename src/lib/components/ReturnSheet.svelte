@@ -2,6 +2,7 @@
 	import { piecesAccusative } from '$lib/domain/plural';
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { toast } from '$lib/toast.svelte';
 	import { pathNodeName } from '$lib/domain/item';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { quantityError } from '$lib/domain/workbench';
@@ -52,6 +53,16 @@
 			});
 			open = false;
 			await onreturned();
+			const home = item.homePath.at(-1);
+			const what = item.quantity > 1 ? piecesAccusative(amount) : `«${item.name}»`;
+			toast(
+				home
+					? {
+							message: `Вернули ${what} в «${pathNodeName(home)}»`,
+							link: { href: `/items/${home.id}`, label: 'Открыть' }
+						}
+					: { message: `Вернули ${what} на верхний уровень` }
+			);
 		} catch (e) {
 			error = errorText(e);
 		} finally {

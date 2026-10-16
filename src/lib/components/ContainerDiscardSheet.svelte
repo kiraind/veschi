@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { archivedToast } from '$lib/item-toasts';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
 
@@ -34,13 +35,16 @@
 	async function discard() {
 		busy = true;
 		error = '';
+		// After ondiscarded the page (and `item`) may show another item.
+		const { id, name } = item;
 		try {
-			await api.post(`/api/items/${item.id}/discard`, {
+			await api.post(`/api/items/${id}/discard`, {
 				contents,
 				workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
 			});
 			open = false;
 			await ondiscarded();
+			archivedToast(`Выкинули «${name}»`, id);
 		} catch (e) {
 			error = errorText(e);
 		} finally {

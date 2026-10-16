@@ -11,6 +11,7 @@
 	import PathTrail from '$lib/components/PathTrail.svelte';
 	import QuantityField from '$lib/components/QuantityField.svelte';
 	import { quantityError } from '$lib/domain/workbench';
+	import { archivedToast } from '$lib/item-toasts';
 	import StickerPanel from '$lib/components/StickerPanel.svelte';
 	import StickerSheet from '$lib/components/StickerSheet.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
@@ -154,9 +155,12 @@
 		if (!ok) return;
 		busy = true;
 		error = '';
+		// The page shows another item after afterArchive.
+		const { id, displayName } = item;
 		try {
-			await api.post(`/api/items/${item.id}/discard`, { contents: 'parent' });
+			await api.post(`/api/items/${id}/discard`, { contents: 'parent' });
 			await afterArchive();
+			archivedToast(`Выкинули «${displayName}»`, id);
 		} catch (e) {
 			error = errorText(e);
 		} finally {

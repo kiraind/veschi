@@ -5,6 +5,9 @@
 	import { api, errorText } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import { piecesAccusative } from '$lib/domain/plural';
+	import { archivedToast } from '$lib/item-toasts';
+	import { toast } from '$lib/toast.svelte';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
 
@@ -46,13 +49,17 @@
 		}
 	});
 
-	async function run(action: () => Promise<unknown>) {
+	/** `done` says what happened: a toast, or an archive toast with «Отменить». */
+	async function run(action: () => Promise<unknown>, done: string, archived: boolean) {
 		busy = true;
 		error = '';
+		const itemId = item.id;
 		try {
 			await action();
 			open = false;
 			await invalidateAll();
+			if (archived) archivedToast(done, itemId);
+			else toast({ message: done });
 		} catch (e) {
 			error = errorText(e);
 		} finally {
@@ -60,7 +67,14 @@
 		}
 	}
 
-	const use = () => run(() => api.post(`/api/items/${item.id}/consume`, { quantity: useCount }));
+	const use = () =>
+		run(
+			() => api.post(`/api/items/${item.id}/consume`, { quantity: useCount }),
+			useCount === item.quantity
+				? `Использовали «${item.name}»`
+				: `Использовали ${piecesAccusative(useCount)} «${item.name}»`,
+			useCount === item.quantity
+		);
 
 	/** A single thing used up (a chip soldered in): to the archive as used, not thrown away. */
 	async function useOne() {
@@ -69,7 +83,13 @@
 			message: 'Вещь уйдёт в архив как использованная, оттуда её можно вернуть.',
 			confirmLabel: 'Использовать'
 		});
-		if (ok) await run(() => api.post(`/api/items/${item.id}/consume`, { quantity: 1 }));
+		if (ok) {
+			await run(
+				() => api.post(`/api/items/${item.id}/consume`, { quantity: 1 }),
+				`Использовали «${item.name}»`,
+				true
+			);
+		}
 	}
 
 	async function discard() {
@@ -83,11 +103,14 @@
 			});
 			if (!ok) return;
 		}
-		await run(() =>
-			api.post(`/api/items/${item.id}/discard`, {
-				contents,
-				workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
-			})
+		await run(
+			() =>
+				api.post(`/api/items/${item.id}/discard`, {
+					contents,
+					workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
+				}),
+			`Выкинули «${item.name}»`,
+			true
 		);
 	}
 </script>

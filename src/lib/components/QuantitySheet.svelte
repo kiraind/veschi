@@ -5,6 +5,8 @@
 	import { MinusOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import { archivedToast } from '$lib/item-toasts';
+	import { toast } from '$lib/toast.svelte';
 	import Sheet from './Sheet.svelte';
 
 	/**
@@ -43,14 +45,19 @@
 	const taken = $derived(valid && value < item.quantity ? item.quantity - value : 0);
 	const added = $derived(valid && value > item.quantity);
 
-	async function run(action: () => Promise<unknown>, archived = false) {
+	/** `done` says what happened, in a toast; an archived item gets «Отменить». */
+	async function run(action: () => Promise<unknown>, done: string, archived = false) {
 		busy = true;
 		error = '';
+		// After onarchived the page (and `item`) may show another item.
+		const itemId = item.id;
 		try {
 			await action();
 			open = false;
 			if (archived) await onarchived();
 			else await invalidateAll();
+			if (archived) archivedToast(done, itemId);
+			else toast({ message: done });
 		} catch (e) {
 			error = errorText(e);
 		} finally {
@@ -58,11 +65,15 @@
 		}
 	}
 
-	const save = () => run(() => api.patch(`/api/items/${item.id}`, { quantity: value }));
+	const save = () =>
+		run(() => api.patch(`/api/items/${item.id}`, { quantity: value }), `Теперь ${pieces(value)}`);
 
 	/** Fewer things: N were used or thrown away. */
 	const takeAway = (thrownAway: boolean) =>
-		run(() => api.post(`/api/items/${item.id}/consume`, { quantity: taken, thrownAway }));
+		run(
+			() => api.post(`/api/items/${item.id}/consume`, { quantity: taken, thrownAway }),
+			`${thrownAway ? 'Выкинули' : 'Использовали'} ${piecesAccusative(taken)}`
+		);
 
 	async function useAll() {
 		const ok = await confirmAction({
@@ -73,7 +84,13 @@
 					: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
 			confirmLabel: 'Использовать'
 		});
-		if (ok) run(() => api.post(`/api/items/${item.id}/consume`, { quantity: item.quantity }), true);
+		if (ok) {
+			run(
+				() => api.post(`/api/items/${item.id}/consume`, { quantity: item.quantity }),
+				`Использовали «${item.name}»`,
+				true
+			);
+		}
 	}
 
 	async function discardAll() {
@@ -82,7 +99,8 @@
 			message: 'Вещь уйдёт в архив, оттуда её можно вернуть.',
 			confirmLabel: 'Выкинуть'
 		});
-		if (ok) run(() => api.post(`/api/items/${item.id}/discard`, {}), true);
+		if (ok)
+			run(() => api.post(`/api/items/${item.id}/discard`, {}), `Выкинули «${item.name}»`, true);
 	}
 </script>
 

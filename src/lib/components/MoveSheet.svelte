@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { piecesAccusative } from '$lib/domain/plural';
+	import { toast } from '$lib/toast.svelte';
 	import { quantityError } from '$lib/domain/workbench';
 	import ContainerPicker from './ContainerPicker.svelte';
 	import QuantityField from './QuantityField.svelte';
@@ -41,7 +43,8 @@
 		}
 	});
 
-	async function moveTo(parentId: string | null) {
+	async function moveTo(to: { id: string; name: string } | null) {
+		const parentId = to?.id ?? null;
 		if (problem) return;
 		busy = true;
 		error = '';
@@ -52,6 +55,15 @@
 			});
 			open = false;
 			await onmoved();
+			const what = item.quantity > 1 ? `${piecesAccusative(amount)} ` : '';
+			toast(
+				to
+					? {
+							message: `Переложили ${what}в «${to.name}»`,
+							link: { href: `/items/${to.id}`, label: 'Открыть' }
+						}
+					: { message: `Переложили ${what}на верхний уровень` }
+			);
 		} catch (e) {
 			error = errorText(e);
 		} finally {
@@ -70,7 +82,7 @@
 			card={false}
 			excludeId={item.id}
 			excludeIds={item.parentId && !item.onBench ? [item.parentId] : []}
-			onpick={(c) => moveTo(c.id)}
+			onpick={moveTo}
 		/>
 		{#if item.parentId}
 			<Button color="alternative" onclick={() => moveTo(null)} disabled={busy || !!problem}>
