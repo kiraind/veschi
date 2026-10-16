@@ -198,7 +198,13 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 				name: data.name,
 				quantity: data.quantity,
 				...(bench
-					? { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId: null }
+					? {
+							parentId: bench.id,
+							takenById: actor.userId,
+							takenAt: new Date(),
+							homeId: null,
+							createdOnBench: true
+						}
 					: { parentId: data.parentId ?? null })
 			}
 		});

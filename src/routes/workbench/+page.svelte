@@ -9,6 +9,7 @@
 	import Thumb from '$lib/components/Thumb.svelte';
 	import { Badge, Button, Card } from 'flowbite-svelte';
 	import {
+		ArrowDownToBracketOutline,
 		ArrowsRepeatOutline,
 		ArrowUpFromBracketOutline,
 		CogOutline,
@@ -32,6 +33,8 @@
 	const RETURN_LABEL = 'На место';
 	const RELOCATE_LABEL = 'Переложить';
 	const DISCARD_LABEL = 'Удалить';
+	/** A new item has no place to go back to: it is put somewhere instead. */
+	const PUT_LABEL = 'Положить';
 	const actionClass =
 		'h-14 flex-col gap-1 px-1 text-xs leading-none sm:h-11 sm:flex-row sm:gap-2 sm:px-5 sm:text-sm';
 	const actionIconClass = 'h-5 w-5 flex-none';
@@ -50,7 +53,7 @@
 		returningOpen = true;
 	}
 
-	/** «Переложить»: the same sheet as on the item page. */
+	/** «Переложить» (and «Положить» for a new item): the same sheet as on the item page. */
 	let relocating = $state<Listed | null>(null);
 	let relocatingOpen = $state(false);
 
@@ -113,29 +116,45 @@
 											>{/if}
 									</div>
 									<div class="mt-1 text-sm break-words text-gray-500 dark:text-gray-400">
-										Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}
-										{#if item.takenByName}· достал(а) {item.takenByName}{/if}
+										{#if item.isNew}
+											Откуда: новая
+											{#if item.takenByName}· добавил(а) {item.takenByName}{/if}
+										{:else}
+											Откуда: {item.homePath.length ? formatPath(item.homePath) : 'верхний уровень'}
+											{#if item.takenByName}· достал(а) {item.takenByName}{/if}
+										{/if}
 									</div>
 								</div>
 							</div>
 
 							<div class="grid grid-cols-3 gap-2 sm:flex">
-								<Button
-									class={actionClass}
-									title="Вернуть на место"
-									onclick={() => askReturn(item)}
-									disabled={!item.canReturn}
-								>
-									<UndoOutline class={actionIconClass} />{RETURN_LABEL}
-								</Button>
-								<Button
-									color="alternative"
-									class={actionClass}
-									title="Переложить в другое место"
-									onclick={() => askRelocate(item)}
-								>
-									<ArrowsRepeatOutline class={actionIconClass} />{RELOCATE_LABEL}
-								</Button>
+								{#if item.isNew}
+									<!-- Takes the place of both «На место» and «Переложить». -->
+									<Button
+										class="col-span-2 {actionClass}"
+										title="Положить в контейнер"
+										onclick={() => askRelocate(item)}
+									>
+										<ArrowDownToBracketOutline class={actionIconClass} />{PUT_LABEL}
+									</Button>
+								{:else}
+									<Button
+										class={actionClass}
+										title="Вернуть на место"
+										onclick={() => askReturn(item)}
+										disabled={!item.canReturn}
+									>
+										<UndoOutline class={actionIconClass} />{RETURN_LABEL}
+									</Button>
+									<Button
+										color="alternative"
+										class={actionClass}
+										title="Переложить в другое место"
+										onclick={() => askRelocate(item)}
+									>
+										<ArrowsRepeatOutline class={actionIconClass} />{RELOCATE_LABEL}
+									</Button>
+								{/if}
 								<Button
 									color="alternative"
 									class={actionClass}
@@ -182,7 +201,7 @@
 {#if relocating}
 	<MoveSheet
 		bind:open={relocatingOpen}
-		title="Переложить «{relocating.name}»"
+		title="{relocating.isNew ? PUT_LABEL : RELOCATE_LABEL} «{relocating.name}»"
 		item={{
 			id: relocating.id,
 			quantity: relocating.quantity,
