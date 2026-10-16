@@ -19,7 +19,9 @@
 		typeName = $bindable(''),
 		selected = $bindable(null),
 		label = 'Тип',
-		allowNew = true
+		allowNew = true,
+		required = true,
+		autofocus = false
 	}: {
 		typeId?: string | null;
 		typeName?: string;
@@ -28,6 +30,10 @@
 		label?: string;
 		/** Free text names a new type; without it only an existing type can be picked. */
 		allowNew?: boolean;
+		/** A field of a form that can't go without a type: the label gets the red star. */
+		required?: boolean;
+		/** The field takes the cursor when it appears (it opens on a button press). */
+		autofocus?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -117,7 +123,7 @@
 		</div>
 	{:else}
 		<Label>
-			{label}<RequiredMark />
+			{label}{#if required}<RequiredMark />{/if}
 			<Input
 				id="{uid}-input"
 				class="mt-1"
@@ -131,7 +137,8 @@
 				onblur={() => setTimeout(leave, 150)}
 				autocomplete="off"
 				placeholder="Например, NE555 или Нож Victorinox"
-				required
+				{required}
+				{autofocus}
 			/>
 		</Label>
 		{#if suggestions.length > 0}
