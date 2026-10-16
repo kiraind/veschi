@@ -275,6 +275,22 @@ describe('items', () => {
 			expect(nested.map((c) => [c.name, c.quantity])).toEqual([['LM317', 3]]);
 		});
 
+		it('lists contents alphabetically, containers among the rest', async () => {
+			const chips = await box('Коробка');
+			await createItem(actor, { newTypeName: 'Винт M10', quantity: 5, parentId: chips });
+			await createItem(actor, { newTypeName: 'резистор', quantity: 2, parentId: chips });
+			await box('Пакет', chips);
+			await createItem(actor, { newTypeName: 'Винт M3', quantity: 7, parentId: chips });
+			await createItem(actor, { newTypeName: 'Арбуз', parentId: chips });
+			expect((await listContents(actor, chips)).map((c) => c.name)).toEqual([
+				'Арбуз',
+				'Винт M3',
+				'Винт M10',
+				'Пакет',
+				'резистор'
+			]);
+		});
+
 		it('lists top-level items without workbenches', async () => {
 			await box('Шкаф');
 			await db.item.create({ data: { ownerId: actor.userId, name: 'Гараж', isWorkbench: true } });
@@ -394,13 +410,13 @@ describe('items', () => {
 			expect((await listContents(actor, null))[0]?.photoKey).toBe('types/x.webp');
 		});
 
-		it('lists containers before other things', async () => {
+		it('lists containers and other things in one alphabetical order', async () => {
 			await createItem(actor, { typeId: thingType, name: 'А-вещь' });
 			await box('Я-коробка');
 			const names = (await listContents(actor, null)).map((e) => [e.name, e.isContainer]);
 			expect(names).toEqual([
-				['Я-коробка', true],
-				['А-вещь', false]
+				['А-вещь', false],
+				['Я-коробка', true]
 			]);
 		});
 	});
