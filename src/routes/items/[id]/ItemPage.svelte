@@ -11,7 +11,6 @@
 	import PathTrail from '$lib/components/PathTrail.svelte';
 	import QuantityField from '$lib/components/QuantityField.svelte';
 	import { quantityError } from '$lib/domain/workbench';
-	import StickerPanel from '$lib/components/StickerPanel.svelte';
 	import StickerSheet from '$lib/components/StickerSheet.svelte';
 	import TakeToWorkbench from '$lib/components/TakeToWorkbench.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
@@ -21,6 +20,7 @@
 	import MoveSheet from '$lib/components/MoveSheet.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { pieces } from '$lib/domain/plural';
+	import { formatCode } from '$lib/domain/sticker-code';
 	import TextEditSheet from '$lib/components/TextEditSheet.svelte';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import { Badge, Button, ButtonGroup, Card } from 'flowbite-svelte';
@@ -33,6 +33,7 @@
 		ArrowDownToBracketOutline,
 		ArrowsRepeatOutline,
 		PlusOutline,
+		QrCodeOutline,
 		TrashBinOutline,
 		UndoOutline
 	} from 'flowbite-svelte-icons';
@@ -303,9 +304,23 @@
 		</p>{/if}
 	{#if !item.isWorkbench}
 		{#if card.sticker?.status === 'BOUND'}
-			<Card class="max-w-none p-4">
-				<StickerPanel itemId={item.id} sticker={card.sticker} editable={active} />
-			</Card>
+			{@const code = formatCode(card.sticker.code)}
+			{#if active}
+				<!-- Opens StickerSheet: what to do with the bound sticker. -->
+				<Button
+					color="alternative"
+					class="h-11 w-full"
+					aria-label="Наклейка {code}"
+					onclick={() => (addingSticker = true)}
+				>
+					<QrCodeOutline class="me-1.5 h-5 w-5" />Наклейка
+					<span class="ms-1.5 font-mono font-semibold">{code}</span>
+				</Button>
+			{:else}
+				<p class="text-sm text-gray-500 dark:text-gray-400">
+					Наклейка <span class="font-mono font-semibold">{code}</span>
+				</p>
+			{/if}
 		{:else if card.stickerOrder !== null}
 			{#if active}
 				<ButtonGroup class="w-full">
@@ -470,6 +485,8 @@
 	<ContainerDiscardSheet
 		bind:open={discarding}
 		item={{ id: item.id, name: item.displayName }}
+		parent={card.path.at(-1) ?? null}
+		inside={card.children}
 		ondiscarded={afterArchive}
 	/>
 	<TakeToWorkbench
@@ -491,6 +508,7 @@
 		itemId={item.id}
 		quantity={item.quantity}
 		ordered={card.stickerOrder}
+		bound={card.sticker?.status === 'BOUND' ? card.sticker.code : null}
 	/>
 	<MoveSheet
 		bind:open={moving}
