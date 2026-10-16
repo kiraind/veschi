@@ -202,7 +202,14 @@ export async function take(
 		const bench = await requireWorkbench(actor, workbenchId, tx);
 		const count = partCount(item, quantity);
 		const homeId = item.takenById ? item.homeId : item.parentId;
-		const taken = { parentId: bench.id, takenById: actor.userId, takenAt: new Date(), homeId };
+		const taken = {
+			parentId: bench.id,
+			takenById: actor.userId,
+			takenAt: new Date(),
+			homeId,
+			// A new item moved to another bench is still new.
+			createdOnBench: item.takenById ? item.createdOnBench : false
+		};
 		const subject = await itemSubject(tx, item.id);
 		const from = await placeRef(tx, item.parentId);
 		const result = await placePart(tx, item, count, taken, { rememberSource: true });
@@ -240,6 +247,8 @@ export interface WorkbenchItem {
 	 * carries the code of its sticker, so «Вернуть» can say which box to look for.
 	 */
 	homePath: (PathNode & { stickerCode: string | null })[];
+	/** Created right on a workbench: it has no home yet, so it is put away, not returned. */
+	isNew: boolean;
 	canReturn: boolean;
 	/** Why «Вернуть на место» is unavailable. */
 	returnBlockedReason: string | null;
@@ -353,6 +362,7 @@ export async function listWorkbench(
 			hasChildren: i._count.children > 0,
 			stickerCode: stickerCodes.get(i.id) ?? null,
 			homePath,
+			isNew: i.createdOnBench && !i.homeId,
 			canReturn: blocker === null,
 			returnBlockedReason: blocker
 		};

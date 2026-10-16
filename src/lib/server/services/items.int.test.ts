@@ -114,9 +114,39 @@ describe('items', () => {
 			expect(item).toMatchObject({ parentId: bench, takenById: actor.userId, homeId: null });
 			expect(item.takenAt).toBeInstanceOf(Date);
 			const [listed] = await listWorkbench(actor, { itemId: id });
-			expect(listed).toMatchObject({ id, workbenchId: bench, homePath: [], canReturn: true });
+			expect(listed).toMatchObject({
+				id,
+				workbenchId: bench,
+				homePath: [],
+				canReturn: true,
+				isNew: true
+			});
 			const user = await db.user.findUniqueOrThrow({ where: { id: actor.userId } });
 			expect(user.lastWorkbenchId).toBe(bench);
+		});
+
+		it('keeps a new item new across benches and forgets it once put away', async () => {
+			const bench = (await createWorkbench(actor, { name: 'Стол' })).id;
+			const garage = (await createWorkbench(actor, { name: 'Гараж' })).id;
+			const { id } = await createItem(actor, {
+				typeId: thingType,
+				workbenchId: bench,
+				quantity: 3
+			});
+			const { itemId: part } = await take(actor, id, { workbenchId: garage, quantity: 1 });
+			const listed = await listWorkbench(actor);
+			expect(listed.map((i) => [i.id, i.isNew]).sort()).toEqual(
+				[
+					[id, true],
+					[part, true]
+				].sort()
+			);
+
+			// Put away and taken back from the top level: it came from somewhere now.
+			await moveItem(actor, part, null);
+			await take(actor, part, { workbenchId: bench });
+			const [again] = await listWorkbench(actor, { itemId: part });
+			expect(again).toMatchObject({ isNew: false, homePath: [] });
 		});
 
 		it('rejects a workbench that is not one, and a container together with a bench', async () => {
