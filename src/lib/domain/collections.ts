@@ -7,7 +7,7 @@
  */
 import { z } from './zod';
 import { idSchema } from './id';
-import { pieces, plural } from './plural';
+import { pieces, piecesGenitive, plural } from './plural';
 
 /** Most lines in one collection. */
 export const MAX_COLLECTION_ENTRIES = 500;
@@ -105,8 +105,8 @@ export interface CollectionEntryView {
 export interface CollectionSummary extends CollectionRef {
 	description: string | null;
 	entryCount: number;
-	/** Lines with fewer things than needed. */
-	shortCount: number;
+	/** How many more pieces the lines need in all (0 when everything is there). */
+	missing: number;
 	/** Photos of the first lines, for the row's strip. */
 	photos: { photoKey: string | null; isContainer: boolean }[];
 }
@@ -140,7 +140,12 @@ export function entryCountText(count: number): string {
 	return count ? `${count} ${plural(count, ['позиция', 'позиции', 'позиций'])}` : 'пусто';
 }
 
-/** «не хватает 2 позиций» for a collection row. */
-export function shortCountText(count: number): string {
-	return `не хватает ${count} ${plural(count, ['позиции', 'позиций', 'позиций'])}`;
+/** How many more pieces the lines need in all. */
+export function totalShortage(entries: Pick<CollectionEntryView, 'quantity' | 'stock'>[]): number {
+	return entries.reduce((sum, e) => sum + shortage(e), 0);
+}
+
+/** «не хватает 3 штук» for a collection: pieces, as a line's subtitle counts them. */
+export function missingText(count: number): string {
+	return `не хватает ${piecesGenitive(count)}`;
 }
