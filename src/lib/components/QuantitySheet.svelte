@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { pieces } from '$lib/domain/plural';
+	import { pieces, piecesAccusative } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Input, Label } from 'flowbite-svelte';
 	import { MinusOutline, PlusOutline } from 'flowbite-svelte-icons';
@@ -130,7 +130,7 @@
 				</p>
 			{:else if taken > 0}
 				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					Станет на {pieces(taken)} меньше.
+					Станет на {piecesAccusative(taken)} меньше.
 				</p>
 			{/if}
 		</div>
@@ -144,10 +144,11 @@
 			</div>
 		{:else if taken > 0}
 			<div class="flex flex-wrap gap-2">
-				<Button onclick={() => takeAway(false)} disabled={busy}>Использовать {pieces(taken)}</Button
+				<Button onclick={() => takeAway(false)} disabled={busy}
+					>Использовать {piecesAccusative(taken)}</Button
 				>
 				<Button color="red" outline onclick={() => takeAway(true)} disabled={busy}
-					>Выкинуть {pieces(taken)}</Button
+					>Выкинуть {piecesAccusative(taken)}</Button
 				>
 			</div>
 		{:else if valid}

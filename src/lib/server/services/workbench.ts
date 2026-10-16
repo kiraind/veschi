@@ -233,6 +233,8 @@ export interface WorkbenchItem {
 	takenAt: Date | null;
 	takenByName: string | null;
 	hasChildren: boolean;
+	/** The code of the item's own sticker. */
+	stickerCode: string | null;
 	/**
 	 * Home container path including the home itself; empty = top level. Each container
 	 * carries the code of its sticker, so «Вернуть» can say which box to look for.
@@ -318,7 +320,10 @@ export async function listWorkbench(
 			[...homePaths.values()]
 				.flat()
 				.map((n) => n.id)
-				.concat(homeIds)
+				.concat(
+					homeIds,
+					items.map((i) => i.id)
+				)
 		)
 	];
 	const stickerCodes = new Map(
@@ -346,6 +351,7 @@ export async function listWorkbench(
 			takenAt: i.takenAt,
 			takenByName: i.takenBy?.name ?? null,
 			hasChildren: i._count.children > 0,
+			stickerCode: stickerCodes.get(i.id) ?? null,
 			homePath,
 			canReturn: blocker === null,
 			returnBlockedReason: blocker

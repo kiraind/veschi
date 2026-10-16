@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Alert, Button, Input } from 'flowbite-svelte';
+	import { Button, Input } from 'flowbite-svelte';
+	import Notice from './Notice.svelte';
 	import { normalizeBarcode, NOT_A_BARCODE } from '$lib/domain/barcode';
 	import { extractCode } from '$lib/domain/scan';
 	import { normalizeCode } from '$lib/domain/sticker-code';
@@ -176,7 +177,7 @@
 		{#if hint}<p class="text-sm text-gray-500 dark:text-gray-400">{hint}</p>{/if}
 	{/if}
 	{#if cameraError}
-		<Alert color="yellow">
+		<Notice tone="warning">
 			<p>{cameraError}</p>
 			<Button
 				class="h-10 mt-3"
@@ -187,7 +188,7 @@
 			>
 				Попробовать снова
 			</Button>
-		</Alert>
+		</Notice>
 	{/if}
 
 	<form class="flex flex-wrap gap-2" onsubmit={submitManual}>

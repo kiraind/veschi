@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Alert, Button, Modal } from 'flowbite-svelte';
+	import { Button, Modal } from 'flowbite-svelte';
+	import Notice from './Notice.svelte';
 	import { CloseOutline, ImageOutline, RefreshOutline } from 'flowbite-svelte-icons';
 	import { centerSquare } from '$lib/domain/photo';
 
@@ -174,7 +175,7 @@
 	</div>
 
 	{#if cameraError}
-		<Alert color="yellow">
+		<Notice tone="warning">
 			<p>{cameraError}</p>
 			<div class="mt-3 flex flex-wrap gap-2">
 				<Button type="button" size="sm" class="h-10" onclick={() => fileInput?.click()}>
@@ -184,7 +185,7 @@
 					Попробовать снова
 				</Button>
 			</div>
-		</Alert>
+		</Notice>
 	{:else}
 		<!-- A square, like the photo will be: the frame is cropped (object-cover), not fitted. -->
 		<div

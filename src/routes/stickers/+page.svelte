@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
-	import { Alert, Button, Card, Checkbox, Input, Label } from 'flowbite-svelte';
+	import { Button, Card, Checkbox, Input, Label } from 'flowbite-svelte';
+	import Notice from '$lib/components/Notice.svelte';
 	import { FilePdfOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -186,7 +187,7 @@
 					{/each}
 				</ul>
 				{#if tooLong.length > 0}
-					<Alert color="yellow" class="mt-2 text-sm">
+					<Notice tone="warning" class="mt-2 text-sm">
 						Не влезет в {CAPTION_MAX_LINES} строки и будет обрезано:
 						<ul class="mt-1 list-disc ps-5">
 							{#each tooLong as { caption, width, fitted }, i (i)}
@@ -195,7 +196,7 @@
 								</li>
 							{/each}
 						</ul>
-					</Alert>
+					</Notice>
 				{/if}
 			{/if}
 		</section>

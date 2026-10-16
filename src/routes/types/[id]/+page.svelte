@@ -36,13 +36,15 @@
 
 	/** The checkbox saves at once; a refused change (contents, quantities) puts it back. */
 	async function setContainer(event: Event & { currentTarget: HTMLInputElement }) {
-		const checked = event.currentTarget.checked;
+		// currentTarget is null once the handler awaits: keep the element itself.
+		const checkbox = event.currentTarget;
+		const checked = checkbox.checked;
 		containerBusy = true;
 		containerError = '';
 		try {
 			await save({ isContainer: checked });
 		} catch (e) {
-			event.currentTarget.checked = !checked;
+			checkbox.checked = !checked;
 			containerError = errorText(e);
 		} finally {
 			containerBusy = false;
