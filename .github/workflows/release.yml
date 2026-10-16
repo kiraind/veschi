@@ -1,0 +1,138 @@
+name: Release
+
+# Run by hand: Actions → Release → Run workflow, pick the bump.
+# Cuts the next version from master: bumps package.json, commits, tags vX.Y.Z,
+# moves the `latest` branch to that commit, publishes a GitHub Release with notes
+# and the Docker image tagged X.Y.Z, X.Y, X and latest.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise (the first release is always 1.0.0)
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: minor
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    name: Release
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          last=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
+          if [ -n "$last" ] && [ "$(git rev-list --count "$last..HEAD")" = 0 ]; then
+            echo "::error::Nothing to release: master has no commits since $last"
+            exit 1
+          fi
+          version=$(node scripts/release-version.mjs "$BUMP" "$last")
+          echo "Releasing $version (previous: ${last:-none})"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Releases only a commit that CI has already checked on master.
+      - name: Require green CI
+        run: |
+          sha=$(git rev-parse HEAD)
+          run=$(gh run list --workflow ci.yml --commit "$sha" --event push --limit 1 \
+            --json status,conclusion,url --jq '.[0] // empty')
+          if [ -z "$run" ]; then
+            echo "::error::No CI run for $sha on master"
+            exit 1
+          fi
+          if [ "$(jq -r .conclusion <<<"$run")" != success ]; then
+            echo "::error::CI for $sha is $(jq -r '.status + " " + .conclusion' <<<"$run"): $(jq -r .url <<<"$run")"
+            exit 1
+          fi
+
+      - name: Release commit and tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "Релиз $VERSION"
+          git tag -a "v$VERSION" -m "Veschi $VERSION"
+
+      # The image is built and smoke-tested before anything is pushed,
+      # so a broken build leaves no tag, branch move or release behind.
+      - uses: docker/setup-buildx-action@v3
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.version.outputs.version }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: |
+            veschi:release
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: docker/smoke-test.sh veschi:release
+
+      # Atomic: if master moved since the run started, nothing is pushed.
+      - name: Push release commit, tag and latest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git push --atomic origin "HEAD:refs/heads/${{ github.event.repository.default_branch }}" "refs/tags/v$VERSION"
+          git push origin HEAD:refs/heads/latest
+
+      - name: GitHub Release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh release create "v$VERSION" --title "$VERSION" --generate-notes --verify-tag
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            docker push "$tag"
+          done
