@@ -29,6 +29,7 @@
 	import BoxIcon from '$lib/components/icons/BoxIcon.svelte';
 	import DeskIcon from '$lib/components/icons/DeskIcon.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
+	import ToastHost from '$lib/components/ToastHost.svelte';
 	import { tabs } from '$lib/tabs.svelte';
 	import type { LayoutData } from './$types';
 
@@ -209,3 +210,4 @@
 
 <ConfirmHost />
 <ConnectionNotice belowNavbar={data.user !== null} />
+<ToastHost aboveTabBar={data.user !== null} />
