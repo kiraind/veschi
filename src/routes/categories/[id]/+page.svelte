@@ -18,7 +18,7 @@
 		type ParamLevel
 	} from '$lib/domain/categories';
 	import { paramKindLabel, type ParamDefView } from '$lib/domain/params';
-	import { plural } from '$lib/domain/plural';
+	import { pieces, plural } from '$lib/domain/plural';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -208,9 +208,7 @@
 				>{type.name}</a
 			>
 			<span class="text-sm text-gray-500 dark:text-gray-400">
-				· {type.itemCount
-					? `${type.itemCount} ${plural(type.itemCount, ['вещь', 'вещи', 'вещей'])}`
-					: 'нет вещей'}
+				· {type.total ? pieces(type.total) : 'нет вещей'}
 			</span>
 			{#if type.missing.length}
 				<p class="text-sm text-amber-700 dark:text-amber-400">

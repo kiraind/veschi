@@ -46,8 +46,8 @@ export const typeUpdateSchema = typeInputSchema.partial();
 export const CONTAINER_QUANTITY = 'У контейнера количество всегда 1';
 
 export interface TypeSummary extends TypeInfo {
-	/** Active items of this type (records, not quantity). */
-	itemCount: number;
+	/** Pieces of this type in active items (the sum of quantities, not records). */
+	total: number;
 }
 
 export interface TypeInfo {
@@ -126,11 +126,22 @@ export async function listTypes(
 					}
 				: {})
 		},
-		include: { _count: { select: { items: { where: { status: 'ACTIVE' } } } } },
 		orderBy: { name: 'asc' },
 		take: limit
 	});
-	return types.map((t) => ({ ...typeInfo(t), itemCount: t._count.items }));
+	const totals = await activeTotals(types.map((t) => t.id));
+	return types.map((t) => ({ ...typeInfo(t), total: totals.get(t.id) ?? 0 }));
+}
+
+/** Pieces of each type in active items: the sum of quantities, not the number of records. */
+async function activeTotals(typeIds: string[], tx: Tx = db): Promise<Map<string, number>> {
+	if (!typeIds.length) return new Map();
+	const sums = await tx.item.groupBy({
+		by: ['typeId'],
+		where: { typeId: { in: typeIds }, status: 'ACTIVE' },
+		_sum: { quantity: true }
+	});
+	return new Map(sums.map((s) => [s.typeId ?? '', s._sum.quantity ?? 0]));
 }
 
 /** A type with its parameters and every active item of it with its location. */

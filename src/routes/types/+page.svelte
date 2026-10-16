@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { Badge, Button, Input } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
+	import { pieces } from '$lib/domain/plural';
 	import Thumb from '$lib/components/Thumb.svelte';
 	import type { PageData } from './$types';
 
@@ -73,7 +74,9 @@
 					<p class="line-clamp-1 text-sm text-gray-500 dark:text-gray-400">{type.description}</p>
 				{/if}
 			</div>
-			<span class="shrink-0 text-sm text-gray-500 dark:text-gray-400">{type.itemCount} зап.</span>
+			<span class="shrink-0 text-sm text-gray-500 dark:text-gray-400"
+				>{type.total ? pieces(type.total) : 'нет вещей'}</span
+			>
 		</li>
 	{:else}
 		<li class="text-sm text-gray-500 dark:text-gray-400">
