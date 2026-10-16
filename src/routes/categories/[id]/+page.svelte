@@ -227,7 +227,7 @@
 <div class="mt-3">
 	{#if addingType}
 		<div class="flex flex-col gap-2">
-			<TypeAutocomplete bind:typeId bind:typeName label="Добавить тип" />
+			<TypeAutocomplete bind:typeId bind:typeName label="Добавить тип" required={false} autofocus />
 			<div>
 				<Button color="alternative" onclick={() => (addingType = false)}>Отмена</Button>
 			</div>
