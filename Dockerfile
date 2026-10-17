@@ -1,6 +1,6 @@
 # Multi-stage build of the Veschi image (SvelteKit + adapter-node).
 # The build needs neither PostgreSQL nor MinIO: migrations are applied and the
-# bucket is created when the container starts (docker/entrypoint.sh, src/lib/server/init.ts).
+# bucket is created when the app starts (src/lib/server/init.ts).
 
 # The runtime stage is plain Alpine with Node.js from Alpine's own `nodejs` package:
 # it uses the system ICU, OpenSSL and other libraries instead of bundling them, so it
@@ -29,29 +29,28 @@ FROM deps AS build
 COPY . .
 RUN npx prisma generate && npm run build
 
-# Production dependencies only. The Prisma CLI (for `prisma migrate deploy` at
-# startup) stays: it is an optional peer of @prisma/client, so npm keeps it with
-# --omit=dev ("devOptional" in package-lock.json). The test guards that.
+# Production dependencies only. Migrations are applied by the app itself
+# (src/lib/server/migrate.ts), so the Prisma CLI is not needed: npm keeps it with
+# --omit=dev because it is an optional peer of @prisma/client ("devOptional" in
+# package-lock.json), so it is dropped from package.json and pruned with its
+# dependencies (~70 MB with the schema engine). The test guards that.
 # Then files nothing in the container reads are removed:
-# - typescript: an optional peer of @prisma/client that npm keeps for the same reason;
+# - typescript and jiti, which npm leaves behind as extraneous, and their links in .bin;
 # - sharp builds for glibc and WebAssembly: the lockfile has no libc field, so npm
 #   installs them next to the musl build;
-# - the query engine in @prisma/engines: the generated client has its own copy,
-#   the runtime stage links it back for the CLI;
-# - the CLI's copy of the new `prisma-client` generator, Prisma client runtimes for
-#   other databases, edge and WebAssembly (the generated client loads only
-#   runtime/library.js);
-# - source maps, type declarations and the TypeScript sources of effect.
+# - Prisma client runtimes for other databases, edge and WebAssembly (the generated
+#   client loads only runtime/library.js);
+# - source maps and type declarations.
 FROM base AS prod-deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
-    && test -x node_modules/.bin/prisma \
-    && rm -rf node_modules/typescript \
+    && npm pkg delete devDependencies.prisma devDependencies.typescript \
+    && npm prune --omit=dev \
+    && test ! -e node_modules/prisma && test ! -e node_modules/@prisma/engines \
+    && rm -rf node_modules/typescript node_modules/jiti \
         node_modules/@img/sharp-linux-* node_modules/@img/sharp-libvips-linux-* \
         node_modules/@img/sharp-wasm32 \
-        node_modules/@prisma/engines/libquery_engine-* \
-        node_modules/prisma/prisma-client \
-        node_modules/effect/src \
+    && for l in node_modules/.bin/*; do [ -e "$l" ] || rm "$l"; done \
     && find node_modules/@prisma/client/runtime -type f \
         ! -name 'library.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
@@ -69,26 +68,18 @@ RUN --mount=type=bind,from=base,source=/usr/local/bin/node,target=/tmp/build-nod
     test "$(/tmp/build-node -p 'process.versions.node.split(".")[0]')" \
         = "$(node -p 'process.versions.node.split(".")[0]')"
 WORKDIR /app
-ENV CHECKPOINT_DISABLE=1 \
-    PRISMA_HIDE_UPDATE_MESSAGE=1 \
-    NODE_ENV=production \
+ENV NODE_ENV=production \
     PORT=3000 \
     BODY_SIZE_LIMIT=52M
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-# The CLI needs the query engine in @prisma/engines too: a link instead of a second copy.
-RUN for f in node_modules/.prisma/client/libquery_engine-*; do \
-        ln -s "../../.prisma/client/${f##*/}" node_modules/@prisma/engines/; \
-    done
 COPY --from=build /app/build ./build
 COPY package.json ./
 COPY prisma ./prisma
 COPY assets ./assets
-COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/healthz" || exit 1
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "build"]
