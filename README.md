@@ -51,7 +51,7 @@ docker run -d -p 3000:3000 \
 
 ## Разработка
 
-Нужны Node.js 22 и Docker.
+Нужны Node.js 24 и Docker.
 
 ```sh
 npm ci
