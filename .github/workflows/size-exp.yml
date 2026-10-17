@@ -1,0 +1,24 @@
+name: Size experiment
+on: push
+jobs:
+  sizes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build variants
+        run: |
+          docker build -q -t v:master .
+          docker build -q -f Dockerfile.apk -t v:apk .
+          docker build -q -f Dockerfile.apk --build-arg ICU=icu-data-en -t v:apk-en .
+      - name: Sizes
+        run: |
+          for t in master apk apk-en; do
+            echo "== $t"
+            docker image inspect v:$t --format 'uncompressed {{.Size}}'
+            echo "compressed $(docker save v:$t | gzip -6 | wc -c)"
+            docker run --rm --entrypoint sh v:$t -c 'node -v; node -e "console.log([\"ёж\",\"яблоко\",\"Ель\",\"арбуз\",\"еда\"].sort(new Intl.Collator(\"ru\").compare).join(\" \"), new Intl.DateTimeFormat(\"ru\",{month:\"long\"}).format(new Date(2026,9,1)))"; du -sh /usr/bin/node /usr/local/bin/node 2>/dev/null; apk info -s nodejs icu-libs icu-data-full icu-data-en libstdc++ ada-libs simdjson simdutf c-ares nghttp2-libs brotli-libs libuv sqlite-libs zstd-libs 2>/dev/null | paste - - - | grep -v "^$"; ldd /usr/bin/node 2>/dev/null | wc -l'
+          done
+      - name: Smoke test apk variant
+        run: docker/smoke-test.sh v:apk
+      - name: sharp, argon2, prisma in apk variant
+        run: docker run --rm --entrypoint sh v:apk -c 'node -e "require(\"sharp\")({create:{width:9,height:9,channels:3,background:\"#f00\"}}).webp().toBuffer().then(()=>console.log(\"sharp ok\"));require(\"@node-rs/argon2\").hash(\"x\").then(()=>console.log(\"argon ok\"))"; ./node_modules/.bin/prisma --version | head -3'
