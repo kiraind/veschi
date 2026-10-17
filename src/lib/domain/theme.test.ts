@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isDarkTheme, parseTheme } from './theme';
+import { isDarkManifest, isDarkTheme, parseTheme } from './theme';
 
 describe('parseTheme', () => {
 	it('accepts the known themes', () => {
@@ -23,5 +23,15 @@ describe('isDarkTheme', () => {
 		expect(isDarkTheme('light', true)).toBe(false);
 		expect(isDarkTheme('system', true)).toBe(true);
 		expect(isDarkTheme('system', false)).toBe(false);
+	});
+});
+
+describe('isDarkManifest', () => {
+	it('follows the choice, or the scheme the page saw for system', () => {
+		expect(isDarkManifest('dark', 'light')).toBe(true);
+		expect(isDarkManifest('light', 'dark')).toBe(false);
+		expect(isDarkManifest('system', 'dark')).toBe(true);
+		expect(isDarkManifest('system', 'light')).toBe(false);
+		expect(isDarkManifest('system', undefined)).toBe(false);
 	});
 });
