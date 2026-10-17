@@ -64,6 +64,12 @@ describe('light correction', () => {
 		expect(measureLight(data)!.contrast.scale).toBe(1);
 	});
 
+	it('never darkens a light object', () => {
+		const data = Buffer.alloc(101 * 4);
+		for (let v = 0; v < 101; v++) data.set([150 + v, 150 + v, 150 + v, 255], v * 4);
+		expect(measureLight(data)!.exponent).toBe(1);
+	});
+
 	it('ignores the background and leaves alpha as it is', () => {
 		const object = pixels([120, 120, 120], 10);
 		const edge = Buffer.from([255, 0, 0, 0, 0, 255, 0, 40]);

@@ -24,12 +24,15 @@ const GAIN_STRENGTH = 0.7;
 const LEVEL_LOW = 12;
 const LEVEL_HIGH = 243;
 const MAX_STRETCH = 1.5;
-/** The gamma moves the median luminance halfway towards this value (0–1)… */
+/**
+ * The gamma moves a dark median luminance halfway towards this value (0–1),
+ * with an exponent no lower than EXPONENT_MIN. It only brightens: a light
+ * median is a light object (a phone already renders white things greyer than
+ * they are), and pulling it down would turn a white mug grey.
+ */
 const MEDIAN_TARGET = 0.45;
 const GAMMA_STRENGTH = 0.5;
-/** …within these limits of the exponent (below 1 brightens). */
 const EXPONENT_MIN = 0.8;
-const EXPONENT_MAX = 1.25;
 
 export interface LightCorrection {
 	/** Multipliers of R, G, B. */
@@ -93,9 +96,9 @@ export function measureLight(rgba: Buffer | Uint8Array): LightCorrection | null 
 	);
 	const scale = Number.isFinite(room) ? clamp(room, 1, MAX_STRETCH) : 1;
 
-	// Gamma: the median moved part of the way to the target.
+	// Gamma: a dark median moved part of the way to the target.
 	const full = Math.log(MEDIAN_TARGET) / Math.log(clamp(median / 255, 0.02, 0.98));
-	const exponent = clamp(1 + (full - 1) * GAMMA_STRENGTH, EXPONENT_MIN, EXPONENT_MAX);
+	const exponent = clamp(1 + (full - 1) * GAMMA_STRENGTH, EXPONENT_MIN, 1);
 
 	return { gains, contrast: { pivot: median, scale }, exponent };
 }
