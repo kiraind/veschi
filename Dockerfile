@@ -26,10 +26,29 @@ RUN npx prisma generate && npm run build
 # Production dependencies only. The Prisma CLI (for `prisma migrate deploy` at
 # startup) stays: it is an optional peer of @prisma/client, so npm keeps it with
 # --omit=dev ("devOptional" in package-lock.json). The test guards that.
+# Then files nothing in the container reads are removed:
+# - typescript: an optional peer of @prisma/client that npm keeps for the same reason;
+# - sharp builds for glibc and WebAssembly: the lockfile has no libc field, so npm
+#   installs them next to the musl build;
+# - the query engine in @prisma/engines: the generated client has its own copy,
+#   the runtime stage links it back for the CLI;
+# - the CLI's copy of the new `prisma-client` generator, Prisma client runtimes for
+#   other databases, edge and WebAssembly (the generated client loads only
+#   runtime/library.js);
+# - source maps, type declarations and the TypeScript sources of effect.
 FROM base AS prod-deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
-    && test -x node_modules/.bin/prisma
+    && test -x node_modules/.bin/prisma \
+    && rm -rf node_modules/typescript \
+        node_modules/@img/sharp-linux-* node_modules/@img/sharp-libvips-linux-* \
+        node_modules/@img/sharp-wasm32 \
+        node_modules/@prisma/engines/libquery_engine-* \
+        node_modules/prisma/prisma-client \
+        node_modules/effect/src \
+    && find node_modules/@prisma/client/runtime -type f \
+        ! -name 'library.js' ! -name 'index-browser.js' -delete \
+    && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM base AS runtime
 ENV NODE_ENV=production \
@@ -37,6 +56,10 @@ ENV NODE_ENV=production \
     BODY_SIZE_LIMIT=52M
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# The CLI needs the query engine in @prisma/engines too: a link instead of a second copy.
+RUN for f in node_modules/.prisma/client/libquery_engine-*; do \
+        ln -s "../../.prisma/client/${f##*/}" node_modules/@prisma/engines/; \
+    done
 COPY --from=build /app/build ./build
 COPY package.json ./
 COPY prisma ./prisma
