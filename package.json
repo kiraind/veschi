@@ -39,6 +39,7 @@
 		"flowbite-svelte": "^1.33.1",
 		"flowbite-svelte-icons": "^3.1.0",
 		"globals": "^17.13.0",
+		"jsqr": "^1.4.0",
 		"prettier": "^3.9.9",
 		"prettier-plugin-svelte": "^4.1.1",
 		"prisma": "^6.19.3",
@@ -48,17 +49,16 @@
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.71.1",
 		"vite": "^7.3.7",
-		"vitest": "^3.2.7"
+		"vitest": "^3.2.7",
+		"zxing-wasm": "^3.1.5"
 	},
 	"dependencies": {
 		"@node-rs/argon2": "^2.2.2",
 		"@prisma/client": "^6.19.3",
-		"jsqr": "^1.4.0",
 		"minio": "^8.0.7",
 		"pdfkit": "^0.20.2",
 		"qrcode": "^1.5.4",
 		"sharp": "^0.35.5",
-		"zod": "^4.6.5",
-		"zxing-wasm": "^3.1.5"
+		"zod": "^4.6.5"
 	}
 }
