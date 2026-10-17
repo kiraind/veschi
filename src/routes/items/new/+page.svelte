@@ -65,9 +65,14 @@
 	let newTypeIsContainer = $state(page.url.searchParams.get('container') === '1');
 	const isContainer = $derived(selectedType ? selectedType.isContainer : newTypeIsContainer);
 	const heading = $derived(isContainer ? 'Новый контейнер' : 'Новая вещь');
-	/** An existing type keeps its photo; a photo can be added when it has none. */
-	const askPhoto = $derived(!selectedType?.photoKey);
+	/**
+	 * An existing type keeps its photo; a photo can be added when it has none
+	 * and is not marked «Без фото».
+	 */
+	const askPhoto = $derived(!selectedType?.photoKey && !selectedType?.noPhoto);
 	let photo = $state<File | null>(null);
+	/** «Без фото» chosen here for the type. */
+	let noPhoto = $state(false);
 	let photoUrl = $derived(photo ? URL.createObjectURL(photo) : null);
 	let picking = $state(false);
 	let busy = $state(false);
@@ -158,6 +163,17 @@
 				stickerCode: freeSticker?.code,
 				barcode: data.barcode ?? undefined
 			});
+			if (noPhoto && !photo && askPhoto) {
+				// Like the photo, the mark belongs to the type: set after the item exists.
+				try {
+					const card = await api.get<{ type: TypeInfo | null }>(`/api/items/${id}`);
+					if (card.type && !card.type.photoKey) {
+						await api.patch(`/api/types/${card.type.id}`, { noPhoto: true });
+					}
+				} catch {
+					// Only the look of the card: the item is there, «Без фото» can be chosen on it.
+				}
+			}
 			if (photo && askPhoto) {
 				const body = new FormData();
 				body.set('file', photo);
@@ -290,6 +306,10 @@
 				previewUrl={photoUrl}
 				container={isContainer}
 				alt="Фото типа"
+				{noPhoto}
+				onnophoto={async (value) => {
+					noPhoto = value;
+				}}
 				onfile={async (file) => {
 					photo = file;
 				}}
