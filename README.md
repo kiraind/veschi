@@ -43,7 +43,7 @@ docker run -d -p 3000:3000 \
 | `BODY_SIZE_LIMIT`                | предельный размер запроса; должен быть больше лимита файла (50 МБ)                                          | `52M`         |
 | `ADDRESS_HEADER`                 | заголовок с адресом клиента от прокси (`X-Forwarded-For`): по адресу считаются неудачные попытки входа      | —             |
 
-Пример со всеми переменными — [.env.example](.env.example).
+Пример со всеми переменными — [.env.example](.env.example); готовый `docker-compose.yml` только с приложением и комментариями к каждой переменной — [docs/docker-compose.yml](docs/docker-compose.yml).
 
 В продакшене (`NODE_ENV=production`, как в образе) без `ORIGIN` и `QR_BASE_URL` наклейки не печатаются: QR-коды вели бы на `localhost`, а напечатанное потом не исправить.
 
