@@ -1,4 +1,7 @@
-/** Pasting a photo from the clipboard: Ctrl/Cmd+V events and the async Clipboard API. */
+/**
+ * Taking a photo from the clipboard (Ctrl/Cmd+V, the async Clipboard API) or from
+ * files dropped onto the photo.
+ */
 
 const EXTENSIONS: Record<string, string> = {
 	'image/png': 'png',
@@ -16,8 +19,8 @@ export function clipboardFile(blob: Blob, name?: string): File {
 	return new File([blob], name || `clipboard.${ext}`, { type: blob.type || 'image/png' });
 }
 
-/** The first image of a paste event (`event.clipboardData`), if there is one. */
-export function imageFromPaste(data: DataTransfer | null): File | null {
+/** The first image of a paste or drop (`clipboardData` / `dataTransfer`), if any. */
+export function imageFromTransfer(data: DataTransfer | null): File | null {
 	if (!data) return null;
 	for (const file of Array.from(data.files ?? [])) {
 		if (file.type.startsWith('image/')) return clipboardFile(file);
@@ -38,6 +41,11 @@ export function canReadClipboardImages(): boolean {
 		typeof navigator.clipboard?.read === 'function' &&
 		typeof ClipboardItem !== 'undefined'
 	);
+}
+
+/** Whether a drag carries files (only then the photo invites a drop). */
+export function dragHasFiles(data: DataTransfer | null): boolean {
+	return !!data && Array.from(data.types ?? []).includes('Files');
 }
 
 export class ClipboardImageError extends Error {}

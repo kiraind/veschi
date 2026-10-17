@@ -15,7 +15,8 @@
 	import {
 		canReadClipboardImages,
 		ClipboardImageError,
-		imageFromPaste,
+		dragHasFiles,
+		imageFromTransfer,
 		pasteTargetsPage,
 		readClipboardImage
 	} from '$lib/clipboard-image';
@@ -24,8 +25,8 @@
 	 * A photo (or a placeholder) with a small round button over its corner that opens
 	 * a menu: «Сфотографировать» (our camera), «Выбрать файл», «Вставить из буфера»
 	 * (where the browser can read clipboard images) and, when there is a photo,
-	 * «Удалить фото». Ctrl/Cmd+V with an image on the page sets the photo too. The
-	 * caller saves: `onfile` / `onremove` (local unsaved files are shown through
+	 * «Удалить фото». Ctrl/Cmd+V with an image on the page and an image file dropped
+	 * onto the photo set it too. The caller saves: `onfile` / `onremove` (local unsaved files are shown through
 	 * `previewUrl`).
 	 */
 	let {
@@ -61,6 +62,8 @@
 	let error = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
 	let canPaste = $state(false);
+	/** Nested dragenter / dragleave over the photo and its buttons. */
+	let dragDepth = $state(0);
 	onMount(() => {
 		canPaste = canReadClipboardImages();
 	});
@@ -88,10 +91,35 @@
 
 	function onpaste(e: ClipboardEvent) {
 		if (!editable || busy || e.defaultPrevented || !pasteTargetsPage()) return;
-		const file = imageFromPaste(e.clipboardData);
+		const file = imageFromTransfer(e.clipboardData);
 		if (!file) return;
 		e.preventDefault();
 		take(file);
+	}
+
+	function ondragenter(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth++;
+	}
+
+	function ondragover(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+	}
+
+	function ondragleave() {
+		if (dragDepth > 0) dragDepth--;
+	}
+
+	function ondrop(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth = 0;
+		const file = imageFromTransfer(e.dataTransfer);
+		if (file) take(file);
+		else error = 'Это не картинка';
 	}
 
 	async function remove() {
@@ -105,7 +133,15 @@
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
 	<!-- Full width on phones, up to 256 px on wider screens. -->
-	<div class="relative aspect-square w-full sm:max-w-64">
+	<div
+		class="relative aspect-square w-full sm:max-w-64"
+		role="group"
+		aria-label={alt}
+		{ondragenter}
+		{ondragover}
+		{ondragleave}
+		{ondrop}
+	>
 		{#if src}
 			<img
 				class="h-full w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
@@ -118,6 +154,14 @@
 				aria-hidden="true"
 			>
 				<NoPhoto {container} class="h-16 w-16" />
+			</div>
+		{/if}
+
+		{#if dragDepth > 0}
+			<div
+				class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary-500 bg-primary-50/95 p-4 text-center font-medium text-primary-700 dark:border-primary-400 dark:bg-gray-900/95 dark:text-primary-300"
+			>
+				<ImageOutline class="h-10 w-10" />Отпустите, чтобы поставить фото
 			</div>
 		{/if}
 

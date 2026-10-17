@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	clipboardFile,
+	dragHasFiles,
 	ClipboardImageError,
-	imageFromPaste,
+	imageFromTransfer,
 	pasteTargetsPage,
 	readClipboardImage
 } from './clipboard-image';
@@ -35,23 +36,23 @@ describe('clipboardFile', () => {
 	});
 });
 
-describe('imageFromPaste', () => {
+describe('imageFromTransfer', () => {
 	it('takes the first image file', () => {
 		const text = new File(['hi'], 'a.txt', { type: 'text/plain' });
 		const image = new File(['x'], 'a.png', { type: 'image/png' });
-		expect(imageFromPaste(transfer([text, image]))).toBe(image);
+		expect(imageFromTransfer(transfer([text, image]))).toBe(image);
 	});
 
 	it('falls back to file items', () => {
 		const image = new File(['x'], '', { type: 'image/png' });
-		const file = imageFromPaste(transfer([], [fileItem(image)]));
+		const file = imageFromTransfer(transfer([], [fileItem(image)]));
 		expect(file?.name).toBe('clipboard.png');
 	});
 
 	it('ignores pasted text', () => {
 		const item = { kind: 'string', type: 'text/plain' } as DataTransferItem;
-		expect(imageFromPaste(transfer([], [item]))).toBeNull();
-		expect(imageFromPaste(null)).toBeNull();
+		expect(imageFromTransfer(transfer([], [item]))).toBeNull();
+		expect(imageFromTransfer(null)).toBeNull();
 	});
 });
 
@@ -90,5 +91,13 @@ describe('pasteTargetsPage', () => {
 	it('is off while a dialog is open', () => {
 		expect(pasteTargetsPage({ querySelector: () => null } as never)).toBe(true);
 		expect(pasteTargetsPage({ querySelector: () => ({}) } as never)).toBe(false);
+	});
+});
+
+describe('dragHasFiles', () => {
+	it('is true only for dragged files', () => {
+		expect(dragHasFiles({ types: ['Files'] } as unknown as DataTransfer)).toBe(true);
+		expect(dragHasFiles({ types: ['text/plain'] } as unknown as DataTransfer)).toBe(false);
+		expect(dragHasFiles(null)).toBe(false);
 	});
 });
