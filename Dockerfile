@@ -39,7 +39,9 @@ RUN npx prisma generate && npm run build
 # - the CLI's copy of the new `prisma-client` generator, Prisma client runtimes for
 #   other databases, edge and WebAssembly (the generated client loads only
 #   runtime/library.js);
-# - source maps, type declarations and the TypeScript sources of effect.
+# - source maps, type declarations and the TypeScript sources of effect and zod;
+# - files that npm packages ship by mistake or only for browsers: the yarn release
+#   inside pdfkit, its browser and standalone builds, xml2js.bc.js (nothing requires it).
 FROM base AS prod-deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
@@ -49,7 +51,10 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
         node_modules/@img/sharp-wasm32 \
         node_modules/@prisma/engines/libquery_engine-* \
         node_modules/prisma/prisma-client \
-        node_modules/effect/src \
+        node_modules/effect/src node_modules/zod/src \
+        node_modules/pdfkit/.yarn node_modules/pdfkit/js/pdfkit.standalone.js \
+        node_modules/pdfkit/js/pdfkit.browser.* \
+        node_modules/xml2js/lib/xml2js.bc.js \
     && find node_modules/@prisma/client/runtime -type f \
         ! -name 'library.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
