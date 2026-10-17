@@ -4,7 +4,7 @@
 
 # The runtime stage is plain Alpine with Node.js from Alpine's own `nodejs` package:
 # it uses the system ICU, OpenSSL and other libraries instead of bundling them, so it
-# is ~30 MB smaller than the official binary. npm, yarn and C headers are needed only
+# is ~60 MB smaller than the official binary. npm, yarn and C headers are needed only
 # for the build. NODE_IMAGE must have the same Node.js major as that package
 # (Alpine 3.24: Node.js 24) and the same Alpine release.
 ARG NODE_IMAGE=node:24-alpine3.24
@@ -57,9 +57,11 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM ${ALPINE_IMAGE} AS runtime
-# icu-data-full: the server sorts and formats in Russian (Intl.Collator('ru'),
-# localeCompare(..., 'ru')); the default English-only data would print month names in English.
-RUN apk add --no-cache nodejs icu-data-full \
+# icu-data-en: the server only sorts and lower-cases in Russian (localeCompare(..., 'ru'),
+# Intl.Collator('ru')), which the root collation in the English data already covers;
+# docker/smoke-test.sh checks it. Russian dates or numbers via Intl on the server
+# would need icu-data-full (+31 MB).
+RUN apk add --no-cache nodejs icu-data-en \
     && addgroup -g 1000 node \
     && adduser -u 1000 -G node -s /bin/sh -D node
 # Native modules and the build were made with NODE_IMAGE's node: the majors must match.

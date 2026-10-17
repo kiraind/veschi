@@ -82,6 +82,22 @@ docker run -d --name veschi-smoke-app --network "$NET" -p "$PORT:3000" \
 retry 90 curl -fsS "$BASE/healthz" || fail '/healthz did not answer 200'
 echo 'ok: /healthz 200 with an empty database and bucket'
 
+# The image ships only English ICU data: the server's Russian sorting and
+# lower-casing (localeCompare(..., 'ru'), Intl.Collator('ru')) must still work.
+docker exec -i veschi-smoke-app node - <<'EOF' || fail 'Russian collation is broken in the image'
+const c = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+const sorted = ['яблоко', 'Полка 10', 'Ель', 'ёж', 'арбуз', 'Полка 2', 'еда']
+	.sort((a, b) => a.localeCompare(b, 'ru'))
+	.join(',');
+const ok =
+	sorted === 'арбуз,еда,ёж,Ель,Полка 10,Полка 2,яблоко' &&
+	['Полка 10', 'Полка 2'].sort(c.compare).join() === 'Полка 2,Полка 10' &&
+	c.compare('ёж', 'еж') === 0 &&
+	'ЁЛКА'.toLocaleLowerCase('ru') === 'ёлка';
+if (!ok) throw new Error(`unexpected order: ${sorted}`);
+EOF
+echo 'ok: Russian sorting works'
+
 [ "$(http "$BASE/")" = "303 $BASE/login?next=%2F" ] || fail 'GET / does not redirect to /login'
 [ "$(http "$BASE/api/search?q=x")" = '401 ' ] || fail 'GET /api/search is not 401'
 [ "$(http "$BASE/files/x")" = '401 ' ] || fail 'GET /files/x is not 401'
