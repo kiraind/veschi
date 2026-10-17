@@ -8,6 +8,7 @@
 		type CollectionSummary
 	} from '$lib/domain/collections';
 	import { normalizeParamKey } from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 
 	/** Chooses a collection: search the existing ones by name or create a new one right here. */
 	let {
@@ -35,10 +36,9 @@
 	});
 
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const matches = $derived(
-		(collections ?? []).filter(
-			(c) => !exclude.includes(c.id) && normalizeParamKey(c.name).includes(q)
-		)
+		(collections ?? []).filter((c) => !exclude.includes(c.id) && searchKey(c.name).includes(needle))
 	);
 	const exact = $derived((collections ?? []).find((c) => normalizeParamKey(c.name) === q));
 

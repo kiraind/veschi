@@ -2,7 +2,14 @@ import { Prisma } from '@prisma/client';
 import { db } from '$lib/server/db';
 import { visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { formatPath } from '$lib/domain/item';
-import { LOOSE_SEPARATORS, likePattern, looseText, parseSearchQuery } from '$lib/domain/search';
+import {
+	foldYo,
+	LOOSE_SEPARATORS,
+	likePattern,
+	looseText,
+	parseSearchQuery
+} from '$lib/domain/search';
+import { foldYoSql } from '$lib/server/sql';
 import { codeQuery } from '$lib/domain/sticker-code';
 import { barcodeQuery } from '$lib/domain/barcode';
 import { getPaths, type PathNode } from './paths';
@@ -78,10 +85,12 @@ function hasParam(condition: Prisma.Sql): Prisma.Sql {
 }
 
 /**
- * `expr` contains `text`, ignoring case and, for part codes, spaces, hyphens
+ * `expr` contains `text`, ignoring case, ё/е and, for part codes, spaces, hyphens
  * and dots («dip8», «DIP 8» and «DIP-8» find each other).
  */
-function contains(expr: Prisma.Sql, text: string): Prisma.Sql {
+function contains(column: Prisma.Sql, query: string): Prisma.Sql {
+	const expr = foldYoSql(column);
+	const text = foldYo(query);
 	const loose = looseText(text);
 	if (!loose) return Prisma.sql`${expr} ILIKE ${likePattern(text)}`;
 	return Prisma.sql`(${expr} ILIKE ${likePattern(text)}
@@ -89,7 +98,7 @@ function contains(expr: Prisma.Sql, text: string): Prisma.Sql {
 }
 
 /**
- * Case-insensitive substring search over item own names, type names and
+ * Case- and ё/е-insensitive substring search over item own names, type names and
  * descriptions, category names and parameter keys and values, also with spaces, hyphens and dots ignored; «ключ: значение» also matches parameters with
  * that key and value; a piece of a sticker ID (3+ characters, dash optional) matches the item with that sticker; 4+ digits match items of the type with such a packaging barcode. Active ordinary items only. Results are grouped by type.
  */
@@ -152,7 +161,7 @@ export async function searchWithLimit(
 		WHERE ${visibleSql(actor)}
 			AND i.status = 'ACTIVE' AND NOT i."isWorkbench"
 			AND (${Prisma.join(conditions, ' OR ')})
-		ORDER BY lower(regexp_replace(t.name, ${LOOSE_SEPARATORS}, '', 'g')) = lower(${looseText(query.text)}) DESC, t.name, t.id, i.id
+		ORDER BY lower(regexp_replace(${foldYoSql(Prisma.sql`t.name`)}, ${LOOSE_SEPARATORS}, '', 'g')) = lower(${looseText(foldYo(query.text))}) DESC, t.name, t.id, i.id
 		LIMIT ${MAX_MATCHES + 1}
 	`;
 	const truncated = rows.length > MAX_MATCHES;
@@ -184,8 +193,9 @@ export async function searchWithLimit(
 		});
 	}
 
-	const exact = looseText(query.text).toLocaleLowerCase('ru');
-	const isExact = (g: SearchGroup) => looseText(g.typeName).toLocaleLowerCase('ru') === exact;
+	const exact = looseText(foldYo(query.text)).toLocaleLowerCase('ru');
+	const isExact = (g: SearchGroup) =>
+		looseText(foldYo(g.typeName)).toLocaleLowerCase('ru') === exact;
 	const result = [...groups.values()].sort(
 		(a, b) => Number(isExact(b)) - Number(isExact(a)) || a.typeName.localeCompare(b.typeName, 'ru')
 	);

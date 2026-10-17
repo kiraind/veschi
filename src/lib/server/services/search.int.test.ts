@@ -64,6 +64,23 @@ describe('search', () => {
 		expect(await search(actor, ' - . ')).toEqual([]);
 	});
 
+	it('treats ё and е as the same letter, in both directions and any case', async () => {
+		await item({ newTypeName: 'Ёлочная игрушка', quantity: 3, parentId: chipBox });
+		await item({ newTypeName: 'Елка', quantity: 1, parentId: chipBox });
+		await setKeyedParams(actor, { typeId: ne555Type }, [
+			{ key: 'объём', valueType: 'STRING', text: 'тёмный' }
+		]);
+		for (const q of ['елочная', 'ЁЛОЧНАЯ', 'Елочная игрушка']) {
+			expect((await search(actor, q)).map((g) => g.typeName)).toEqual(['Ёлочная игрушка']);
+		}
+		for (const q of ['ёлка', 'ЁЛКА', 'елка']) {
+			expect((await search(actor, q)).map((g) => g.typeName)).toEqual(['Елка']);
+		}
+		for (const q of ['темный', 'объем: темный', 'обЪЕм: ТЁМНЫЙ']) {
+			expect((await search(actor, q)).map((g) => g.typeName)).toEqual(['NE555']);
+		}
+	});
+
 	it('finds «ne555» as one type with the total and every location with its path', async () => {
 		const results = await search(actor, 'ne555');
 		expect(results).toHaveLength(1);

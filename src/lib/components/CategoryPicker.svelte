@@ -4,6 +4,7 @@
 	import { api, errorText } from '$lib/api';
 	import type { CategoryRef, CategorySummary } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 
 	/** Chooses a category: search the existing ones by name or create a new one right here. */
 	let {
@@ -31,10 +32,9 @@
 	});
 
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const matches = $derived(
-		(categories ?? []).filter(
-			(c) => !exclude.includes(c.id) && normalizeParamKey(c.name).includes(q)
-		)
+		(categories ?? []).filter((c) => !exclude.includes(c.id) && searchKey(c.name).includes(needle))
 	);
 	const exact = $derived((categories ?? []).find((c) => normalizeParamKey(c.name) === q));
 
