@@ -30,7 +30,12 @@
 	let containerBusy = $state(false);
 	let containerError = $state('');
 
-	async function save(changes: { name?: string; description?: string; isContainer?: boolean }) {
+	async function save(changes: {
+		name?: string;
+		description?: string;
+		isContainer?: boolean;
+		noPhoto?: boolean;
+	}) {
 		await api.patch(`/api/types/${type.id}`, changes);
 		await invalidateAll();
 	}
@@ -90,6 +95,8 @@
 		photoKey={type.photoKey}
 		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
+		noPhoto={type.noPhoto}
+		onnophoto={(noPhoto) => save({ noPhoto })}
 		onfile={async (file) => {
 			const body = new FormData();
 			body.set('file', file);

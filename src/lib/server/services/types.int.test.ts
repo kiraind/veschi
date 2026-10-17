@@ -12,6 +12,7 @@ import {
 	createType,
 	deleteType,
 	findOrCreateType,
+	getType,
 	getTypeCard,
 	listTypes,
 	removeTypePhoto,
@@ -242,6 +243,18 @@ describe('types', () => {
 			await removeTypePhoto(actor, type.id);
 			expect(await storage().get(second)).toBeNull();
 			expect(await storage().get(thumbKeyOf(second))).toBeNull();
+		});
+
+		it('keeps «Без фото» until a photo is set', async () => {
+			const type = await createType(actor, { name: 'Провод', noPhoto: true });
+			expect((await getType(actor, type.id)).noPhoto).toBe(true);
+			await updateType(actor, type.id, { name: 'Провод USB' });
+			expect((await getType(actor, type.id)).noPhoto).toBe(true);
+			await setTypePhoto(actor, type.id, await png(100, 100));
+			expect((await getType(actor, type.id)).noPhoto).toBe(false);
+			await removeTypePhoto(actor, type.id);
+			await updateType(actor, type.id, { noPhoto: true });
+			expect((await getType(actor, type.id)).noPhoto).toBe(true);
 		});
 
 		it('rejects a picture over 50 megapixels before decoding it', async () => {
