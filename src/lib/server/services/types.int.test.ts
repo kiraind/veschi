@@ -122,6 +122,14 @@ describe('types', () => {
 			]);
 			expect((await listTypes(actor, 'ne5')).map((t) => t.id)).toEqual([timer.id]);
 		});
+
+		it('treats ё and е as the same letter in autocomplete', async () => {
+			const tree = await createType(actor, { name: 'Ёлка' });
+			const hedgehog = await createType(actor, { name: 'Игрушка', description: 'Еж из фетра' });
+			expect((await listTypes(actor, 'елк')).map((t) => t.id)).toEqual([tree.id]);
+			expect((await listTypes(actor, 'ЁЖ')).map((t) => t.id)).toEqual([hedgehog.id]);
+			expect(await listTypes(actor, '100%')).toEqual([]);
+		});
 	});
 
 	describe('container mark', () => {

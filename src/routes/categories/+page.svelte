@@ -6,6 +6,7 @@
 	import InfoHint from '$lib/components/InfoHint.svelte';
 	import { PARAM_LEVEL_LABELS, type CategoryRef } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 	import { plural } from '$lib/domain/plural';
 	import type { PageData } from './$types';
 
@@ -16,8 +17,9 @@
 	let busy = $state(false);
 	let error = $state('');
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const shown = $derived(
-		data.categories.filter((c) => normalizeParamKey(`${c.name} ${c.description ?? ''}`).includes(q))
+		data.categories.filter((c) => searchKey(`${c.name} ${c.description ?? ''}`).includes(needle))
 	);
 	const exact = $derived(data.categories.some((c) => normalizeParamKey(c.name) === q));
 

@@ -1,10 +1,11 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import {
 		CameraPhotoOutline,
 		CheckOutline,
 		EyeSlashOutline,
+		ClipboardOutline,
 		ImageOutline,
 		PenOutline,
 		TrashBinOutline
@@ -13,12 +14,22 @@
 	import CameraCapture from './CameraCapture.svelte';
 	import NoPhoto from './NoPhoto.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import {
+		canReadClipboardImages,
+		ClipboardImageError,
+		dragHasFiles,
+		imageFromTransfer,
+		pasteTargetsPage,
+		readClipboardImage
+	} from '$lib/clipboard-image';
 
 	/**
 	 * A photo (or a placeholder) with a small round button over its corner that opens
-	 * a menu: «Сфотографировать» (our camera), «Выбрать файл» and, when there is a
-	 * photo, «Удалить фото». The caller saves: `onfile` / `onremove` (local unsaved
-	 * files are shown through `previewUrl`).
+	 * a menu: «Сфотографировать» (our camera), «Выбрать файл», «Вставить из буфера»
+	 * (where the browser can read clipboard images) and, when there is a photo,
+	 * «Удалить фото». Ctrl/Cmd+V with an image on the page and an image file dropped
+	 * onto the photo set it too. The caller saves: `onfile` / `onremove` (local unsaved files are shown through
+	 * `previewUrl`).
 	 *
 	 * With `onnophoto`, a thing without a photo also gets «Без фото» in the menu:
 	 * the square placeholder collapses into a small strip with the same buttons
@@ -63,6 +74,12 @@
 	let busy = $state(false);
 	let error = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
+	let canPaste = $state(false);
+	/** Nested dragenter / dragleave over the photo and its buttons. */
+	let dragDepth = $state(0);
+	onMount(() => {
+		canPaste = canReadClipboardImages();
+	});
 
 	async function run(action: () => Promise<void>) {
 		busy = true;
@@ -70,7 +87,7 @@
 		try {
 			await action();
 		} catch (e) {
-			error = errorText(e);
+			error = e instanceof ClipboardImageError ? e.message : errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -80,11 +97,51 @@
 		run(() => onfile(file));
 	}
 
+	function pasteFromMenu() {
+		menuOpen = false;
+		run(async () => onfile(await readClipboardImage()));
+	}
+
+	function onpaste(e: ClipboardEvent) {
+		if (!editable || busy || e.defaultPrevented || !pasteTargetsPage()) return;
+		const file = imageFromTransfer(e.clipboardData);
+		if (!file) return;
+		e.preventDefault();
+		take(file);
+	}
+
+	function ondragenter(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth++;
+	}
+
+	function ondragover(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+	}
+
+	function ondragleave() {
+		if (dragDepth > 0) dragDepth--;
+	}
+
+	function ondrop(e: DragEvent) {
+		if (!editable || busy || !dragHasFiles(e.dataTransfer)) return;
+		e.preventDefault();
+		dragDepth = 0;
+		const file = imageFromTransfer(e.dataTransfer);
+		if (file) take(file);
+		else error = 'Это не картинка';
+	}
+
 	async function remove() {
 		menuOpen = false;
 		if (onremove && (await confirmAction({ title: 'Удалить фото?' }))) run(onremove);
 	}
 </script>
+
+<svelte:window {onpaste} />
 
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
@@ -94,6 +151,12 @@
 		class="relative w-full sm:max-w-64 {collapsed
 			? 'flex items-center gap-2 rounded-lg bg-gray-100 p-2 text-gray-300 dark:bg-gray-800 dark:text-gray-600'
 			: 'aspect-square'}"
+		role="group"
+		aria-label={alt}
+		{ondragenter}
+		{ondragover}
+		{ondragleave}
+		{ondrop}
 	>
 		{#if collapsed}
 			<NoPhoto {container} class="ms-1 h-6 w-6 flex-none" />
@@ -110,6 +173,17 @@
 				aria-hidden="true"
 			>
 				<NoPhoto {container} class="h-16 w-16" />
+			</div>
+		{/if}
+
+		{#if dragDepth > 0}
+			<div
+				class="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary-500 bg-primary-50/95 text-center font-medium text-primary-700 dark:border-primary-400 dark:bg-gray-900/95 dark:text-primary-300 {collapsed
+					? 'p-1 text-sm'
+					: 'flex-col p-4'}"
+			>
+				<!-- The strip of «Без фото» is too low for the big icon. -->
+				{#if !collapsed}<ImageOutline class="h-10 w-10" />{/if}Отпустите, чтобы поставить фото
 			</div>
 		{/if}
 
@@ -163,6 +237,11 @@
 				>
 					<ImageOutline class="h-5 w-5" />Выбрать файл
 				</DropdownItem>
+				{#if canPaste}
+					<DropdownItem class="flex min-h-11 w-full items-center gap-2" onclick={pasteFromMenu}>
+						<ClipboardOutline class="h-5 w-5" />Вставить из буфера
+					</DropdownItem>
+				{/if}
 				{#if !src && onnophoto}
 					<DropdownItem
 						class="flex min-h-11 w-full items-center gap-2"
