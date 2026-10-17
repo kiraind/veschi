@@ -1,5 +1,6 @@
 <script lang="ts">
 	import NoPhoto from './NoPhoto.svelte';
+	import { isCutoutKey } from '$lib/domain/photos';
 
 	/** Square thumbnail of an item or type photo, or a placeholder (a box for containers). */
 	let {
@@ -9,7 +10,23 @@
 	}: { photoKey: string | null; size?: number; container?: boolean } = $props();
 </script>
 
-{#if photoKey}
+{#if photoKey && isCutoutKey(photoKey)}
+	<!-- Without background: the backdrop is the wrapper, the shadow is on the object. -->
+	<span
+		class="inline-flex flex-none rounded-lg bg-gray-100 dark:bg-gray-800"
+		style:width="{size}px"
+		style:height="{size}px"
+	>
+		<img
+			class="photo-cutout-sm h-full w-full object-contain"
+			src="/files/{photoKey}?size=thumb"
+			alt=""
+			width={size}
+			height={size}
+			loading="lazy"
+		/>
+	</span>
+{:else if photoKey}
 	<img
 		class="flex-none rounded-lg bg-gray-200 object-cover dark:bg-gray-700"
 		src="/files/{photoKey}?size=thumb"

@@ -2,7 +2,7 @@
 	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { pieces } from '$lib/domain/plural';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { Badge, Button, Checkbox, Helper } from 'flowbite-svelte';
+	import { Badge, Button, ButtonGroup, Checkbox, Helper } from 'flowbite-svelte';
 	import { ArrowLeftOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import ParamSection from '$lib/components/ParamSection.svelte';
@@ -64,6 +64,36 @@
 	}
 	/** The parameter list, so the notice at the top can open a missing value. */
 	let paramSection = $state<ParamSection>();
+
+	const photo = $derived(data.photo);
+	const showCutout = $derived(photo?.choice !== 'ORIGINAL');
+	let photoError = $state('');
+
+	async function photoRequest(action: () => Promise<unknown>) {
+		photoError = '';
+		try {
+			await action();
+			await invalidateAll();
+		} catch (e) {
+			photoError = errorText(e);
+		}
+	}
+
+	// While the photo is being processed, look every few seconds whether it is done.
+	$effect(() => {
+		if (!photo?.processing) return;
+		const timer = setInterval(async () => {
+			try {
+				const state = await api.get<{ photo: { processing: boolean } | null }>(
+					`/api/types/${type.id}/photo`
+				);
+				if (!state.photo?.processing) await invalidateAll();
+			} catch {
+				// No connection for a moment: the next check will tell.
+			}
+		}, 5000);
+		return () => clearInterval(timer);
+	});
 </script>
 
 <svelte:head><title>{type.name} — veschi</title></svelte:head>
@@ -88,6 +118,7 @@
 	<MissingParamsNotice missing={data.card.missing} onfill={(r) => paramSection?.fill(r)} />
 	<PhotoField
 		photoKey={type.photoKey}
+		status={photo?.processing ? 'Убираем фон…' : null}
 		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
 		onfile={async (file) => {
@@ -106,6 +137,40 @@
 				onclick={() => (barcodeOpen = true)}
 			/>{/snippet}
 	</PhotoField>
+	{#if photo?.available.includes('CUTOUT')}
+		<ButtonGroup class="mt-2" aria-label="Какое фото показывать">
+			<Button
+				size="sm"
+				color={showCutout ? 'primary' : 'alternative'}
+				aria-pressed={showCutout}
+				onclick={() =>
+					photoRequest(() => api.patch(`/api/types/${type.id}/photo`, { choice: 'CUTOUT' }))}
+				>Без фона</Button
+			>
+			<Button
+				size="sm"
+				color={showCutout ? 'alternative' : 'primary'}
+				aria-pressed={!showCutout}
+				onclick={() =>
+					photoRequest(() => api.patch(`/api/types/${type.id}/photo`, { choice: 'ORIGINAL' }))}
+				>Оригинал</Button
+			>
+		</ButtonGroup>
+	{/if}
+	{#if photo?.failed && photo.enabled}
+		<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+			Не получилось убрать фон.
+			<button
+				type="button"
+				class="font-medium text-primary-700 hover:underline dark:text-primary-400"
+				onclick={() => photoRequest(() => api.post(`/api/types/${type.id}/photo/reprocess`))}
+				>Попробовать ещё раз</button
+			>
+		</p>
+	{/if}
+	{#if photoError}<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">
+			{photoError}
+		</p>{/if}
 </div>
 
 <!-- Same shape as the action buttons on an item card. -->

@@ -9,7 +9,8 @@ export type FileValue = Extract<ParamValue, { valueType: 'FILE' }>;
 
 /**
  * Object keys: `params/<uploader id>/<uuid>` for parameter files,
- * `types/<type id>/<uuid>.webp` for type photos (photos moved from items in
+ * `types/<type id>/<uuid>.webp` for type photos, `….source` for the upload
+ * kept for processing and `<uuid>.cutout.webp` for a cutout (photos moved from items in
  * the round-2 migration keep their old `items/<item id>/…` keys). A photo
  * uploaded since round 4 also has a thumbnail at `thumbKeyOf(key)`; older
  * photos have none, and the full photo is served instead.
@@ -108,7 +109,12 @@ async function fileAccess(
 		return { allowed: true, fileName: param?.fileName ?? null };
 	}
 	const [type, param] = await Promise.all([
-		db.itemType.findFirst({ where: { photoKey: key, ...visibleTo(actor) } }),
+		db.itemType.findFirst({
+			where: {
+				OR: [{ photoKey: key }, { photoOriginalKey: key }, { photoCutoutKey: key }],
+				...visibleTo(actor)
+			}
+		}),
 		db.param.findFirst({
 			where: { fileKey: key, OR: [{ type: visibleTo(actor) }, { item: visibleTo(actor) }] }
 		})
@@ -121,9 +127,22 @@ export async function deleteUnreferencedFiles(keys: string[]): Promise<void> {
 	if (keys.length === 0) return;
 	const [params, types] = await Promise.all([
 		db.param.findMany({ where: { fileKey: { in: keys } }, select: { fileKey: true } }),
-		db.itemType.findMany({ where: { photoKey: { in: keys } }, select: { photoKey: true } })
+		db.itemType.findMany({
+			where: {
+				OR: [
+					{ photoKey: { in: keys } },
+					{ photoSourceKey: { in: keys } },
+					{ photoOriginalKey: { in: keys } },
+					{ photoCutoutKey: { in: keys } }
+				]
+			},
+			select: { photoKey: true, photoSourceKey: true, photoOriginalKey: true, photoCutoutKey: true }
+		})
 	]);
-	const used = new Set([...params.map((p) => p.fileKey), ...types.map((t) => t.photoKey)]);
+	const used = new Set([
+		...params.map((p) => p.fileKey),
+		...types.flatMap((t) => [t.photoKey, t.photoSourceKey, t.photoOriginalKey, t.photoCutoutKey])
+	]);
 	for (const key of keys) {
 		if (!used.has(key)) await deleteStored(key);
 	}

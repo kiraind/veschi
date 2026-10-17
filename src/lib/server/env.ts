@@ -16,7 +16,18 @@ const schema = z.object({
 	ADMIN_RESET_PASSWORD: z
 		.string()
 		.optional()
-		.transform((v) => v === '1' || v === 'true')
+		.transform((v) => v === '1' || v === 'true'),
+	// Photo processing on a ComfyUI server (src/lib/server/photos): off, or the
+	// cutout of the background. Any ComfyUI with the ComfyUI-RMBG nodes works:
+	// our photo-processor image or Comfy Cloud (with an API key).
+	PHOTO_PROCESSING: z.enum(['off', 'cutout']).default('off'),
+	PHOTO_PROCESSOR_URL: z.string().url().optional(),
+	PHOTO_PROCESSOR_API_KEY: z.string().min(1).optional()
+});
+
+const refined = schema.refine((c) => c.PHOTO_PROCESSING === 'off' || c.PHOTO_PROCESSOR_URL, {
+	message: 'PHOTO_PROCESSING is on but PHOTO_PROCESSOR_URL is not set',
+	path: ['PHOTO_PROCESSOR_URL']
 });
 
 /**
@@ -30,7 +41,7 @@ let cached: Config | null = null;
 /** Validated server configuration from environment variables. */
 export function config(): Config {
 	if (cached) return cached;
-	const parsed = schema.parse(env);
+	const parsed = refined.parse(env);
 	const fallback = process.env.NODE_ENV === 'production' ? null : 'http://localhost:3000';
 	const qrBaseUrl = (parsed.QR_BASE_URL ?? parsed.ORIGIN ?? fallback)?.replace(/\/+$/, '') ?? null;
 	cached = { ...parsed, qrBaseUrl };
