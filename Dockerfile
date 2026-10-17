@@ -2,7 +2,11 @@
 # The build needs neither PostgreSQL nor MinIO: migrations are applied and the
 # bucket is created when the container starts (docker/entrypoint.sh, src/lib/server/init.ts).
 
-ARG NODE_IMAGE=node:22-alpine
+# The runtime stage is plain Alpine with the node binary copied from NODE_IMAGE:
+# npm, yarn, corepack and C headers are needed only for the build. The C++ runtime
+# node links against comes from NODE_IMAGE too; both images are on one Alpine release.
+ARG NODE_IMAGE=node:22-alpine3.24
+ARG ALPINE_IMAGE=alpine:3.24
 
 # libssl3 from the base image is enough for the Prisma engines (linux-musl-openssl-3.0.x).
 FROM ${NODE_IMAGE} AS base
@@ -50,8 +54,14 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
         ! -name 'library.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
-FROM base AS runtime
-ENV NODE_ENV=production \
+FROM ${ALPINE_IMAGE} AS runtime
+COPY --from=base /usr/local/bin/node /usr/local/bin/node
+COPY --from=base /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/lib/
+RUN addgroup -g 1000 node && adduser -u 1000 -G node -s /bin/sh -D node
+WORKDIR /app
+ENV CHECKPOINT_DISABLE=1 \
+    PRISMA_HIDE_UPDATE_MESSAGE=1 \
+    NODE_ENV=production \
     PORT=3000 \
     BODY_SIZE_LIMIT=52M
 COPY --from=prod-deps /app/node_modules ./node_modules
