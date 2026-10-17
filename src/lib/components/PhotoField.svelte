@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import {
 		CameraPhotoOutline,
+		ClipboardOutline,
 		ImageOutline,
 		PenOutline,
 		TrashBinOutline
@@ -11,12 +12,21 @@
 	import CameraCapture from './CameraCapture.svelte';
 	import NoPhoto from './NoPhoto.svelte';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import {
+		canReadClipboardImages,
+		ClipboardImageError,
+		imageFromPaste,
+		pasteTargetsPage,
+		readClipboardImage
+	} from '$lib/clipboard-image';
 
 	/**
 	 * A photo (or a placeholder) with a small round button over its corner that opens
-	 * a menu: «Сфотографировать» (our camera), «Выбрать файл» and, when there is a
-	 * photo, «Удалить фото». The caller saves: `onfile` / `onremove` (local unsaved
-	 * files are shown through `previewUrl`).
+	 * a menu: «Сфотографировать» (our camera), «Выбрать файл», «Вставить из буфера»
+	 * (where the browser can read clipboard images) and, when there is a photo,
+	 * «Удалить фото». Ctrl/Cmd+V with an image on the page sets the photo too. The
+	 * caller saves: `onfile` / `onremove` (local unsaved files are shown through
+	 * `previewUrl`).
 	 */
 	let {
 		photoKey = null,
@@ -50,6 +60,10 @@
 	let busy = $state(false);
 	let error = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
+	let canPaste = $state(false);
+	onMount(() => {
+		canPaste = canReadClipboardImages();
+	});
 
 	async function run(action: () => Promise<void>) {
 		busy = true;
@@ -57,7 +71,7 @@
 		try {
 			await action();
 		} catch (e) {
-			error = errorText(e);
+			error = e instanceof ClipboardImageError ? e.message : errorText(e);
 		} finally {
 			busy = false;
 		}
@@ -67,11 +81,26 @@
 		run(() => onfile(file));
 	}
 
+	function pasteFromMenu() {
+		menuOpen = false;
+		run(async () => onfile(await readClipboardImage()));
+	}
+
+	function onpaste(e: ClipboardEvent) {
+		if (!editable || busy || e.defaultPrevented || !pasteTargetsPage()) return;
+		const file = imageFromPaste(e.clipboardData);
+		if (!file) return;
+		e.preventDefault();
+		take(file);
+	}
+
 	async function remove() {
 		menuOpen = false;
 		if (onremove && (await confirmAction({ title: 'Удалить фото?' }))) run(onremove);
 	}
 </script>
+
+<svelte:window {onpaste} />
 
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
@@ -138,6 +167,11 @@
 				>
 					<ImageOutline class="h-5 w-5" />Выбрать файл
 				</DropdownItem>
+				{#if canPaste}
+					<DropdownItem class="flex min-h-11 w-full items-center gap-2" onclick={pasteFromMenu}>
+						<ClipboardOutline class="h-5 w-5" />Вставить из буфера
+					</DropdownItem>
+				{/if}
 				{#if src && onremove}
 					<DropdownItem
 						class="flex min-h-11 w-full items-center gap-2 text-red-600 dark:text-red-500"
