@@ -2,10 +2,12 @@
 # The build needs neither PostgreSQL nor MinIO: migrations are applied and the
 # bucket is created when the container starts (docker/entrypoint.sh, src/lib/server/init.ts).
 
-# The runtime stage is plain Alpine with the node binary copied from NODE_IMAGE:
-# npm, yarn, corepack and C headers are needed only for the build. The C++ runtime
-# node links against comes from NODE_IMAGE too; both images are on one Alpine release.
-ARG NODE_IMAGE=node:22-alpine3.24
+# The runtime stage is plain Alpine with Node.js from Alpine's own `nodejs` package:
+# it uses the system ICU, OpenSSL and other libraries instead of bundling them, so it
+# is ~30 MB smaller than the official binary. npm, yarn and C headers are needed only
+# for the build. NODE_IMAGE must have the same Node.js major as that package
+# (Alpine 3.24: Node.js 24) and the same Alpine release.
+ARG NODE_IMAGE=node:24-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
 # libssl3 from the base image is enough for the Prisma engines (linux-musl-openssl-3.0.x).
@@ -55,9 +57,15 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM ${ALPINE_IMAGE} AS runtime
-COPY --from=base /usr/local/bin/node /usr/local/bin/node
-COPY --from=base /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/lib/
-RUN addgroup -g 1000 node && adduser -u 1000 -G node -s /bin/sh -D node
+# icu-data-full: the server sorts and formats in Russian (Intl.Collator('ru'),
+# localeCompare(..., 'ru')); the default English-only data would print month names in English.
+RUN apk add --no-cache nodejs icu-data-full \
+    && addgroup -g 1000 node \
+    && adduser -u 1000 -G node -s /bin/sh -D node
+# Native modules and the build were made with NODE_IMAGE's node: the majors must match.
+RUN --mount=type=bind,from=base,source=/usr/local/bin/node,target=/tmp/build-node \
+    test "$(/tmp/build-node -p 'process.versions.node.split(".")[0]')" \
+        = "$(node -p 'process.versions.node.split(".")[0]')"
 WORKDIR /app
 ENV CHECKPOINT_DISABLE=1 \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
