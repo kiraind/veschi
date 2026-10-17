@@ -3,6 +3,7 @@
 	import { Badge, Button, Input } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import { pieces } from '$lib/domain/plural';
+	import { searchKey } from '$lib/domain/search';
 	import Thumb from '$lib/components/Thumb.svelte';
 	import type { PageData } from './$types';
 
@@ -14,10 +15,8 @@
 	let busy = $state(false);
 
 	const shown = $derived.by(() => {
-		const q = name.trim().toLocaleLowerCase('ru');
-		return data.types.filter((t) =>
-			`${t.name}\n${t.description ?? ''}`.toLocaleLowerCase('ru').includes(q)
-		);
+		const q = searchKey(name);
+		return data.types.filter((t) => searchKey(`${t.name}\n${t.description ?? ''}`).includes(q));
 	});
 	const exact = $derived.by(() => {
 		const q = name.trim().toLocaleLowerCase('ru');

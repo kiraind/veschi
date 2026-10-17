@@ -9,6 +9,7 @@
 		paramKindLabel,
 		type ParamDefView
 	} from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -17,7 +18,8 @@
 	let query = $state('');
 	let creating = $state(false);
 	const q = $derived(normalizeParamKey(query));
-	const shown = $derived(data.defs.filter((d) => normalizeParamKey(d.name).includes(q)));
+	const needle = $derived(searchKey(query));
+	const shown = $derived(data.defs.filter((d) => searchKey(d.name).includes(needle)));
 	const exact = $derived(data.defs.some((d) => normalizeParamKey(d.name) === q));
 
 	function usage(d: ParamDefView): string {

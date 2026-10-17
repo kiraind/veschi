@@ -4,6 +4,7 @@
 	import { api, errorText } from '$lib/api';
 	import type { CategoryRef, CategorySummary } from '$lib/domain/categories';
 	import { normalizeParamKey } from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 
 	/**
 	 * Picks several categories: a search field over the existing ones, toggle
@@ -25,13 +26,12 @@
 	});
 
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const exact = $derived((categories ?? []).find((c) => normalizeParamKey(c.name) === q));
 	const shown = $derived.by(() => {
 		const all = categories ?? [];
 		const chosen = all.filter((c) => selected.includes(c.id));
-		const rest = all.filter(
-			(c) => !selected.includes(c.id) && normalizeParamKey(c.name).includes(q)
-		);
+		const rest = all.filter((c) => !selected.includes(c.id) && searchKey(c.name).includes(needle));
 		return [...chosen, ...(q ? rest : rest.slice(0, MAX_SHOWN))];
 	});
 

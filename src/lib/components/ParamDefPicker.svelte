@@ -9,6 +9,7 @@
 		type LinkKind,
 		type ParamDefView
 	} from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 	import ParamDefCreate from './ParamDefCreate.svelte';
 
 	/**
@@ -46,13 +47,14 @@
 	});
 
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const matches = $derived(
 		(defs ?? [])
 			.filter(
 				(d) =>
 					!exclude.includes(d.id) &&
 					(!holder || fitsHolder(d, holder)) &&
-					normalizeParamKey(d.name).includes(q)
+					searchKey(d.name).includes(needle)
 			)
 			.slice(0, q ? 8 : 12)
 	);

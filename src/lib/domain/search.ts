@@ -54,6 +54,19 @@ export function looseText(s: string): string {
 	return s.replace(LOOSE_RE, '');
 }
 
+/**
+ * Search treats ё and е as the same letter: «ёлка» and «елка» find each other.
+ * In SQL the column goes through `translate(…, 'ёЁ', 'еЕ')` (see `foldYoSql`).
+ */
+export function foldYo(s: string): string {
+	return s.replace(/ё/g, 'е').replace(/Ё/g, 'Е');
+}
+
+/** Text for a substring filter in the browser: case, surrounding spaces and ё/е ignored. */
+export function searchKey(s: string): string {
+	return foldYo(s.trim().toLocaleLowerCase('ru'));
+}
+
 /** Longest example that still fits the search field on a phone. */
 const MAX_EXAMPLE_LENGTH = 20;
 

@@ -1,11 +1,12 @@
 import { pieces } from '$lib/domain/plural';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
-import type { ItemType } from '@prisma/client';
+import { Prisma, type ItemType } from '@prisma/client';
 import { z } from 'zod';
 import { barcodeQuery } from '$lib/domain/barcode';
-import { escapeLike } from '$lib/domain/search';
+import { escapeLike, foldYo, likePattern } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
+import { foldYoSql } from '$lib/server/sql';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { storage } from '$lib/server/storage';
@@ -113,14 +114,15 @@ export async function listTypes(
 ): Promise<TypeSummary[]> {
 	const q = query?.trim();
 	const digits = q ? barcodeQuery(q) : null;
+	// Prisma's `contains` can't ignore ё/е, so the text match picks ids in SQL.
+	const textMatches = q ? await typeIdsMatching(q) : [];
 	const types = await db.itemType.findMany({
 		where: {
 			...visibleTo(actor),
 			...(q
 				? {
 						OR: [
-							{ name: { contains: escapeLike(q), mode: 'insensitive' } },
-							{ description: { contains: escapeLike(q), mode: 'insensitive' } },
+							{ id: { in: textMatches } },
 							...(digits ? [{ barcode: { contains: digits } }] : [])
 						]
 					}
@@ -131,6 +133,17 @@ export async function listTypes(
 	});
 	const totals = await activeTotals(types.map((t) => t.id));
 	return types.map((t) => ({ ...typeInfo(t), total: totals.get(t.id) ?? 0 }));
+}
+
+/** Ids of types whose name or description contains `q`, ignoring case and ё/е. */
+async function typeIdsMatching(q: string): Promise<string[]> {
+	const pattern = likePattern(foldYo(q));
+	const rows = await db.$queryRaw<{ id: string }[]>`
+		SELECT id FROM "ItemType"
+		WHERE ${foldYoSql(Prisma.sql`name`)} ILIKE ${pattern}
+			OR ${foldYoSql(Prisma.sql`description`)} ILIKE ${pattern}
+	`;
+	return rows.map((r) => r.id);
 }
 
 /** Pieces of each type in active items: the sum of quantities, not the number of records. */

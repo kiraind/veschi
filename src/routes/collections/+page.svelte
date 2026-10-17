@@ -7,6 +7,7 @@
 	import Thumb from '$lib/components/Thumb.svelte';
 	import { entryCountText, missingText, type CollectionRef } from '$lib/domain/collections';
 	import { normalizeParamKey } from '$lib/domain/params';
+	import { searchKey } from '$lib/domain/search';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -16,10 +17,9 @@
 	let busy = $state(false);
 	let error = $state('');
 	const q = $derived(normalizeParamKey(query));
+	const needle = $derived(searchKey(query));
 	const shown = $derived(
-		data.collections.filter((c) =>
-			normalizeParamKey(`${c.name} ${c.description ?? ''}`).includes(q)
-		)
+		data.collections.filter((c) => searchKey(`${c.name} ${c.description ?? ''}`).includes(needle))
 	);
 	const exact = $derived(data.collections.some((c) => normalizeParamKey(c.name) === q));
 

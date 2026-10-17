@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { likePattern, looseText, parseSearchQuery, searchPlaceholder } from './search';
+import {
+	foldYo,
+	likePattern,
+	looseText,
+	parseSearchQuery,
+	searchKey,
+	searchPlaceholder
+} from './search';
 
 describe('parseSearchQuery', () => {
 	it('keeps plain text', () => {
@@ -65,5 +72,17 @@ describe('looseText', () => {
 	it('keeps a decimal point between digits', () => {
 		expect(looseText('1.5 мм')).toBe('1.5мм');
 		expect(looseText('v.1.5.')).toBe('v1.5');
+	});
+});
+
+describe('foldYo and searchKey', () => {
+	it('reads ё as е, keeping the case', () => {
+		expect(foldYo('Ёлка, ёж и ЕЖ')).toBe('Елка, еж и ЕЖ');
+	});
+
+	it('makes «ёлка» and «Елка» the same filter text', () => {
+		expect(searchKey('  ЁЛКА ')).toBe('елка');
+		expect(searchKey('Ёлочная игрушка').includes(searchKey('елоч'))).toBe(true);
+		expect(searchKey('Елочная игрушка').includes(searchKey('Ёлоч'))).toBe(true);
 	});
 });
