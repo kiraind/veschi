@@ -5,12 +5,14 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="theme-color" content="#f9fafb" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
-		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icons/apple-touch-icon.png" />
 		<script>
 			// «Системная» theme: follow the device's light / dark setting, before the first paint
 			// and whenever it changes. «Светлая» / «Тёмная» are set by the server (hooks.server.ts).
 			// The system bar (theme-color) takes the page background: gray-50 / gray-900.
+			// The light / dark actually shown goes to the «scheme» cookie for the manifest,
+			// whose theme_color colors the status bar of the installed app in Firefox.
 			(function () {
 				var root = document.documentElement;
 				var media = matchMedia('(prefers-color-scheme: dark)');
@@ -20,6 +22,8 @@
 					var dark = theme === 'dark' || (theme === 'system' && media.matches);
 					root.classList.toggle('dark', dark);
 					bar.setAttribute('content', dark ? '#101828' : '#f9fafb');
+					document.cookie =
+						'scheme=' + (dark ? 'dark' : 'light') + '; path=/; max-age=34560000; samesite=lax';
 				}
 				apply();
 				media.addEventListener('change', apply);

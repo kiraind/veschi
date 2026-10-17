@@ -28,6 +28,7 @@ export const TOP_LEVEL_ROUTES = [
 	'items',
 	'login',
 	'logout',
+	'manifest.webmanifest',
 	'params',
 	'scan',
 	'settings',

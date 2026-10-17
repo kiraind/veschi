@@ -16,8 +16,8 @@ export const init: ServerInit = async () => {
 	if (!building) await initApp();
 };
 
-/** Routes reachable without signing in. */
-const PUBLIC_PATHS = ['/login', '/healthz'];
+/** Routes reachable without signing in (the manifest too: the login page links it). */
+const PUBLIC_PATHS = ['/login', '/healthz', '/manifest.webmanifest'];
 
 function isPublic(pathname: string): boolean {
 	return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
