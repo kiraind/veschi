@@ -392,11 +392,6 @@ function withUnit(text: string, u: string | null | undefined): string {
 	return u ? `${text} ${u}` : text;
 }
 
-/** Dates are shown as stored, ISO «2027-05-01» (the same as everywhere in the app). */
-export function formatDate(iso: string): string {
-	return iso;
-}
-
 /** The extension of a file name with its dot («.pdf»), or '' when it has none. */
 export function fileExtension(fileName: string): string {
 	return /[^.]\.[^.\s]{1,10}$/u.exec(fileName)?.[0].slice(1) ?? '';
@@ -451,7 +446,8 @@ export function formatParamValue(
 		case 'FILE':
 			return p.fileName;
 		case 'DATE':
-			return formatDate(p.date);
+			// Shown as stored, ISO «2027-05-01» (the same as everywhere in the app).
+			return p.date;
 		case 'BOOLEAN':
 			return p.value ? 'да' : 'нет';
 		case 'ITEM':

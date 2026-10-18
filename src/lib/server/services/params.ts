@@ -1,6 +1,5 @@
 import type { Param, ParamDef, ParamEnumValue, ParamRef, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { escapeLike } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
@@ -13,7 +12,6 @@ import {
 	hasUnit,
 	isLink,
 	isSymmetric,
-	normalizeParamKey,
 	paramDefInputSchema,
 	paramInputSchema,
 	paramListSchema,
@@ -27,6 +25,7 @@ import { inCategories, type CategoryRef, type ParamLevel } from '$lib/domain/cat
 import { createOptionList, updateOptionList } from './dictionaries';
 import { deleteUnreferencedFiles, isOwnUpload } from './files';
 import { itemSubject, paramDefRef, recordEvent, typeRef } from './history';
+import { assertNameFree } from './names';
 
 /** Body of the PUT …/params endpoints. */
 export const paramsBodySchema = z.object({ params: paramListSchema });
@@ -910,25 +909,11 @@ export async function getParamDef(actor: Actor, id: string): Promise<ParamDefCar
 	};
 }
 
-async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
-	const same = await tx.paramDef.findMany({
-		where: {
-			name: { equals: escapeLike(name), mode: 'insensitive' },
-			...visibleTo(actor),
-			...(exceptId ? { id: { not: exceptId } } : {})
-		},
-		select: { name: true }
-	});
-	if (same.some((d) => normalizeParamKey(d.name) === normalizeParamKey(name))) {
-		throw new ConflictError(`Параметр «${name}» уже есть`);
-	}
-}
-
 export async function createParamDef(actor: Actor, input: unknown): Promise<ParamDefView> {
 	const { options, multiple, holder, inverseName, ...data } = paramDefInputSchema.parse(input);
 	if (options.some((o) => o.id)) throw new ValidationError('У новых вариантов не бывает id');
 	const id = await writeTransaction(async (tx) => {
-		await assertNameFree(actor, data.name, null, tx);
+		await assertNameFree('paramDef', actor, data.name, null, tx);
 		const dictionaryId =
 			data.valueType === 'ENUM'
 				? await createOptionList(actor, { name: data.name, multiple, options }, tx)
@@ -957,7 +942,7 @@ async function createInverse(
 		await tx.paramDef.update({ where: { id: def.id }, data: { inverseId: def.id } });
 		return;
 	}
-	await assertNameFree(actor, inverseName, null, tx);
+	await assertNameFree('paramDef', actor, inverseName, null, tx);
 	const inverse = await tx.paramDef.create({
 		data: { name: inverseName, valueType: holder, inverseId: def.id, ...ownedBy(actor) }
 	});
@@ -984,7 +969,7 @@ export async function updateParamDef(
 	const { options, multiple, holder, inverseName, ...data } = paramDefInputSchema.parse(input);
 	await writeTransaction(async (tx) => {
 		const def = await findDef(actor, id, tx);
-		await assertNameFree(actor, data.name, id, tx);
+		await assertNameFree('paramDef', actor, data.name, id, tx);
 		if (isLink(def.valueType) || isLink(data.valueType)) {
 			assertLinkKept(def, { ...data, holder, inverseName });
 		} else if (
@@ -1010,7 +995,7 @@ export async function updateParamDef(
 		}
 		const inverse = def.inverse && def.inverse.id !== id ? def.inverse : null;
 		if (inverse && inverseName && inverseName !== inverse.name) {
-			await assertNameFree(actor, inverseName, inverse.id, tx);
+			await assertNameFree('paramDef', actor, inverseName, inverse.id, tx);
 			const before = await findDef(actor, inverse.id, tx);
 			await tx.paramDef.update({ where: { id: inverse.id }, data: { name: inverseName } });
 			await recordDefChanges(actor, before, await findDef(actor, inverse.id, tx), tx);

@@ -1,10 +1,8 @@
 import type { Prisma } from '@prisma/client';
-import { escapeLike } from '$lib/domain/search';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
-import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
+import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
-import { normalizeParamKey } from '$lib/domain/params';
 import { diffFields, type EntityRef } from '$lib/domain/history';
 import {
 	MAX_COLLECTION_ENTRIES,
@@ -19,6 +17,7 @@ import {
 	type CollectionSummary
 } from '$lib/domain/collections';
 import { collectionRef, itemRef, recordEvent } from './history';
+import { assertNameFree } from './names';
 import { getPaths } from './paths';
 import { findOrCreateType } from './types';
 
@@ -41,20 +40,6 @@ async function findCollection(actor: Actor, id: string, tx: Tx = db) {
 	const collection = await tx.collection.findFirst({ where: { id, ...visibleTo(actor) } });
 	if (!collection) throw new NotFoundError('Коллекция не найдена');
 	return collection;
-}
-
-async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
-	const same = await tx.collection.findMany({
-		where: {
-			name: { equals: escapeLike(name), mode: 'insensitive' },
-			...visibleTo(actor),
-			...(exceptId ? { id: { not: exceptId } } : {})
-		},
-		select: { name: true }
-	});
-	if (same.some((c) => normalizeParamKey(c.name) === normalizeParamKey(name))) {
-		throw new ConflictError(`Коллекция «${name}» уже есть`);
-	}
 }
 
 /**
@@ -174,7 +159,7 @@ export async function getCollectionCard(actor: Actor, id: string): Promise<Colle
 export async function createCollection(actor: Actor, input: unknown): Promise<CollectionRef> {
 	const { name, description } = collectionInputSchema.parse(input);
 	return writeTransaction(async (tx) => {
-		await assertNameFree(actor, name, null, tx);
+		await assertNameFree('collection', actor, name, null, tx);
 		const collection = await tx.collection.create({
 			data: { name, description, ...ownedBy(actor) }
 		});
@@ -192,7 +177,7 @@ export async function updateCollection(actor: Actor, id: string, input: unknown)
 	const { name, description } = collectionUpdateSchema.parse(input);
 	await writeTransaction(async (tx) => {
 		const collection = await findCollection(actor, id, tx);
-		if (name !== undefined) await assertNameFree(actor, name, id, tx);
+		if (name !== undefined) await assertNameFree('collection', actor, name, id, tx);
 		const updated = await tx.collection.update({ where: { id }, data: { name, description } });
 		const changes = diffFields(
 			{ name: collection.name, description: collection.description },

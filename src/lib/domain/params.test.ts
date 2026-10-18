@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	formatDate,
 	fileExtension,
 	fileNameFromTemplate,
 	formatFileSize,
@@ -267,8 +266,7 @@ describe('formatting', () => {
 		).toBe('Блок питания 12 В, Кабель');
 	});
 
-	it('formats dates and sizes', () => {
-		expect(formatDate('2026-12-31')).toBe('2026-12-31');
+	it('formats sizes', () => {
 		expect(formatFileSize(500)).toBe('500 Б');
 		expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2,5 МБ');
 	});
