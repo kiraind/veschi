@@ -64,11 +64,6 @@ export function formatCode(code: string): string {
 	return `${code.slice(0, 3)}-${code.slice(3)}`;
 }
 
-/** True when the string is a stored-form code (also used as the SvelteKit param matcher). */
-export function isCode(value: string): boolean {
-	return CODE_RE.test(value.toUpperCase());
-}
-
 /** Number of positions in which two stored-form codes differ. */
 export function hammingDistance(a: string, b: string): number {
 	let d = 0;
@@ -85,14 +80,6 @@ export function codeNeighbors(code: string): string[] {
 		}
 	}
 	return result;
-}
-
-/** An existing code one typo away from `code` (for «Возможно, K7M-4QX?»), or null. */
-export function findSimilar(code: string, existing: Iterable<string>): string | null {
-	for (const other of existing) {
-		if (hammingDistance(code, other) === 1) return other;
-	}
-	return null;
 }
 
 /** Returns a uniformly random integer in [0, max). */

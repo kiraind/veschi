@@ -379,9 +379,21 @@ describe('stickers', () => {
 			const box = await item('Коробка');
 			await orderSticker(actor, box.id, 40);
 			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id, width: 40 }]);
-			await orderSticker(actor, box.id, 20);
 			await orderSticker(actor, box.id, 40);
 			expect(await events(box.id)).toEqual(['sticker.ordered']);
+			await orderSticker(actor, box.id, 20);
+			await orderSticker(actor, box.id, 40);
+			expect(await events(box.id)).toEqual([
+				'sticker.ordered',
+				'sticker.widthChanged',
+				'sticker.widthChanged'
+			]);
+			expect(
+				await db.historyEvent.findFirst({
+					where: { kind: 'sticker.widthChanged' },
+					orderBy: { createdAt: 'asc' }
+				})
+			).toMatchObject({ data: { before: 40, after: 20 } });
 			const batch = await issueBatch(actor, {
 				blanks: { 20: 1 },
 				orderItemIds: [box.id],
@@ -469,6 +481,16 @@ describe('stickers', () => {
 			]);
 		});
 
+		it('an edited caption equal to the new name after a rename is not shown as edited', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			await setStickerOrderCaption(actor, box.id, 'Провода');
+			await db.item.update({ where: { id: box.id }, data: { name: 'Провода' } });
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ caption: 'Провода', name: 'Провода', customCaption: false }
+			]);
+		});
+
 		it('cancelling or binding by hand forgets the edited caption', async () => {
 			const box = await item('Коробка');
 			await orderSticker(actor, box.id);
@@ -525,6 +547,43 @@ describe('stickers', () => {
 			expect(await getItemSticker(box.id)).toBeNull();
 			const event = await db.historyEvent.findFirst({ where: { kind: 'stickers.unprinted' } });
 			expect(event).toMatchObject({ data: { count: 130, ordered: 1 }, refIds: [box.id] });
+		});
+
+		it("records in each item's history which of its stickers was taken back", async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			const batch = await issueBatch(actor, { blanks: {}, orderItemIds: [box.id], fill: null });
+			const [first] = await batchStickers(batch.id);
+			await unprintBatch(actor, batch.id);
+			expect(
+				await db.historyEvent.findFirst({ where: { kind: 'sticker.unprinted' } })
+			).toMatchObject({ subjectId: box.id, subjectName: 'Коробка', data: { code: first!.code } });
+		});
+
+		it('a caption that was the name follows a rename made after printing', async () => {
+			const box = await item('Старое');
+			await orderSticker(actor, box.id);
+			const batch = await issueBatch(actor, { blanks: {}, orderItemIds: [box.id], fill: null });
+			await db.item.update({ where: { id: box.id }, data: { name: 'Новое' } });
+			await unprintBatch(actor, batch.id);
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ caption: 'Новое', customCaption: false }
+			]);
+			expect(await db.item.findUnique({ where: { id: box.id } })).toMatchObject({
+				stickerCaption: null
+			});
+		});
+
+		it('orders come back in their print order, not in item creation order', async () => {
+			const later = await item('Б');
+			const earlier = await item('А');
+			await orderSticker(actor, earlier.id);
+			await orderSticker(actor, later.id);
+			const orderItemIds = (await listStickerOrders(actor)).map((o) => o.itemId);
+			expect(orderItemIds).toEqual([earlier.id, later.id]);
+			const batch = await issueBatch(actor, { blanks: {}, orderItemIds, fill: null });
+			await unprintBatch(actor, batch.id);
+			expect((await listStickerOrders(actor)).map((o) => o.itemId)).toEqual([earlier.id, later.id]);
 		});
 
 		it('refuses once a sticker of the batch is in use; other users cannot touch it', async () => {
