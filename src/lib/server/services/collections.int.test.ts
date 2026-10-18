@@ -152,6 +152,10 @@ describe('collections', () => {
 		await discard(actor, loose.id);
 		const [line] = (await getCollectionCard(actor, scales.id)).entries;
 		expect(line?.stock).toMatchObject({ kind: 'item', archived: true });
+		// The kept line may grow; an archived item cannot start a new one.
+		await addEntry(actor, scales.id, { itemId: loose.id });
+		const camp = await createCollection(actor, { name: 'Поход' });
+		await expect(addEntry(actor, camp.id, { itemId: loose.id })).rejects.toThrow('Вещь в архиве');
 		await expect(purge(actor, loose.id)).rejects.toThrow('в коллекции «Умные весы»');
 
 		const planned = await createType(actor, { name: 'Плата' });

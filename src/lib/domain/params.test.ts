@@ -317,6 +317,10 @@ describe('file names', () => {
 		// The template may end with the extension itself.
 		expect(fileNameFromTemplate('Чек {name}.pdf', 'Дрель', 'IMG_1.pdf')).toBe('Чек Дрель.pdf');
 		expect(fileNameFromTemplate('Чек\n {name}', 'Дрель', 'a.jpg')).toBe('Чек Дрель.jpg');
+		// `$` sequences in the name stay as they are (no replacement patterns).
+		expect(fileNameFromTemplate('Инструкция {name}', "Касса $$ и $& и $` $'", 'a.pdf')).toBe(
+			"Инструкция Касса $$ и $& и $` $'.pdf"
+		);
 	});
 
 	it('keeps the file own name without a template or when nothing is left of it', () => {

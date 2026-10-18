@@ -116,6 +116,9 @@ describe('categories', () => {
 		expect(oldCard.missingTypeParams.map((m) => m.def.name)).toEqual(['Калорийность']);
 		expect((await getItemCard(actor, fresh.id)).missingItemParams).toEqual([]);
 
+		// Somebody else's record of the type is not counted.
+		const other = await createTestActor('other');
+		await db.item.create({ data: { ownerId: other.userId, typeId: milk.id, quantity: 7 } });
 		const card = await getCategoryCard(actor, food.id);
 		expect(card.types).toEqual([
 			{ id: milk.id, name: 'Молоко', total: 2, missing: ['Калорийность'] }

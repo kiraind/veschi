@@ -46,7 +46,7 @@ export interface Change {
 export interface ParamChange {
 	/** Parameter name. */
 	name: string;
-	change: 'added' | 'changed' | 'removed';
+	change: 'added' | 'changed' | 'removed' | 'moved';
 }
 
 /** A required parameter of a category: added, removed or moved to the other level. */
@@ -367,7 +367,8 @@ const COLLECTION_CHANGE: Record<CollectionEntryChange['change'], string> = {
 const PARAM_CHANGE: Record<ParamChange['change'], string> = {
 	added: 'добавлен',
 	changed: 'изменён',
-	removed: 'удалён'
+	removed: 'удалён',
+	moved: 'перемещён в списке'
 };
 
 /** Builds the text of an event; `live` decides which names become links. */

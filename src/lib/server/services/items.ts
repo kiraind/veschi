@@ -319,7 +319,7 @@ export async function moveItem(
 		const subject = await itemSubject(tx, item.id);
 		const from = await placeRef(tx, item.parentId);
 		const to = await placeRef(tx, parentId);
-		const resultId = await placePart(tx, item, count, { parentId, ...notTaken });
+		const resultId = await placePart(actor, tx, item, count, { parentId, ...notTaken });
 		await recordEvent(tx, actor, {
 			kind: 'item.moved',
 			subject,

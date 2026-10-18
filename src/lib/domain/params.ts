@@ -66,7 +66,8 @@ export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
 /** Longest name of a FILE parameter's file. */
 export const MAX_FILE_NAME = 255;
 
-const MAX_PARAMS = 100;
+/** Most parameter values one type or item may hold. */
+export const MAX_PARAMS = 100;
 const MAX_OPTIONS = 200;
 
 const unit = z.pipe(
@@ -413,7 +414,7 @@ export function fileNameFromTemplate(
 	fileName: string
 ): string {
 	const base = (template ?? '')
-		.replaceAll(/\{name\}/giu, holderName.trim())
+		.replaceAll(/\{name\}/giu, () => holderName.trim())
 		// eslint-disable-next-line no-control-regex
 		.replaceAll(/[\u0000-\u001f\s]+/gu, ' ')
 		.trim();

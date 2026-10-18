@@ -61,7 +61,7 @@ export async function categoriesOfTypes(
 		orderBy: { category: { name: 'asc' } }
 	});
 	const defIds = [...new Set(links.flatMap((l) => l.category.params.map((p) => p.defId)))];
-	const defs = await viewsOf(defIds, tx);
+	const defs = await viewsOf(null, defIds, tx);
 	for (const { typeId, category } of links) {
 		const entry = result.get(typeId);
 		if (!entry) continue;
@@ -81,10 +81,14 @@ export async function categoriesOfTypes(
 	return result;
 }
 
-async function viewsOf(defIds: string[], tx: Tx): Promise<Map<string, ParamDefView>> {
+async function viewsOf(
+	actor: Actor | null,
+	defIds: string[],
+	tx: Tx
+): Promise<Map<string, ParamDefView>> {
 	if (defIds.length === 0) return new Map();
 	const defs = await tx.paramDef.findMany({ where: { id: { in: defIds } }, include: defInclude });
-	return new Map((await defViews(defs, tx)).map((d) => [d.id, d]));
+	return new Map((await defViews(actor, defs, tx)).map((d) => [d.id, d]));
 }
 
 /**
@@ -186,6 +190,7 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 		})
 	]);
 	const defs = await viewsOf(
+		actor,
 		rows.map((r) => r.defId),
 		db
 	);
@@ -223,7 +228,11 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 	const sums = links.length
 		? await db.item.groupBy({
 				by: ['typeId'],
-				where: { typeId: { in: links.map((l) => l.typeId) }, status: 'ACTIVE' },
+				where: {
+					typeId: { in: links.map((l) => l.typeId) },
+					status: 'ACTIVE',
+					...visibleTo(actor)
+				},
 				_sum: { quantity: true }
 			})
 		: [];

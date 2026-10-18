@@ -212,7 +212,7 @@ export async function take(
 		};
 		const subject = await itemSubject(tx, item.id);
 		const from = await placeRef(tx, item.parentId);
-		const result = await placePart(tx, item, count, taken, { rememberSource: true });
+		const result = await placePart(actor, tx, item, count, taken, { rememberSource: true });
 		await tx.user.update({ where: { id: actor.userId }, data: { lastWorkbenchId: bench.id } });
 		await recordEvent(tx, actor, {
 			kind: 'item.taken',
@@ -447,7 +447,7 @@ export async function returnHome(
 				return { itemId: source.id, merged: true };
 			}
 		}
-		const id = await placePart(tx, item, count, { parentId: item.homeId, ...notTaken });
+		const id = await placePart(actor, tx, item, count, { parentId: item.homeId, ...notTaken });
 		await returned(id);
 		return { itemId: id, merged: false };
 	});
@@ -485,7 +485,10 @@ export async function relocate(
 		}
 		const subject = await itemSubject(tx, item.id);
 		const from = await placeRef(tx, item.parentId);
-		const resultId = await placePart(tx, item, count, { parentId: containerId, ...notTaken });
+		const resultId = await placePart(actor, tx, item, count, {
+			parentId: containerId,
+			...notTaken
+		});
 		await recordEvent(tx, actor, {
 			kind: 'item.moved',
 			subject,

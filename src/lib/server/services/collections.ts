@@ -245,10 +245,12 @@ export async function addEntry(
 	return writeTransaction(async (tx) => {
 		const collection = await findCollection(actor, collectionId, tx);
 		let target: { typeId: string } | { itemId: string };
+		let archived = false;
 		if (itemId) {
 			const item = await tx.item.findFirst({ where: { id: itemId, ...visibleTo(actor) } });
 			if (!item) throw new NotFoundError('Вещь не найдена');
 			if (item.isWorkbench) throw new ValidationError('Рабочий стол нельзя добавить в коллекцию');
+			archived = item.status !== 'ACTIVE';
 			target = { itemId };
 		} else if (typeId) {
 			const type = await tx.itemType.findFirst({ where: { id: typeId, ...visibleTo(actor) } });
@@ -262,6 +264,8 @@ export async function addEntry(
 			where: { collectionId, ...target },
 			include: entryInclude
 		});
+		// A line kept from before may stay (and grow) after its item went to the archive.
+		if (archived && !existing) throw new ValidationError('Вещь в архиве');
 		let row: EntryRow;
 		if (existing) {
 			row = await tx.collectionEntry.update({
