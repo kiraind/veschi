@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isGatewayStatus, markOfflineCopy, offlineCopyText, offlinePage } from './offline';
+import {
+	errorPageText,
+	gatewayAnswerText,
+	isGatewayStatus,
+	markOfflineCopy,
+	offlineCopyText,
+	offlinePage
+} from './offline';
 
 describe('isGatewayStatus', () => {
 	it.each([
@@ -52,5 +59,57 @@ describe('offlinePage', () => {
 	it('reloads by itself only when the server was not merely slow', () => {
 		expect(offlinePage('network')).toContain('if (true || !navigator.onLine)');
 		expect(offlinePage('timeout')).toContain('if (false || !navigator.onLine)');
+	});
+});
+
+describe('errorPageText', () => {
+	it('keeps only the text of an HTML error page', () => {
+		const html =
+			'<html><head><title>503 Service Temporarily Unavailable</title><style>body{}</style></head>' +
+			'<body><center><h1>503 Service Temporarily Unavailable</h1></center><hr><center>nginx</center></body></html>';
+		expect(errorPageText(html)).toBe(
+			'503 Service Temporarily Unavailable 503 Service Temporarily Unavailable nginx'
+		);
+	});
+
+	it('cuts a long page', () => {
+		expect(errorPageText('a'.repeat(400))).toBe(`${'a'.repeat(300)}…`);
+	});
+});
+
+describe('gatewayAnswerText', () => {
+	it('names the status, the proxy and what it said', () => {
+		expect(
+			gatewayAnswerText({
+				status: 503,
+				statusText: 'Service Unavailable',
+				server: 'nginx',
+				body: 'no healthy upstream'
+			})
+		).toBe('Ответ 503 Service Unavailable от nginx: no healthy upstream');
+	});
+
+	it('works without the details', () => {
+		expect(gatewayAnswerText({ status: 502, statusText: '', server: null, body: '' })).toBe(
+			'Ответ 502'
+		);
+	});
+});
+
+describe('offlinePage with the proxy answer', () => {
+	it('shows it escaped', () => {
+		const page = offlinePage('down', {
+			status: 503,
+			statusText: 'Service Unavailable',
+			server: null,
+			body: 'a <b> & "c"'
+		});
+		expect(page).toContain(
+			'<p class="answer">Ответ 503 Service Unavailable: a &lt;b&gt; &amp; &quot;c&quot;</p>'
+		);
+	});
+
+	it('has no answer line without one', () => {
+		expect(offlinePage('down')).not.toContain('class="answer"');
 	});
 });

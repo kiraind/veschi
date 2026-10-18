@@ -10,6 +10,7 @@ import {
 } from '$lib/server/auth/session';
 import { ForbiddenError, UnauthorizedError } from '$lib/server/errors';
 import { initApp } from '$lib/server/init';
+import { withRequestLog } from '$lib/server/request-log';
 import { THEME_COOKIE, parseTheme } from '$lib/domain/theme';
 
 export const init: ServerInit = async () => {
@@ -39,7 +40,7 @@ function isApi(pathname: string): boolean {
 	return pathname.startsWith('/api/') || pathname.startsWith('/files/');
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
+export const handle: Handle = withRequestLog(async ({ event, resolve }) => {
 	event.locals.user = null;
 	event.locals.actor = null;
 	event.locals.sessionId = null;
@@ -77,4 +78,4 @@ export const handle: Handle = async ({ event, resolve }) => {
 	});
 	// A server-side fetch of the app itself reads the body as is.
 	return event.isSubRequest ? response : compress(event.request, response);
-};
+});

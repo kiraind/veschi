@@ -17,9 +17,11 @@
  */
 import { build, files, version } from '$service-worker';
 import {
+	errorPageText,
 	isGatewayStatus,
 	markOfflineCopy,
 	offlinePage,
+	type GatewayAnswer,
 	type OfflineReason
 } from '$lib/domain/offline';
 
@@ -67,13 +69,17 @@ async function fromAssets(request: Request): Promise<Response> {
 }
 
 /** The saved copy of a page, marked for ConnectionNotice, or the «Нет связи» page. */
-async function fallbackPage(request: Request, reason: OfflineReason): Promise<Response> {
+async function fallbackPage(
+	request: Request,
+	reason: OfflineReason,
+	answer?: GatewayAnswer
+): Promise<Response> {
 	const cached = await caches.match(request, { cacheName: PAGES_CACHE });
 	if (cached) {
 		const html = markOfflineCopy(await cached.text(), new Date(cached.headers.get('date') ?? ''));
 		return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 	}
-	return new Response(offlinePage(reason), {
+	return new Response(offlinePage(reason, answer), {
 		status: 503,
 		headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
 	});
@@ -91,6 +97,16 @@ async function savePage(request: Request, response: Response): Promise<void> {
 	}
 }
 
+async function gatewayAnswer(response: Response): Promise<GatewayAnswer> {
+	const body = await response.text().catch(() => '');
+	return {
+		status: response.status,
+		statusText: response.statusText,
+		server: response.headers.get('server'),
+		body: errorPageText(body)
+	};
+}
+
 async function networkFirstPage(event: FetchEvent): Promise<Response> {
 	const { request } = event;
 	const network = fetch(request).then((response) => {
@@ -106,9 +122,10 @@ async function networkFirstPage(event: FetchEvent): Promise<Response> {
 	try {
 		const response = await Promise.race([network, timeout]);
 		if (response === 'timeout') return fallbackPage(request, 'timeout');
-		// Only the proxy answers these (the app never does), and its error page says nothing useful.
+		// Only the proxy answers these (the app never does). Its error page is replaced,
+		// but what it said stays on ours: that is all there is to find the cause by.
 		if (isGatewayStatus(response.status)) {
-			return fallbackPage(request, 'down');
+			return fallbackPage(request, 'down', await gatewayAnswer(response));
 		}
 		return response;
 	} catch {
