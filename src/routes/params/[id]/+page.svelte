@@ -1,8 +1,8 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Badge, Button } from 'flowbite-svelte';
-	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import ParamDefFields from '$lib/components/ParamDefFields.svelte';
@@ -85,12 +85,7 @@
 
 <svelte:head><title>{def.name} — veschi</title></svelte:head>
 
-<p class="mb-2">
-	<a
-		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/params"><ArrowLeftOutline class="h-4 w-4" />Параметры</a
-	>
-</p>
+<BackTrail fallback={{ href: '/params', title: 'Параметры' }} />
 <h1 class="mb-3 text-2xl font-bold break-words">{def.name}</h1>
 
 <form class="flex flex-col gap-3" onsubmit={save}>

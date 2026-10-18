@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import { Button, Card } from 'flowbite-svelte';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import type { PageData } from './$types';
@@ -9,6 +10,8 @@
 </script>
 
 <svelte:head><title>Наклейка {code} — veschi</title></svelte:head>
+
+<BackTrail />
 
 {#if result.status === 'written_off'}
 	<h1 class="mb-3 text-2xl font-bold">Наклейка списана</h1>

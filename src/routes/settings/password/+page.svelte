@@ -1,7 +1,7 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
-	import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import type { PageData } from './$types';
 
@@ -38,12 +38,7 @@
 
 <svelte:head><title>Смена пароля — veschi</title></svelte:head>
 
-<p class="mb-2">
-	<a
-		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/settings"><ArrowLeftOutline class="h-4 w-4" />Настройки</a
-	>
-</p>
+<BackTrail fallback={{ href: '/settings', title: 'Настройки' }} />
 <h1 class="mb-3 text-2xl font-bold">Смена пароля</h1>
 
 <Card class="max-w-none p-4">

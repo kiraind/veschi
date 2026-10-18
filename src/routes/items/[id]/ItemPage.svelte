@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { api, errorText } from '$lib/api';
@@ -178,6 +179,8 @@
 
 <svelte:head><title>{item.displayName} — veschi</title></svelte:head>
 
+<BackTrail />
+
 {#if !active}
 	<Notice tone="danger" class="mb-4">
 		<p class="font-semibold">В архиве</p>
@@ -186,11 +189,13 @@
 	</Notice>
 {/if}
 
+<!-- Where the item lies, in gray: the blue links above are where the user came from. -->
 <p class="text-sm text-gray-500 dark:text-gray-400">
 	<!-- An archived item lies nowhere: its path is where it was. -->
 	{#if !active}<span>Лежала:</span>{/if}<PathTrail
 		path={card.path}
 		emptyText={active ? 'Верхний уровень' : 'верхний уровень'}
+		muted
 	/>
 </p>
 

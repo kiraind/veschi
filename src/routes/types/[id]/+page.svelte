@@ -1,9 +1,10 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import HistoryLink from '$lib/components/HistoryLink.svelte';
 	import { pieces } from '$lib/domain/plural';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Badge, Button, Checkbox, Helper } from 'flowbite-svelte';
-	import { ArrowLeftOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import { PlusOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import ParamSection from '$lib/components/ParamSection.svelte';
 	import Description from '$lib/components/Description.svelte';
@@ -73,12 +74,7 @@
 
 <svelte:head><title>{type.name} — veschi</title></svelte:head>
 
-<p class="mb-2">
-	<a
-		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/types"><ArrowLeftOutline class="h-4 w-4" />Типы вещей</a
-	>
-</p>
+<BackTrail fallback={{ href: '/types', title: 'Типы вещей' }} />
 <!-- Named by the text alone: the pen is not part of the heading's name. -->
 <h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
 	<span id="page-title">{type.name}</span><EditButton

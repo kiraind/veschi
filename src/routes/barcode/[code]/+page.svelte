@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import { goto } from '$app/navigation';
 	import { Button, Card } from 'flowbite-svelte';
 	import { PlusOutline } from 'flowbite-svelte-icons';
@@ -37,6 +38,8 @@
 <svelte:head>
 	<title>Штрихкод {code ? formatBarcode(code) : data.input} — veschi</title>
 </svelte:head>
+
+<BackTrail />
 
 {#if result.status === 'unknown'}
 	<h1 class="mb-3 text-2xl font-bold">Новый штрихкод</h1>

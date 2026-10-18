@@ -1,9 +1,10 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import RequiredMark from '$lib/components/RequiredMark.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { api, errorText } from '$lib/api';
 	import { Button, Card, Input, Label } from 'flowbite-svelte';
-	import { ArrowLeftOutline, MapPinOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import { MapPinOutline, PlusOutline } from 'flowbite-svelte-icons';
 	import WorkbenchIcon from '$lib/components/WorkbenchIcon.svelte';
 	import {
 		WORKBENCH_ICONS,
@@ -127,14 +128,7 @@
 
 <svelte:head><title>Рабочие столы — veschi</title></svelte:head>
 
-<p class="mb-3">
-	<a
-		href="/workbench"
-		class="inline-flex min-h-10 items-center text-sm font-medium text-primary-700 hover:underline dark:text-primary-500"
-	>
-		<ArrowLeftOutline class="me-1 h-4 w-4" />Рабочий стол
-	</a>
-</p>
+<BackTrail fallback={{ href: '/workbench', title: 'Рабочий стол' }} />
 <h1 class="mb-3 text-2xl font-bold">Рабочие столы</h1>
 <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
 	Если у стола есть зона, при «На стол» выберется стол, в зоне которого вы сейчас. Вне зон —

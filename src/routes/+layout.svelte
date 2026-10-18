@@ -73,8 +73,8 @@
 		}`;
 
 	// Each section keeps its own stack of pages; item cards and other shared pages light up
-	// the tab they were opened from (see $lib/tabs.svelte).
-	tabs.track([...primary, ...secondary].map((l) => l.href).concat('/settings'));
+	// the tab they were opened from, and Back stays in the tab (see $lib/tabs.svelte).
+	tabs.track([...primary, ...secondary, { href: '/settings', label: 'Настройки' }]);
 
 	const isActive = (href: string) => tabs.active() === href;
 	/** For Flowbite's own highlighting: the link of the active tab. */
