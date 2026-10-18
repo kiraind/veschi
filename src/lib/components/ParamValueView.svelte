@@ -7,6 +7,8 @@
 	 * The value of one stored parameter: links for URLs, files and references.
 	 * Long links show their beginning with the domain, long file names their
 	 * beginning and end with the extension; the full value is in the tooltip.
+	 * A file link carries its name: files are cached for good, and a renamed
+	 * file has to be downloaded under its new name.
 	 */
 	let { param }: { param: ParamView } = $props();
 </script>
@@ -22,7 +24,7 @@
 {:else if param.valueType === 'FILE'}
 	<a
 		class="text-primary-700 hover:underline dark:text-primary-400"
-		href="/files/{param.fileKey}"
+		href="/files/{param.fileKey}?name={encodeURIComponent(param.fileName)}"
 		target="_blank"
 		title={param.fileName}>{shortenFileName(param.fileName)}</a
 	>

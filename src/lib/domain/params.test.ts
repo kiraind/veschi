@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	formatDate,
+	fileExtension,
+	fileNameFromTemplate,
 	formatFileSize,
 	formatNumber,
 	formatParamValue,
@@ -103,6 +105,7 @@ describe('paramDefInputSchema', () => {
 			name: 'вес',
 			valueType: 'NUMBER',
 			unit: null,
+			fileNameTemplate: null,
 			multiple: false,
 			options: [],
 			holder: null,
@@ -129,6 +132,7 @@ describe('paramDefInputSchema', () => {
 			name: 'цвет',
 			valueType: 'STRING',
 			unit: null,
+			fileNameTemplate: null,
 			multiple: false,
 			options: [],
 			holder: null,
@@ -149,6 +153,7 @@ describe('paramDefInputSchema', () => {
 			name: 'интерфейсы',
 			valueType: 'ENUM',
 			unit: null,
+			fileNameTemplate: null,
 			multiple: true,
 			options: [{ label: 'USB' }, { label: 'Bluetooth' }],
 			holder: null,
@@ -292,5 +297,62 @@ describe('inheritedParams', () => {
 		const typeParams = [{ defId: 'color' }, { defId: 'weight' }];
 		expect(inheritedParams(typeParams, [])).toEqual(typeParams);
 		expect(inheritedParams([], [{ defId: 'color' }])).toEqual([]);
+	});
+});
+
+describe('file names', () => {
+	it('finds the extension of a file name', () => {
+		expect(fileExtension('manual.pdf')).toBe('.pdf');
+		expect(fileExtension('archive.tar.gz')).toBe('.gz');
+		expect(fileExtension('README')).toBe('');
+		expect(fileExtension('.bashrc')).toBe('');
+		expect(fileExtension('scan. pdf')).toBe('');
+	});
+
+	it('names an uploaded file by the template, keeping its extension', () => {
+		expect(fileNameFromTemplate('Инструкция {name}', ' Дрель Bosch ', 'manual_v2.PDF')).toBe(
+			'Инструкция Дрель Bosch.PDF'
+		);
+		expect(fileNameFromTemplate('{name} — {NAME}', 'Дрель', 'scan')).toBe('Дрель — Дрель');
+		// The template may end with the extension itself.
+		expect(fileNameFromTemplate('Чек {name}.pdf', 'Дрель', 'IMG_1.pdf')).toBe('Чек Дрель.pdf');
+		expect(fileNameFromTemplate('Чек\n {name}', 'Дрель', 'a.jpg')).toBe('Чек Дрель.jpg');
+	});
+
+	it('keeps the file own name without a template or when nothing is left of it', () => {
+		expect(fileNameFromTemplate(null, 'Дрель', 'manual.pdf')).toBe('manual.pdf');
+		expect(fileNameFromTemplate('', 'Дрель', 'manual.pdf')).toBe('manual.pdf');
+		expect(fileNameFromTemplate('{name}', '  ', 'manual.pdf')).toBe('manual.pdf');
+	});
+
+	it('fits the name into the limit, extension included', () => {
+		const name = fileNameFromTemplate('{name}', 'я'.repeat(300), 'a.pdf');
+		expect(name).toHaveLength(255);
+		expect(name.endsWith('я.pdf')).toBe(true);
+	});
+
+	it('keeps a default file name only for FILE parameters', () => {
+		const parse = (valueType: 'FILE' | 'STRING', fileNameTemplate: string) =>
+			paramDefInputSchema.parse({ name: 'Инструкция', valueType, fileNameTemplate })
+				.fileNameTemplate;
+		expect(parse('FILE', ' Инструкция {name} ')).toBe('Инструкция {name}');
+		expect(parse('FILE', ' ')).toBe(null);
+		expect(parse('STRING', 'Инструкция {name}')).toBe(null);
+	});
+
+	it('trims a file value name and rejects an empty one', () => {
+		const file = {
+			defId: 'c'.repeat(25),
+			valueType: 'FILE',
+			fileKey: 'k',
+			fileMime: 'x/y',
+			fileSize: 1
+		};
+		expect(paramInputSchema.parse({ ...file, fileName: ' a.pdf ' })).toMatchObject({
+			fileName: 'a.pdf'
+		});
+		expect(paramInputSchema.safeParse({ ...file, fileName: '  ' }).error?.issues[0]?.message).toBe(
+			'Укажите имя файла'
+		);
 	});
 });

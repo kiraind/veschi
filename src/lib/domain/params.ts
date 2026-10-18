@@ -63,11 +63,20 @@ export const MAX_LINK_TARGETS = 100;
 /** Largest file a FILE parameter may hold. */
 export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
 
+/** Longest name of a FILE parameter's file. */
+export const MAX_FILE_NAME = 255;
+
 const MAX_PARAMS = 100;
 const MAX_OPTIONS = 200;
 
 const unit = z.pipe(
 	z.nullish(z.string().check(z.trim(), z.maxLength(20, 'Единица длиннее 20 символов'))),
+	z.transform((v) => v || null)
+);
+const fileNameTemplate = z.pipe(
+	z.nullish(
+		z.string().check(z.trim(), z.maxLength(200, 'Имя файла по умолчанию длиннее 200 символов'))
+	),
 	z.transform((v) => v || null)
 );
 const optionLabel = z.string().check(z.trim(), z.minLength(1, 'Пустой вариант'), z.maxLength(100));
@@ -121,6 +130,7 @@ export const paramDefInputSchema = z.pipe(
 			name: paramNameSchema,
 			valueType: z.enum(PARAM_VALUE_TYPES),
 			unit,
+			fileNameTemplate,
 			multiple: z._default(z.boolean(), false),
 			options: z._default(
 				z
@@ -186,6 +196,7 @@ export const paramDefInputSchema = z.pipe(
 	z.transform((v) => ({
 		...v,
 		unit: hasUnit(v.valueType) ? v.unit : null,
+		fileNameTemplate: v.valueType === 'FILE' ? v.fileNameTemplate : null,
 		multiple: v.valueType === 'ENUM' ? v.multiple : false,
 		options: v.valueType === 'ENUM' ? v.options : [],
 		holder: isLink(v.valueType) ? v.holder : null,
@@ -208,6 +219,8 @@ export interface ParamDefView {
 	valueType: ParamValueType;
 	/** NUMBER, RANGE. */
 	unit: string | null;
+	/** FILE: name given to an uploaded file, see `fileNameFromTemplate`. */
+	fileNameTemplate: string | null;
 	/** ENUM: several options can be chosen. */
 	multiple: boolean;
 	/** ENUM: options in list order; usage = values that have it chosen. */
@@ -244,7 +257,13 @@ const valueVariants = {
 	},
 	FILE: {
 		fileKey: z.string().check(z.minLength(1), z.maxLength(500)),
-		fileName: z.string().check(z.minLength(1), z.maxLength(255)),
+		fileName: z
+			.string()
+			.check(
+				z.trim(),
+				z.minLength(1, 'Укажите имя файла'),
+				z.maxLength(MAX_FILE_NAME, `Имя файла длиннее ${MAX_FILE_NAME} символов`)
+			),
 		fileMime: z.string().check(z.minLength(1), z.maxLength(255)),
 		fileSize: z.number().check(z.int(), z.gte(0), z.lte(MAX_PARAM_FILE_SIZE))
 	},
@@ -375,6 +394,35 @@ function withUnit(text: string, u: string | null | undefined): string {
 /** Dates are shown as stored, ISO «2027-05-01» (the same as everywhere in the app). */
 export function formatDate(iso: string): string {
 	return iso;
+}
+
+/** The extension of a file name with its dot («.pdf»), or '' when it has none. */
+export function fileExtension(fileName: string): string {
+	return /[^.]\.[^.\s]{1,10}$/u.exec(fileName)?.[0].slice(1) ?? '';
+}
+
+/**
+ * Name of a file uploaded to a parameter: its template with `{name}` replaced
+ * by the name of the item or the type the value is for, plus the extension of
+ * the uploaded file («Инструкция {name}» + «manual.pdf» → «Инструкция Дрель
+ * Bosch.pdf»). No template, or nothing left of it → the file's own name.
+ */
+export function fileNameFromTemplate(
+	template: string | null | undefined,
+	holderName: string,
+	fileName: string
+): string {
+	const base = (template ?? '')
+		.replaceAll(/\{name\}/giu, holderName.trim())
+		// eslint-disable-next-line no-control-regex
+		.replaceAll(/[\u0000-\u001f\s]+/gu, ' ')
+		.trim();
+	if (!base) return fileName;
+	const ext = fileExtension(fileName);
+	const named = base.toLocaleLowerCase('ru').endsWith(ext.toLocaleLowerCase('ru'))
+		? base.slice(0, base.length - ext.length)
+		: base;
+	return named.slice(0, MAX_FILE_NAME - ext.length).trimEnd() + ext;
 }
 
 /** File size for people: «2,4 МБ». */

@@ -22,6 +22,8 @@
 	// svelte-ignore state_referenced_locally
 	let unit = $state(data.card.def.unit ?? '');
 	// svelte-ignore state_referenced_locally
+	let fileNameTemplate = $state(data.card.def.fileNameTemplate ?? '');
+	// svelte-ignore state_referenced_locally
 	let multiple = $state(data.card.def.multiple);
 	// svelte-ignore state_referenced_locally
 	let options = $state(data.card.def.options.map((o) => ({ ...o })));
@@ -55,6 +57,7 @@
 				name,
 				valueType,
 				unit,
+				fileNameTemplate,
 				multiple,
 				// A new option left empty (Enter adds one) is not an option.
 				options: options
@@ -95,6 +98,7 @@
 		bind:name
 		bind:valueType
 		bind:unit
+		bind:fileNameTemplate
 		bind:multiple
 		bind:options
 		bind:holder

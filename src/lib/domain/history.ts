@@ -28,6 +28,7 @@ export type ChangeField =
 	| 'description'
 	| 'isContainer'
 	| 'unit'
+	| 'fileNameTemplate'
 	| 'valueType'
 	| 'multiple'
 	| 'options'
@@ -315,6 +316,7 @@ const FIELD_LABELS: Record<ChangeField, string> = {
 	description: 'Описание',
 	isContainer: 'Контейнер',
 	unit: 'Единица',
+	fileNameTemplate: 'Имя файла по умолчанию',
 	valueType: 'Тип значения',
 	multiple: 'Несколько вариантов',
 	options: 'Варианты',

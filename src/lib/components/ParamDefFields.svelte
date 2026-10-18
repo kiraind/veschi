@@ -15,7 +15,8 @@
 	import OptionListEditor from './OptionListEditor.svelte';
 
 	/**
-	 * Fields of a parameter: name, value type, unit (numbers), for a drop-down
+	 * Fields of a parameter: name, value type, unit (numbers), default file
+	 * name (files), for a drop-down
 	 * its options, for a link («Вещь», «Тип») where it lives and the name of
 	 * its inverse. Used when creating a parameter and on its page.
 	 */
@@ -23,6 +24,7 @@
 		name = $bindable(),
 		valueType = $bindable(),
 		unit = $bindable(),
+		fileNameTemplate = $bindable(),
 		multiple = $bindable(),
 		options = $bindable(),
 		holder = $bindable(),
@@ -34,6 +36,7 @@
 		name: string;
 		valueType: ParamValueType;
 		unit: string;
+		fileNameTemplate: string;
 		multiple: boolean;
 		options: { id?: string; label: string; usage?: number }[];
 		/** Links: on items or on types. */
@@ -67,6 +70,22 @@
 	<Label>
 		Единица измерения
 		<Input class="mt-1" bind:value={unit} placeholder="Например, мм или В" />
+	</Label>
+{:else if valueType === 'FILE'}
+	<Label>
+		<span
+			>Имя файла по умолчанию<InfoHint title="Имя файла по умолчанию">
+				<p>
+					Так назовётся загруженный файл. Вместо <code>{'{name}'}</code> подставится название вещи или
+					типа, у которого задают параметр, расширение останется от файла.
+				</p>
+				<p>
+					Например, «Инструкция {'{name}'}» у дрели Bosch даст «Инструкция Дрель Bosch.pdf». Имя
+					можно поменять и потом. Пусто — останется имя загруженного файла.
+				</p>
+			</InfoHint></span
+		>
+		<Input class="mt-1" bind:value={fileNameTemplate} placeholder={'Например, Инструкция {name}'} />
 	</Label>
 {:else if valueType === 'ENUM'}
 	<span class="text-sm font-medium text-gray-900 dark:text-white">Варианты</span>

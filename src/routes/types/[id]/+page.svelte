@@ -156,6 +156,7 @@
 	bind:this={paramSection}
 	params={data.card.params}
 	target={{ kind: 'type', id: type.id }}
+	holderName={type.name}
 	required={data.card.typeRequired}
 	missing={data.card.missing}
 />
