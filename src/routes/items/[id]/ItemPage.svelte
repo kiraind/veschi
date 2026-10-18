@@ -234,13 +234,19 @@
 	/>
 {/if}
 
-{#if card.type}
+<!-- «Фото не нужно» with nothing to press (an archived item): no strip at all. -->
+{#if card.type && !(card.type.noPhoto && !card.type.photoKey && !active)}
 	{@const type = card.type}
 	<PhotoField
 		photoKey={type.photoKey}
 		container={type.isContainer}
 		alt="Фото типа «{type.name}»"
 		editable={active}
+		noPhoto={type.noPhoto}
+		onnophoto={async (noPhoto) => {
+			await api.patch(`/api/types/${type.id}`, { noPhoto });
+			await invalidateAll();
+		}}
 		onfile={async (file) => {
 			const body = new FormData();
 			body.set('file', file);
@@ -512,6 +518,8 @@
 		itemId={item.id}
 		quantity={item.quantity}
 		ordered={card.stickerOrder}
+		caption={card.stickerCaption}
+		name={item.displayName}
 		bound={card.sticker?.status === 'BOUND' ? card.sticker.code : null}
 	/>
 	<MoveSheet

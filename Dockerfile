@@ -1,11 +1,13 @@
 # Multi-stage build of the Veschi image (SvelteKit + adapter-node).
 # The build needs neither PostgreSQL nor MinIO: migrations are applied and the
-# bucket is created when the container starts (docker/entrypoint.sh, src/lib/server/init.ts).
+# bucket is created when the app starts (src/lib/server/init.ts).
 
-# The runtime stage is plain Alpine with the node binary copied from NODE_IMAGE:
-# npm, yarn, corepack and C headers are needed only for the build. The C++ runtime
-# node links against comes from NODE_IMAGE too; both images are on one Alpine release.
-ARG NODE_IMAGE=node:22-alpine3.24
+# The runtime stage is plain Alpine with Node.js from Alpine's own `nodejs` package:
+# it uses the system ICU, OpenSSL and other libraries instead of bundling them, so it
+# is ~60 MB smaller than the official binary. npm, yarn and C headers are needed only
+# for the build. NODE_IMAGE must have the same Node.js major as that package
+# (Alpine 3.24: Node.js 24) and the same Alpine release.
+ARG NODE_IMAGE=node:24-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
 # libssl3 from the base image is enough for the Prisma engines (linux-musl-openssl-3.0.x).
@@ -27,63 +29,63 @@ FROM deps AS build
 COPY . .
 RUN npx prisma generate && npm run build
 
-# Production dependencies only. The Prisma CLI (for `prisma migrate deploy` at
-# startup) stays: it is an optional peer of @prisma/client, so npm keeps it with
-# --omit=dev ("devOptional" in package-lock.json). The test guards that.
+# Production dependencies only. Migrations are applied by the app itself
+# (src/lib/server/migrate.ts), so the Prisma CLI is not needed: npm keeps it with
+# --omit=dev because it is an optional peer of @prisma/client ("devOptional" in
+# package-lock.json), so it is dropped from package.json and pruned with its
+# dependencies (~70 MB with the schema engine). The test guards that.
 # Then files nothing in the container reads are removed:
-# - typescript: an optional peer of @prisma/client that npm keeps for the same reason;
+# - typescript and jiti, which npm leaves behind as extraneous, and their links in .bin;
 # - sharp builds for glibc and WebAssembly: the lockfile has no libc field, so npm
 #   installs them next to the musl build;
-# - the query engine in @prisma/engines: the generated client has its own copy,
-#   the runtime stage links it back for the CLI;
-# - the CLI's copy of the new `prisma-client` generator, Prisma client runtimes for
-#   other databases, edge and WebAssembly (the generated client loads only
-#   runtime/library.js);
-# - source maps, type declarations and the TypeScript sources of effect and zod;
+# - Prisma client runtimes for other databases, edge and WebAssembly (the generated
+#   client loads only runtime/library.js);
+# - source maps, type declarations and the TypeScript sources of zod;
 # - files that npm packages ship by mistake or only for browsers: the yarn release
 #   inside pdfkit, its browser and standalone builds, xml2js.bc.js (nothing requires it).
 FROM base AS prod-deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
-    && test -x node_modules/.bin/prisma \
-    && rm -rf node_modules/typescript \
+    && npm pkg delete devDependencies.prisma devDependencies.typescript \
+    && npm prune --omit=dev \
+    && test ! -e node_modules/prisma && test ! -e node_modules/@prisma/engines \
+    && rm -rf node_modules/typescript node_modules/jiti \
         node_modules/@img/sharp-linux-* node_modules/@img/sharp-libvips-linux-* \
         node_modules/@img/sharp-wasm32 \
-        node_modules/@prisma/engines/libquery_engine-* \
-        node_modules/prisma/prisma-client \
-        node_modules/effect/src node_modules/zod/src \
+        node_modules/zod/src \
         node_modules/pdfkit/.yarn node_modules/pdfkit/js/pdfkit.standalone.js \
         node_modules/pdfkit/js/pdfkit.browser.* \
         node_modules/xml2js/lib/xml2js.bc.js \
+    && for l in node_modules/.bin/*; do [ -e "$l" ] || rm "$l"; done \
     && find node_modules/@prisma/client/runtime -type f \
         ! -name 'library.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM ${ALPINE_IMAGE} AS runtime
-COPY --from=base /usr/local/bin/node /usr/local/bin/node
-COPY --from=base /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /usr/lib/
-RUN addgroup -g 1000 node && adduser -u 1000 -G node -s /bin/sh -D node
+# icu-data-en: the server only sorts and lower-cases in Russian (localeCompare(..., 'ru'),
+# Intl.Collator('ru')), which the root collation in the English data already covers;
+# docker/smoke-test.sh checks it. Russian dates or numbers via Intl on the server
+# would need icu-data-full (+31 MB).
+RUN apk add --no-cache nodejs icu-data-en \
+    && addgroup -g 1000 node \
+    && adduser -u 1000 -G node -s /bin/sh -D node
+# Native modules and the build were made with NODE_IMAGE's node: the majors must match.
+RUN --mount=type=bind,from=base,source=/usr/local/bin/node,target=/tmp/build-node \
+    test "$(/tmp/build-node -p 'process.versions.node.split(".")[0]')" \
+        = "$(node -p 'process.versions.node.split(".")[0]')"
 WORKDIR /app
-ENV CHECKPOINT_DISABLE=1 \
-    PRISMA_HIDE_UPDATE_MESSAGE=1 \
-    NODE_ENV=production \
+ENV NODE_ENV=production \
     PORT=3000 \
     BODY_SIZE_LIMIT=52M
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-# The CLI needs the query engine in @prisma/engines too: a link instead of a second copy.
-RUN for f in node_modules/.prisma/client/libquery_engine-*; do \
-        ln -s "../../.prisma/client/${f##*/}" node_modules/@prisma/engines/; \
-    done
 COPY --from=build /app/build ./build
 COPY package.json ./
 COPY prisma ./prisma
 COPY assets ./assets
-COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/healthz" || exit 1
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "build"]
