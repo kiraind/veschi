@@ -430,6 +430,7 @@
 		bind:this={itemParamSection}
 		params={card.itemParams}
 		target={{ kind: 'item', id: item.id }}
+		holderName={item.displayName}
 		editable={active}
 		emptyText=""
 		required={card.itemRequired}
@@ -442,6 +443,7 @@
 			bind:this={typeParamSection}
 			params={card.typeParams}
 			target={{ kind: 'type', id: card.type.id }}
+			holderName={card.type.name}
 			editable={active}
 			exclude={card.itemParams.map((p) => p.defId)}
 			required={card.typeRequired}

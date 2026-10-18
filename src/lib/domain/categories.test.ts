@@ -16,6 +16,7 @@ function def(id: string, name: string): ParamDefView {
 		name,
 		valueType: 'NUMBER',
 		unit: null,
+		fileNameTemplate: null,
 		multiple: false,
 		options: [],
 		typeCount: 0,

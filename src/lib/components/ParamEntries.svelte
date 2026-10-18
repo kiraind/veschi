@@ -18,13 +18,16 @@
 	let {
 		entries = $bindable(),
 		holder,
-		mandatory
+		mandatory,
+		holderName
 	}: {
 		entries: ParamEntry[];
 		/** The values go to a type (TYPE) or an item (ITEM). */
 		holder: LinkKind;
 		/** Required values must be filled now (on each item), not later (on the type). */
 		mandatory: boolean;
+		/** Name of the type or the item to be (`{name}` in file name templates). */
+		holderName: string;
 	} = $props();
 
 	let picking = $state(false);
@@ -47,7 +50,7 @@
 					>
 				{/if}
 			</div>
-			<ParamValueInput bind:draft={entry.draft} def={entry.def} />
+			<ParamValueInput bind:draft={entry.draft} def={entry.def} {holderName} />
 			{#if entry.categories.length > 0}
 				<Helper>Обязателен {inCategories(entry.categories)}</Helper>
 			{/if}

@@ -43,7 +43,8 @@
 		exclude = [],
 		emptyText = 'Параметров нет.',
 		required = [],
-		missing = []
+		missing = [],
+		holderName
 	}: {
 		params: ParamView[];
 		target: { kind: 'type' | 'item'; id: string };
@@ -56,6 +57,8 @@
 		required?: RequiredParam[];
 		/** Required values not filled yet (shown at the top of the list). */
 		missing?: RequiredParam[];
+		/** The item's or the type's name (`{name}` in file name templates). */
+		holderName: string;
 	} = $props();
 
 	const requiredBy = $derived(new Map(required.map((r) => [r.def.id, r.categories])));
@@ -78,7 +81,8 @@
 	const sheetTitle = $derived(draft ? draft.key : adding ? 'Новый параметр' : '');
 
 	$effect(() => {
-		const defId = draft?.valueType === 'ENUM' ? draft.defId : null;
+		// Drop-down options, a file's name template.
+		const defId = draft?.valueType === 'ENUM' || draft?.valueType === 'FILE' ? draft.defId : null;
 		if (!defId || def?.id === defId) return;
 		api
 			.get<{ def: ParamDefView }>(`/api/param-defs/${defId}`)
@@ -257,7 +261,7 @@
 			<span class="-mt-2 text-sm text-gray-500 dark:text-gray-400">
 				{PARAM_VALUE_TYPE_LABELS[draft.valueType]}
 			</span>
-			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} />
+			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} {holderName} />
 			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 			<div class="flex flex-wrap items-center gap-2">
 				<Button type="button" onclick={() => (param ? save(param) : saveNew())} disabled={busy}

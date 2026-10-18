@@ -28,6 +28,7 @@
 	let name = $state(initialName.trim());
 	let valueType = $state<ParamValueType>('STRING');
 	let unit = $state('');
+	let fileNameTemplate = $state('');
 	let multiple = $state(false);
 	let options = $state<{ label: string }[]>([]);
 	// svelte-ignore state_referenced_locally
@@ -46,6 +47,7 @@
 					name,
 					valueType,
 					unit,
+					fileNameTemplate,
 					multiple,
 					// An empty option left at the end (Enter adds one) is not an option.
 					options: options.filter((o) => o.label.trim()),
@@ -66,6 +68,7 @@
 		bind:name
 		bind:valueType
 		bind:unit
+		bind:fileNameTemplate
 		bind:multiple
 		bind:options
 		bind:holder

@@ -2,8 +2,7 @@
 	import { Button, Fileupload, Input, Radio, Select } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import type { ParamDraft } from '$lib/domain/param-draft';
-	import { formatFileSize, type ParamDefView } from '$lib/domain/params';
-	import { shortenFileName } from '$lib/domain/shorten';
+	import { fileNameFromTemplate, formatFileSize, type ParamDefView } from '$lib/domain/params';
 	import type { FileValue } from '$lib/server/services/files';
 	import DateInput from './DateInput.svelte';
 	import LinkPicker from './LinkPicker.svelte';
@@ -11,9 +10,19 @@
 	/**
 	 * Value fields of one parameter, depending on its value type. The unit is
 	 * the definition's (shown, not edited); ENUM options come from the
-	 * definition (`def`, null while loading).
+	 * definition (`def`, null while loading). An uploaded file is named by the
+	 * definition's template, `{name}` being `holderName`; the name stays editable.
 	 */
-	let { draft = $bindable(), def }: { draft: ParamDraft; def: ParamDefView | null } = $props();
+	let {
+		draft = $bindable(),
+		def,
+		holderName = ''
+	}: {
+		draft: ParamDraft;
+		def: ParamDefView | null;
+		/** The item's or the type's name, for the file name template. */
+		holderName?: string;
+	} = $props();
 
 	let uploading = $state(false);
 	let uploadError = $state('');
@@ -35,7 +44,10 @@
 			const body = new FormData();
 			body.set('file', file);
 			const { valueType: _type, ...value } = await api.post<FileValue>('/api/uploads', body);
-			draft.file = value;
+			draft.file = {
+				...value,
+				fileName: fileNameFromTemplate(def?.fileNameTemplate, holderName, value.fileName)
+			};
 		} catch (e) {
 			uploadError = errorText(e);
 		} finally {
@@ -106,20 +118,20 @@
 	<Input type="url" bind:value={draft.url} placeholder="https://…" aria-label="Ссылка" />
 {:else if draft.valueType === 'FILE'}
 	{#if draft.file}
-		<div class="flex flex-wrap items-center gap-2">
-			<span class="min-w-0 break-words" title={draft.file.fileName}
-				>{shortenFileName(draft.file.fileName)}</span
-			>
-			<span class="text-sm text-gray-500 dark:text-gray-400"
-				>{formatFileSize(draft.file.fileSize)}</span
-			>
-			<Button
-				color="alternative"
-				size="sm"
-				class="h-10"
-				type="button"
-				onclick={() => (draft.file = null)}>Заменить</Button
-			>
+		<div class="flex flex-col gap-2">
+			<Input bind:value={draft.file.fileName} aria-label="Имя файла" />
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm text-gray-500 dark:text-gray-400"
+					>{formatFileSize(draft.file.fileSize)}</span
+				>
+				<Button
+					color="alternative"
+					size="sm"
+					class="h-10"
+					type="button"
+					onclick={() => (draft.file = null)}>Заменить</Button
+				>
+			</div>
 		</div>
 	{:else}
 		<Fileupload disabled={uploading} onchange={(e) => upload(e.currentTarget)} aria-label="Файл" />

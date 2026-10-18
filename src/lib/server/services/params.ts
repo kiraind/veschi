@@ -93,6 +93,7 @@ export function valueSignature(
 		r.dateValue?.toISOString() ?? null,
 		r.boolValue,
 		r.fileKey,
+		r.fileName,
 		r.enumValues.map((v) => v.optionId).sort(),
 		r.refs.map(refId).sort()
 	]);
@@ -777,6 +778,7 @@ export async function defViews(
 		name: d.name,
 		valueType: d.valueType,
 		unit: d.unit,
+		fileNameTemplate: d.fileNameTemplate,
 		multiple: d.dictionary?.multiple ?? false,
 		options: (d.dictionary?.options ?? []).map((o) => ({
 			id: o.id,
@@ -805,6 +807,7 @@ function defSummary(def: Prisma.ParamDefGetPayload<{ include: typeof defInclude 
 	return {
 		name: def.name,
 		unit: def.unit,
+		fileNameTemplate: def.fileNameTemplate,
 		valueType: PARAM_VALUE_TYPE_LABELS[def.valueType],
 		multiple: def.dictionary?.multiple ?? null,
 		options: def.dictionary?.options.map((o) => o.label).join(', ') ?? null,

@@ -11,7 +11,7 @@ import {
 	setKeyedParams,
 	type KeyedParam
 } from '$lib/server/testing/params';
-import { uploadParamFile } from './files';
+import { openFile, uploadParamFile } from './files';
 import { createItem } from './items';
 import {
 	addParam,
@@ -164,6 +164,56 @@ describe('params', () => {
 		expect(await storage().get(file.fileKey)).not.toBeNull();
 		await setKeyedParams(actor, { itemId }, []);
 		expect(await storage().get(file.fileKey)).toBeNull();
+	});
+
+	it('renames a stored file without uploading it again', async () => {
+		const file = await uploadParamFile(actor, {
+			name: 'manual.pdf',
+			type: 'application/pdf',
+			data: Buffer.from('%PDF-1.4')
+		});
+		await setKeyedParams(actor, { itemId }, [{ key: 'Инструкция', ...file }]);
+		const [param] = await listParams(actor, { itemId });
+		const renamed = await updateParam(actor, param!.id, {
+			...file,
+			defId: param!.defId,
+			fileName: ' Инструкция Паяльник.pdf '
+		});
+		expect(renamed).toMatchObject({ fileKey: file.fileKey, fileName: 'Инструкция Паяльник.pdf' });
+		expect(await storage().get(file.fileKey)).not.toBeNull();
+		expect((await openFile(actor, file.fileKey)).fileName).toBe('Инструкция Паяльник.pdf');
+		const events = await db.historyEvent.findMany({
+			where: { subjectId: itemId, kind: 'params.changed' }
+		});
+		expect(events.at(-1)?.data).toMatchObject({
+			changes: [{ name: 'Инструкция', change: 'changed' }]
+		});
+		await expect(
+			updateParam(actor, param!.id, { ...file, defId: param!.defId, fileName: ' ' })
+		).rejects.toThrow('имя файла');
+	});
+
+	it('keeps the default file name of a FILE parameter', async () => {
+		const def = await createParamDef(actor, {
+			name: 'Инструкция',
+			valueType: 'FILE',
+			fileNameTemplate: 'Инструкция {name}'
+		});
+		expect(def.fileNameTemplate).toBe('Инструкция {name}');
+		const changed = await updateParamDef(actor, def.id, {
+			name: 'Инструкция',
+			valueType: 'FILE',
+			fileNameTemplate: 'Руководство {name}'
+		});
+		expect(changed.fileNameTemplate).toBe('Руководство {name}');
+		const event = await db.historyEvent.findFirst({ where: { kind: 'paramDef.updated' } });
+		expect(event?.data).toMatchObject({
+			changes: [
+				{ field: 'fileNameTemplate', before: 'Инструкция {name}', after: 'Руководство {name}' }
+			]
+		});
+		const asText = await updateParamDef(actor, def.id, { name: 'Инструкция', valueType: 'STRING' });
+		expect(asText.fileNameTemplate).toBeNull();
 	});
 
 	it('rejects a parameter twice and other users’ targets', async () => {
