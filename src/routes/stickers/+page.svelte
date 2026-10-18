@@ -3,9 +3,11 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Card, Checkbox, Input, Label } from 'flowbite-svelte';
 	import Notice from '$lib/components/Notice.svelte';
-	import { FilePdfOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+	import { FilePdfOutline, PenOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
+	import StickerCaptionForm from '$lib/components/StickerCaptionForm.svelte';
 	import StickerWidthSelect from '$lib/components/StickerWidthSelect.svelte';
 	import { plural } from '$lib/domain/plural';
 	import {
@@ -27,6 +29,9 @@
 	let busy = $state(false);
 	let error = $state('');
 	let issuedId = $state('');
+	/** The order whose caption is being edited. */
+	let editing = $state<PageData['orders'][number] | null>(null);
+	let editingOpen = $state(false);
 
 	// Ordered stickers carry the item's name and the width of the order (see issueBatch).
 	const captions = $derived(data.orders.map((o) => ({ caption: o.caption, width: o.width })));
@@ -117,6 +122,11 @@
 
 	const cancelOrder = (itemId: string) =>
 		act(() => api.delete(`/api/stickers/orders/${itemId}`), 'Не удалось убрать из печати');
+	function editCaption(order: PageData['orders'][number]) {
+		editing = order;
+		editingOpen = true;
+	}
+
 	const setOrderWidth = (itemId: string, width: StickerWidth) =>
 		act(
 			() => api.post('/api/stickers/orders', { itemId, width }),
@@ -164,9 +174,22 @@
 				>
 					{#each data.orders as order (order.itemId)}
 						<li class="flex items-center gap-2 py-2">
-							<a href="/items/{order.itemId}" class="min-w-0 flex-1 break-words hover:underline"
-								>{order.caption}</a
+							<div class="min-w-0 flex-1 break-words">
+								<a href="/items/{order.itemId}" class="hover:underline">{order.caption}</a>
+								{#if order.customCaption}
+									<span class="block text-sm text-gray-500 dark:text-gray-400">{order.name}</span>
+								{/if}
+							</div>
+							<button
+								type="button"
+								class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none disabled:opacity-50 dark:text-gray-500 dark:hover:text-primary-400 dark:focus-visible:ring-primary-800"
+								aria-label="Изменить подпись «{order.caption}»"
+								title="Изменить подпись"
+								disabled={busy}
+								onclick={() => editCaption(order)}
 							>
+								<PenOutline class="h-5 w-5" />
+							</button>
 							<StickerWidthSelect
 								value={order.width}
 								onpick={(width) => setOrderWidth(order.itemId, width)}
@@ -313,4 +336,19 @@
 			</li>
 		{/each}
 	</ul>
+{/if}
+
+{#if editing}
+	<Sheet bind:open={editingOpen} title="Подпись наклейки">
+		<StickerCaptionForm
+			itemId={editing.itemId}
+			caption={editing.caption}
+			name={editing.name}
+			width={editing.width}
+			onsaved={async () => {
+				editingOpen = false;
+				await invalidateAll();
+			}}
+		/>
+	</Sheet>
 {/if}

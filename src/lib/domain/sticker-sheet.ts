@@ -64,6 +64,8 @@ export const blankHeight = (width: StickerWidth) =>
  */
 export const captionFontPt = (width: StickerWidth) => (width === 10 ? 5 : 6.5);
 export const CAPTION_MAX_LINES = 3;
+/** Longest caption one can type for an ordered sticker; 3 lines of a 40 mm one hold about 60. */
+export const STICKER_CAPTION_MAX_LENGTH = 200;
 const PT_PER_MM = 72 / 25.4;
 /** DejaVu Sans line height (ascender − descender), in em. */
 const CAPTION_LINE_EM = 1.164;

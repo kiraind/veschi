@@ -3,6 +3,8 @@
 	import { Dropdown, DropdownItem, Spinner } from 'flowbite-svelte';
 	import {
 		CameraPhotoOutline,
+		CheckOutline,
+		EyeSlashOutline,
 		ClipboardOutline,
 		ImageOutline,
 		PenOutline,
@@ -28,6 +30,10 @@
 	 * «Удалить фото». Ctrl/Cmd+V with an image on the page and an image file dropped
 	 * onto the photo set it too. The caller saves: `onfile` / `onremove` (local unsaved files are shown through
 	 * `previewUrl`).
+	 *
+	 * With `onnophoto`, a thing without a photo also gets «Фото не нужно» in the menu:
+	 * the square placeholder collapses into a small strip with the same buttons
+	 * (`noPhoto`); choosing it again brings the square back.
 	 */
 	let {
 		photoKey = null,
@@ -38,7 +44,9 @@
 		caption,
 		alt = 'Фото',
 		container = false,
-		corner
+		corner,
+		noPhoto = false,
+		onnophoto
 	}: {
 		photoKey?: string | null;
 		previewUrl?: string | null;
@@ -51,10 +59,15 @@
 		container?: boolean;
 		/** Another round button, right above the photo menu button. */
 		corner?: Snippet;
+		/** «Фото не нужно»: without a photo, a strip with the buttons instead of the square. */
+		noPhoto?: boolean;
+		/** Turns «Фото не нужно» on or off; without it the menu has no such item. */
+		onnophoto?: (noPhoto: boolean) => Promise<void>;
 	} = $props();
 
 	const uid = $props.id();
 	const src = $derived(previewUrl ?? (photoKey ? `/files/${photoKey}` : null));
+	const collapsed = $derived(noPhoto && !src);
 
 	let menuOpen = $state(false);
 	let cameraOpen = $state(false);
@@ -133,8 +146,11 @@
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
 	<!-- Full width on phones, up to 256 px on wider screens. -->
+	<!-- «Фото не нужно»: a strip as wide, the same buttons in a row (the same elements, so the menu stays bound). -->
 	<div
-		class="relative aspect-square w-full sm:max-w-64"
+		class="relative w-full sm:max-w-64 {collapsed
+			? 'flex items-center gap-2 rounded-lg bg-gray-100 p-2 text-gray-300 dark:bg-gray-800 dark:text-gray-600'
+			: 'aspect-square'}"
 		role="group"
 		aria-label={alt}
 		{ondragenter}
@@ -142,7 +158,10 @@
 		{ondragleave}
 		{ondrop}
 	>
-		{#if src}
+		{#if collapsed}
+			<NoPhoto {container} class="ms-1 h-6 w-6 flex-none" />
+			<span class="flex-1"></span>
+		{:else if src}
 			<img
 				class="h-full w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
 				{src}
@@ -159,9 +178,12 @@
 
 		{#if dragDepth > 0}
 			<div
-				class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary-500 bg-primary-50/95 p-4 text-center font-medium text-primary-700 dark:border-primary-400 dark:bg-gray-900/95 dark:text-primary-300"
+				class="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary-500 bg-primary-50/95 text-center font-medium text-primary-700 dark:border-primary-400 dark:bg-gray-900/95 dark:text-primary-300 {collapsed
+					? 'p-1 text-sm'
+					: 'flex-col p-4'}"
 			>
-				<ImageOutline class="h-10 w-10" />Отпустите, чтобы поставить фото
+				<!-- The strip of «Фото не нужно» is too low for the big icon. -->
+				{#if !collapsed}<ImageOutline class="h-10 w-10" />{/if}Отпустите, чтобы поставить фото
 			</div>
 		{/if}
 
@@ -174,13 +196,17 @@
 			</div>
 		{/if}
 
-		{#if corner}<div class="absolute end-2 bottom-15">{@render corner()}</div>{/if}
+		{#if corner}<div class={collapsed ? '' : 'absolute end-2 bottom-15'}>
+				{@render corner()}
+			</div>{/if}
 
 		{#if editable}
 			<button
 				id="{uid}-photo-menu"
 				type="button"
-				class="absolute end-2 bottom-2 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-700 shadow hover:bg-white focus:ring-4 focus:ring-primary-300 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus:ring-primary-800"
+				class="{collapsed
+					? ''
+					: 'absolute end-2 bottom-2'} flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-700 shadow hover:bg-white focus:ring-4 focus:ring-primary-300 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus:ring-primary-800"
 				aria-label="Изменить фото"
 				disabled={busy}
 			>
@@ -214,6 +240,19 @@
 				{#if canPaste}
 					<DropdownItem class="flex min-h-11 w-full items-center gap-2" onclick={pasteFromMenu}>
 						<ClipboardOutline class="h-5 w-5" />Вставить из буфера
+					</DropdownItem>
+				{/if}
+				{#if !src && onnophoto}
+					<DropdownItem
+						class="flex min-h-11 w-full items-center gap-2"
+						aria-pressed={noPhoto}
+						onclick={() => {
+							menuOpen = false;
+							run(() => onnophoto(!noPhoto));
+						}}
+					>
+						<EyeSlashOutline class="h-5 w-5" />Фото не нужно
+						{#if noPhoto}<CheckOutline class="ms-auto h-5 w-5" />{/if}
 					</DropdownItem>
 				{/if}
 				{#if src && onremove}

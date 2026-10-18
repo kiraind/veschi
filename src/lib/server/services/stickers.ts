@@ -13,6 +13,7 @@ import {
 	type BlankCounts,
 	DEFAULT_STICKER_WIDTH,
 	MAX_SHEETS_PER_BATCH,
+	STICKER_CAPTION_MAX_LENGTH,
 	STICKER_WIDTHS,
 	type StickerWidth,
 	isStickerWidth,
@@ -51,7 +52,10 @@ export async function bindSticker(
 	await tx.sticker.update({ where: { id: sticker.id }, data: { status: 'BOUND', itemId: target } });
 	// The thing got a sticker by hand, so its order is no longer needed.
 	if (item.stickerOrderedAt) {
-		await tx.item.update({ where: { id: item.id }, data: { stickerOrderedAt: null } });
+		await tx.item.update({
+			where: { id: item.id },
+			data: { stickerOrderedAt: null, stickerCaption: null }
+		});
 	}
 	await recordEvent(tx, actor, {
 		kind: 'sticker.bound',
@@ -139,8 +143,12 @@ export async function restoreStickerOf(itemIds: string[], tx: Tx = db): Promise<
 
 export interface StickerOrder {
 	itemId: string;
-	/** What the sticker will say: the item's name at the moment. */
+	/** What the sticker will say: the edited caption, or the item's name at the moment. */
 	caption: string;
+	/** The item's name: the caption unless it was edited. */
+	name: string;
+	/** The caption was edited and differs from the item's name. */
+	customCaption: boolean;
 	quantity: number;
 	orderedAt: Date;
 	width: StickerWidth;
@@ -188,11 +196,49 @@ export async function cancelStickerOrder(actor: Actor, itemId: string): Promise<
 		const item = await tx.item.findFirst({ where: { id: itemId, ...visibleTo(actor) } });
 		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (!item.stickerOrderedAt) return;
-		await tx.item.update({ where: { id: item.id }, data: { stickerOrderedAt: null } });
+		await tx.item.update({
+			where: { id: item.id },
+			data: { stickerOrderedAt: null, stickerCaption: null }
+		});
 		await recordEvent(tx, actor, {
 			kind: 'sticker.orderCancelled',
 			subject: await itemSubject(tx, item.id),
 			data: {}
+		});
+	});
+}
+
+/**
+ * Changes what the item's sticker waiting for print will say; the order and
+ * its width stay. An empty caption or the item's name goes back to the name,
+ * so later renames of the item reach the sticker again.
+ */
+export async function setStickerOrderCaption(
+	actor: Actor,
+	itemId: string,
+	captionInput: string
+): Promise<void> {
+	const caption = captionInput.replace(/\s+/g, ' ').trim();
+	if (caption.length > STICKER_CAPTION_MAX_LENGTH) {
+		throw new ValidationError(
+			`Подпись наклейки — не длиннее ${STICKER_CAPTION_MAX_LENGTH} символов`
+		);
+	}
+	await writeTransaction(async (tx) => {
+		const item = await tx.item.findFirst({
+			where: { id: itemId, status: 'ACTIVE', ...visibleTo(actor) },
+			include: { type: { select: { name: true } } }
+		});
+		if (!item) throw new NotFoundError('Вещь не найдена');
+		if (!item.stickerOrderedAt) throw new ConflictError('Наклейка для этой вещи не ждёт печати');
+		const name = itemDisplayName(item);
+		const stickerCaption = caption && caption !== name ? caption : null;
+		if (stickerCaption === item.stickerCaption) return;
+		await tx.item.update({ where: { id: item.id }, data: { stickerCaption } });
+		await recordEvent(tx, actor, {
+			kind: 'sticker.captionChanged',
+			subject: await itemSubject(tx, item.id),
+			data: { before: item.stickerCaption ?? name, after: stickerCaption ?? name }
 		});
 	});
 }
@@ -206,7 +252,9 @@ export async function listStickerOrders(actor: Actor, tx: Tx = db): Promise<Stic
 	});
 	return items.map((i) => ({
 		itemId: i.id,
-		caption: itemDisplayName(i),
+		caption: i.stickerCaption ?? itemDisplayName(i),
+		name: itemDisplayName(i),
+		customCaption: i.stickerCaption !== null,
 		quantity: i.quantity,
 		orderedAt: i.stickerOrderedAt!,
 		width: toStickerWidth(i.stickerOrderWidth)
@@ -287,7 +335,7 @@ export async function issueBatch(
 			for (const order of orders) {
 				const item = await tx.item.update({
 					where: { id: order.itemId },
-					data: { stickerOrderedAt: null }
+					data: { stickerOrderedAt: null, stickerCaption: null }
 				});
 				targets.push(await stickerTarget(tx, item));
 			}
@@ -372,6 +420,17 @@ export async function unprintBatch(actor: Actor, batchId: string): Promise<void>
 				where: { id: { in: ids } },
 				data: { stickerOrderedAt: orderedAt, stickerOrderWidth: width }
 			});
+		}
+		// An edited caption comes back with the order; one equal to the name stays the name.
+		const items = await tx.item.findMany({
+			where: { id: { in: reordered.map((s) => s.itemId!) } },
+			select: { id: true, name: true, type: { select: { name: true } } }
+		});
+		for (const item of items) {
+			const caption = reordered.find((s) => s.itemId === item.id)!.caption;
+			if (caption && caption !== itemDisplayName(item)) {
+				await tx.item.update({ where: { id: item.id }, data: { stickerCaption: caption } });
+			}
 		}
 		await tx.sticker.deleteMany({ where: { batchId: batch.id } });
 		await tx.stickerBatch.delete({ where: { id: batch.id } });

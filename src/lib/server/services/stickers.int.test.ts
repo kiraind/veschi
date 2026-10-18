@@ -13,6 +13,7 @@ import {
 	orderSticker,
 	resolveCode,
 	restoreStickerOf,
+	setStickerOrderCaption,
 	unbindSticker,
 	unprintBatch,
 	writeOffStickerOf
@@ -430,6 +431,83 @@ describe('stickers', () => {
 				issueBatch(actor, { blanks: { 20: 0 }, orderItemIds: [box.id] })
 			).rejects.toThrow('обновите страницу');
 			expect(await db.stickerBatch.count()).toBe(0);
+		});
+
+		it('edits the caption before printing: the order stays, the sticker says the new text', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id, 40);
+			await setStickerOrderCaption(actor, box.id, '  Коробка   с проводами ');
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{
+					itemId: box.id,
+					caption: 'Коробка с проводами',
+					name: 'Коробка',
+					customCaption: true,
+					width: 40
+				}
+			]);
+			// Same text again changes nothing.
+			await setStickerOrderCaption(actor, box.id, 'Коробка с проводами');
+			expect(await events(box.id)).toEqual(['sticker.ordered', 'sticker.captionChanged']);
+			expect(
+				await db.historyEvent.findFirst({ where: { kind: 'sticker.captionChanged' } })
+			).toMatchObject({ data: { before: 'Коробка', after: 'Коробка с проводами' } });
+
+			const batch = await issueBatch(actor, { blanks: {}, orderItemIds: [box.id], fill: null });
+			const [first] = await batchStickers(batch.id);
+			expect(first).toMatchObject({ caption: 'Коробка с проводами', itemId: box.id, width: 40 });
+			expect(await db.item.findUnique({ where: { id: box.id } })).toMatchObject({
+				stickerCaption: null
+			});
+
+			// «Не распечатано» brings the edited caption back with the order.
+			await unprintBatch(actor, batch.id);
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ itemId: box.id, caption: 'Коробка с проводами', customCaption: true, width: 40 }
+			]);
+		});
+
+		it('an empty caption or the name goes back to the name, which follows renames', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			await setStickerOrderCaption(actor, box.id, 'Провода');
+			await setStickerOrderCaption(actor, box.id, ' ');
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ caption: 'Коробка', customCaption: false }
+			]);
+			await setStickerOrderCaption(actor, box.id, 'Провода');
+			await setStickerOrderCaption(actor, box.id, 'Коробка');
+			await db.item.update({ where: { id: box.id }, data: { name: 'Ящик' } });
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ caption: 'Ящик', customCaption: false }
+			]);
+		});
+
+		it('cancelling or binding by hand forgets the edited caption', async () => {
+			const box = await item('Коробка');
+			await orderSticker(actor, box.id);
+			await setStickerOrderCaption(actor, box.id, 'Провода');
+			await cancelStickerOrder(actor, box.id);
+			await orderSticker(actor, box.id);
+			expect(await listStickerOrders(actor)).toMatchObject([{ caption: 'Коробка' }]);
+			await setStickerOrderCaption(actor, box.id, 'Провода');
+			await bindSticker(actor, (await freeSticker()).code, box.id);
+			expect(await db.item.findUnique({ where: { id: box.id } })).toMatchObject({
+				stickerCaption: null
+			});
+		});
+
+		it('refuses items without an order, too long captions and other users’ items', async () => {
+			const box = await item('Коробка');
+			await expect(setStickerOrderCaption(actor, box.id, 'Провода')).rejects.toThrow(
+				'не ждёт печати'
+			);
+			await orderSticker(actor, box.id);
+			await expect(setStickerOrderCaption(actor, box.id, 'я'.repeat(201))).rejects.toThrow(
+				'не длиннее'
+			);
+			const other = await createTestActor('other');
+			await expect(setStickerOrderCaption(other, box.id, 'Провода')).rejects.toThrow('не найдена');
 		});
 	});
 
