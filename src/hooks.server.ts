@@ -76,6 +76,11 @@ export const handle: Handle = withRequestLog(async ({ event, resolve }) => {
 		transformPageChunk: ({ html }) =>
 			html.replace('%theme%', theme).replace('%theme-class%', theme === 'dark' ? 'dark' : '')
 	});
+	// SvelteKit preloads every script of the page with a `link` header. On pages with
+	// many components it grows past 4 KB, where nginx's default proxy_buffer_size ends,
+	// and nginx answers 502 «upstream sent too big header». Without it the scripts load
+	// as their imports are found; the service worker keeps them all after the first visit.
+	response.headers.delete('link');
 	// A server-side fetch of the app itself reads the body as is.
 	return event.isSubRequest ? response : compress(event.request, response);
 });

@@ -25,8 +25,8 @@ function fakeEvent(
 	} as unknown as RequestEvent;
 }
 
-async function run(event: RequestEvent) {
-	const resolve = vi.fn(async () => new Response('page'));
+async function run(event: RequestEvent, page = () => new Response('page')) {
+	const resolve = vi.fn(async () => page());
 	try {
 		const response = await handle({ event, resolve });
 		return { response, resolve, redirect: null };
@@ -35,6 +35,21 @@ async function run(event: RequestEvent) {
 		throw e;
 	}
 }
+
+describe('page headers (hooks.server handle)', () => {
+	it('drops the link header of preloads: nginx answers 502 to headers over 4 KB', async () => {
+		const preloads = Array.from(
+			{ length: 60 },
+			(_, i) => `<./_app/immutable/chunks/${i}.js>; rel="modulepreload"; nopush`
+		).join(', ');
+		const { response } = await run(
+			fakeEvent('/login'),
+			() => new Response('page', { headers: { link: preloads, 'content-type': 'text/html' } })
+		);
+		expect(response?.headers.has('link')).toBe(false);
+		expect(response?.headers.get('content-type')).toBe('text/html');
+	});
+});
 
 describe('cross-site changes (hooks.server handle)', () => {
 	it('rejects a change sent from another site, even without a body', async () => {
