@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
 	import {
 		ArrowLeftOutline,
@@ -8,7 +8,6 @@
 		QrCodeOutline
 	} from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
-	import { piecesGenitive } from '$lib/domain/plural';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { STICKER_WIDTHS, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import QrScanner from './QrScanner.svelte';
@@ -25,7 +24,6 @@
 	let {
 		open = $bindable(false),
 		itemId,
-		quantity = 1,
 		ordered = null,
 		caption = '',
 		name = '',
@@ -41,8 +39,6 @@
 		name?: string;
 		/** Code of the sticker bound to the item, if there is one. */
 		bound?: string | null;
-		/** A sticker marks one thing: binding it to several splits one off (see bindSticker). */
-		quantity?: number;
 	} = $props();
 
 	let step = $state<'choose' | 'bind' | 'print' | 'caption'>('choose');
@@ -76,11 +72,7 @@
 		}
 	}
 
-	const bind = (code: string) =>
-		run(async () => {
-			const bound = await api.post<{ itemId: string }>('/api/stickers/bind', { code, itemId });
-			if (bound.itemId !== itemId) await goto(`/items/${bound.itemId}`);
-		});
+	const bind = (code: string) => run(() => api.post('/api/stickers/bind', { code, itemId }));
 
 	const unbind = () => run(() => api.post('/api/stickers/unbind', { itemId }));
 
@@ -169,12 +161,6 @@
 			}}
 		/>
 	{:else if step === 'bind'}
-		{#if quantity > 1}
-			<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-				Наклейка обозначает одну вещь: из {piecesGenitive(quantity)} одна станет отдельной записью с наклейкой,
-				остальные останутся здесь.
-			</p>
-		{/if}
 		<QrScanner onscan={bind} active={open && step === 'bind'} submitLabel="Привязать" />
 	{:else}
 		<div class="flex flex-col gap-1">

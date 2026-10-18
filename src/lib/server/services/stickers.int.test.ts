@@ -239,40 +239,21 @@ describe('stickers', () => {
 			await expect(bindSticker(actor, 'K7M4Q0', other.id)).rejects.toThrow('Некорректный');
 		});
 
-		it('splits one thing off a record of several and sticks the sticker on it', async () => {
-			const shelf = await db.itemType.create({
-				data: { ownerId: actor.userId, name: 'Полка', isContainer: true }
-			});
-			const place = await db.item.create({ data: { ownerId: actor.userId, typeId: shelf.id } });
+		it('sticks the sticker on the whole record, whatever its quantity', async () => {
 			const several = await db.item.create({
-				data: { ownerId: actor.userId, typeId, name: 'ПОС-61', quantity: 3, parentId: place.id }
-			});
-			const def = await db.paramDef.create({
-				data: { ownerId: actor.userId, name: 'Диаметр', valueType: 'NUMBER' }
-			});
-			await db.param.create({
-				data: { defId: def.id, itemId: several.id, valueType: 'NUMBER', numberValue: 1 }
+				data: { ownerId: actor.userId, typeId, name: 'ПОС-61', quantity: 3 }
 			});
 			const sticker = await freeSticker();
 
-			const { itemId } = await bindSticker(actor, sticker.code, several.id);
-			expect(itemId).not.toBe(several.id);
+			await bindSticker(actor, sticker.code, several.id);
+			expect(await db.item.count({ where: { typeId } })).toBe(1);
 			expect(await db.item.findUniqueOrThrow({ where: { id: several.id } })).toMatchObject({
-				quantity: 2
+				quantity: 3
 			});
-			expect(await db.item.findUniqueOrThrow({ where: { id: itemId } })).toMatchObject({
-				quantity: 1,
-				name: 'ПОС-61',
-				typeId,
-				parentId: place.id
+			expect(await resolveCode(actor, sticker.code)).toMatchObject({
+				status: 'bound',
+				itemId: several.id
 			});
-			expect(await db.param.findFirst({ where: { itemId } })).toMatchObject({ numberValue: 1 });
-			expect(await resolveCode(actor, sticker.code)).toMatchObject({ status: 'bound', itemId });
-
-			// A single thing keeps its record.
-			const single = await item('Одна');
-			const another = await freeSticker();
-			expect(await bindSticker(actor, another.code, single.id)).toEqual({ itemId: single.id });
 		});
 
 		it('binds only to own active items', async () => {
@@ -376,12 +357,16 @@ describe('stickers', () => {
 			expect(batch).toMatchObject({ total: 130, captioned: 2, ordered: 2, bound: 2, free: 128 });
 			const [first, second, third] = await batchStickers(batch.id);
 			expect(first).toMatchObject({ caption: 'Коробка', status: 'BOUND', itemId: box.id });
-			expect(second).toMatchObject({ caption: 'Припой', status: 'BOUND', fromOrder: true });
+			expect(second).toMatchObject({
+				caption: 'Припой',
+				status: 'BOUND',
+				itemId: solder.id,
+				fromOrder: true
+			});
 			expect(third).toMatchObject({ caption: null, status: 'FREE', itemId: null });
-			// A sticker marks one thing: one of three solders got its own record.
-			expect(second!.itemId).not.toBe(solder.id);
+			// The whole record of three gets the sticker.
 			expect(await db.item.findUnique({ where: { id: solder.id } })).toMatchObject({
-				quantity: 2,
+				quantity: 3,
 				stickerOrderedAt: null
 			});
 			expect(await listStickerOrders(actor)).toEqual([]);

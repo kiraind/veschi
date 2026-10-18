@@ -243,14 +243,36 @@ describe('workbench service', () => {
 			expect(await reload(back)).toMatchObject({ quantity: 2, parentId: box.id });
 		});
 
-		it('keeps a returned part apart from a source that got a sticker meanwhile', async () => {
+		it('merges a returned part into a source that got a sticker meanwhile', async () => {
 			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 9 });
 			await db.sticker.create({
 				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
 			});
+			expect(await returnHome(actor, itemId)).toEqual({ itemId: chips.id, merged: true });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 10 });
+			expect(await db.item.findUnique({ where: { id: itemId } })).toBeNull();
+		});
+
+		it('keeps a returned part with its own sticker apart from the source', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 9 });
+			await db.sticker.create({
+				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId }
+			});
 			expect(await returnHome(actor, itemId)).toEqual({ itemId, merged: false });
 			expect(await reload(chips.id)).toMatchObject({ quantity: 1 });
 			expect(await reload(itemId)).toMatchObject({ quantity: 9, parentId: box.id });
+		});
+
+		it('takes part of a stickered record: the sticker stays on the rest', async () => {
+			await db.sticker.create({
+				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
+			});
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 4 });
+			expect(itemId).not.toBe(chips.id);
+			expect(await db.sticker.findUniqueOrThrow({ where: { code: 'K7M4QX' } })).toMatchObject({
+				itemId: chips.id
+			});
+			expect(await reload(chips.id)).toMatchObject({ quantity: 6, parentId: box.id });
 		});
 
 		it('uses 2 of 2 on the bench: the record is archived, the box keeps 8', async () => {

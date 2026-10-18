@@ -95,9 +95,14 @@ async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void
 /**
  * Can a record be dissolved into an identical one? Not when it is a
  * container or a workbench, or something points at it: a sticker, contents,
- * a link from a parameter, a collection.
+ * a link from a parameter, a collection. With `allowSticker` a sticker does
+ * not count: the record survives a merge into it and keeps its sticker.
  */
-export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
+export async function isPlainRecord(
+	tx: Tx,
+	id: string,
+	{ allowSticker = false }: { allowSticker?: boolean } = {}
+): Promise<boolean> {
 	const item = await tx.item.findUnique({
 		where: { id },
 		include: {
@@ -110,7 +115,7 @@ export async function isPlainRecord(tx: Tx, id: string): Promise<boolean> {
 		item &&
 		!item.isWorkbench &&
 		!item.type?.isContainer &&
-		!item.sticker &&
+		(allowSticker || !item.sticker) &&
 		item._count.children === 0 &&
 		item._count.paramRefs === 0 &&
 		item._count.collectionEntries === 0

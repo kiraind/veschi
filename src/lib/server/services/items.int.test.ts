@@ -81,12 +81,19 @@ describe('items', () => {
 			expect(sticker).toMatchObject({ status: 'BOUND', itemId: id });
 		});
 
-		it('takes a sticker only for a single thing', async () => {
+		it('takes a sticker for any quantity', async () => {
 			await db.sticker.create({ data: { code: 'K7M4QX', ownerId: actor.userId } });
-			await expect(
-				createItem(actor, { typeId: thingType, quantity: 3, stickerCode: 'K7M4QX' })
-			).rejects.toThrow('У вещи с наклейкой количество всегда 1');
-			expect(await db.item.count()).toBe(0);
+			const { id } = await createItem(actor, {
+				typeId: thingType,
+				quantity: 3,
+				stickerCode: 'K7M4QX'
+			});
+			expect(await db.item.findUniqueOrThrow({ where: { id } })).toMatchObject({ quantity: 3 });
+			expect(await db.sticker.findUniqueOrThrow({ where: { code: 'K7M4QX' } })).toMatchObject({
+				status: 'BOUND',
+				itemId: id
+			});
+			expect(await db.item.count()).toBe(1);
 		});
 
 		it('rolls back when the sticker cannot be bound', async () => {
@@ -219,14 +226,14 @@ describe('items', () => {
 			expect((await getItemCard(actor, id)).item).toMatchObject({ name: 'Полка 2', quantity: 1 });
 		});
 
-		it('keeps the quantity of an item with a sticker at 1', async () => {
+		it('changes the quantity of an item with a sticker', async () => {
 			await db.sticker.create({ data: { code: 'K7M4QX', ownerId: actor.userId } });
 			const { id } = await createItem(actor, { typeId: thingType, stickerCode: 'K7M4QX' });
-			await expect(updateItem(actor, id, { quantity: 2 })).rejects.toThrow(
-				'У вещи с наклейкой количество всегда 1'
-			);
-			await updateItem(actor, id, { name: 'Мой', quantity: 1 });
-			expect((await getItemCard(actor, id)).item).toMatchObject({ name: 'Мой', quantity: 1 });
+			await updateItem(actor, id, { quantity: 5 });
+			expect((await getItemCard(actor, id)).item).toMatchObject({ quantity: 5 });
+			expect(await db.sticker.findUniqueOrThrow({ where: { code: 'K7M4QX' } })).toMatchObject({
+				itemId: id
+			});
 		});
 	});
 

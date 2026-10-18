@@ -63,12 +63,6 @@
 	let itemParamSection = $state<ParamSection>();
 	let typeParamSection = $state<ParamSection>();
 
-	/** Why the quantity of this item is always 1, if it is. */
-	const quantityLock = $derived(
-		card.sticker?.status === 'BOUND'
-			? 'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь. Чтобы изменить количество, отвяжите наклейку.'
-			: null
-	);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -489,7 +483,6 @@
 			name: item.displayName,
 			quantity: item.quantity
 		}}
-		lock={quantityLock}
 		onarchived={afterArchive}
 	/>
 	<ContainerDiscardSheet
@@ -516,7 +509,6 @@
 	<StickerSheet
 		bind:open={addingSticker}
 		itemId={item.id}
-		quantity={item.quantity}
 		ordered={card.stickerOrder}
 		caption={card.stickerCaption}
 		name={item.displayName}
