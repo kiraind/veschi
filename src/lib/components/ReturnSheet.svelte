@@ -44,17 +44,18 @@
 	});
 
 	async function done() {
-		if (problem) return;
+		if (problem || busy) return;
 		busy = true;
 		error = '';
+		// Before the request: once all of it is back, the item page passes no `item` any more.
+		const home = item.homePath.at(-1);
+		const what = item.quantity > 1 ? piecesAccusative(amount) : `«${item.name}»`;
 		try {
 			await api.post(`/api/items/${item.id}/return`, {
 				...(amount < item.quantity ? { quantity: amount } : {})
 			});
 			open = false;
 			await onreturned();
-			const home = item.homePath.at(-1);
-			const what = item.quantity > 1 ? piecesAccusative(amount) : `«${item.name}»`;
 			toast(
 				home
 					? {

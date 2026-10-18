@@ -21,9 +21,11 @@
 		title = 'Куда положить?',
 		containersOnly = true,
 		card = true,
-		suggestFor
+		suggestFor,
+		disabled = false
 	}: {
-		onpick: (container: { id: string; name: string }) => void;
+		/** `path` is the formatted path of the container, when known. */
+		onpick: (container: { id: string; name: string; path?: string }) => void;
 		/** The item being placed: it cannot go into itself (nor, when choosing a container, into its own contents). */
 		excludeId?: string;
 		/** Containers not offered, e.g. the one the item already lies in. */
@@ -36,6 +38,8 @@
 		card?: boolean;
 		/** The item being moved: while nothing is typed, recent and neighbouring places are offered. */
 		suggestFor?: string;
+		/** While the pick is being applied: results cannot be picked again. */
+		disabled?: boolean;
 	} = $props();
 
 	type Result = { id: string; name: string; path: string; code: string | null };
@@ -148,8 +152,9 @@
 				message = `«${card.item.displayName}» — не контейнер`;
 				return;
 			}
+			if (disabled) return;
 			scanning = false;
-			onpick({ id: card.item.id, name: card.item.displayName });
+			onpick({ id: card.item.id, name: card.item.displayName, path: formatPath(card.path) });
 		} catch (e) {
 			message = errorText(e);
 		}
@@ -164,7 +169,8 @@
 			<li>
 				<button
 					type="button"
-					class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+					class="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-gray-700"
+					{disabled}
 					onclick={() => onpick(result)}
 				>
 					<span class="break-words"
