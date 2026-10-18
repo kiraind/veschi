@@ -150,7 +150,8 @@ describe('stickers', () => {
 			captioned: 0,
 			free: 138,
 			bound: 1,
-			writtenOff: 1
+			writtenOff: 1,
+			unprintable: false
 		});
 	});
 
@@ -532,6 +533,8 @@ describe('stickers', () => {
 			const box = await item('Коробка');
 			await orderSticker(actor, box.id);
 			const batch = await issueBatch(actor, { blanks: { 20: 0 }, orderItemIds: [box.id] });
+			expect(batch.unprintable).toBe(true);
+			expect(await listBatches(actor)).toMatchObject([{ unprintable: true }]);
 			await unprintBatch(actor, batch.id);
 			expect(await listStickerOrders(actor)).toMatchObject([{ itemId: box.id }]);
 			expect(await getItemSticker(box.id)).toBeNull();
@@ -542,8 +545,10 @@ describe('stickers', () => {
 		it('refuses once a sticker of the batch is in use; other users cannot touch it', async () => {
 			const batch = await issueBatch(actor, { blanks: { 20: 1 } });
 			const [first] = await batchStickers(batch.id);
+			expect(await listBatches(actor)).toMatchObject([{ unprintable: true }]);
 			const box = await item('Коробка');
 			await bindSticker(actor, first!.code, box.id);
+			expect(await listBatches(actor)).toMatchObject([{ unprintable: false }]);
 			await expect(unprintBatch(actor, batch.id)).rejects.toThrow('уже используются');
 			await unbindSticker(actor, box.id);
 			await expect(unprintBatch(actor, batch.id)).rejects.toThrow('уже используются');
