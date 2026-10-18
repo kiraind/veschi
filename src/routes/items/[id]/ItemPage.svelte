@@ -234,7 +234,7 @@
 	/>
 {/if}
 
-<!-- «Без фото» with nothing to press (an archived item): no strip at all. -->
+<!-- «Фото не нужно» with nothing to press (an archived item): no strip at all. -->
 {#if card.type && !(card.type.noPhoto && !card.type.photoKey && !active)}
 	{@const type = card.type}
 	<PhotoField

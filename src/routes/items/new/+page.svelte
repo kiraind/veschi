@@ -67,11 +67,11 @@
 	const heading = $derived(isContainer ? 'Новый контейнер' : 'Новая вещь');
 	/**
 	 * An existing type keeps its photo; a photo can be added when it has none
-	 * and is not marked «Без фото».
+	 * and is not marked «Фото не нужно».
 	 */
 	const askPhoto = $derived(!selectedType?.photoKey && !selectedType?.noPhoto);
 	let photo = $state<File | null>(null);
-	/** «Без фото» chosen here for the type. */
+	/** «Фото не нужно» chosen here for the type. */
 	let noPhoto = $state(false);
 	let photoUrl = $derived(photo ? URL.createObjectURL(photo) : null);
 	let picking = $state(false);
@@ -171,7 +171,7 @@
 						await api.patch(`/api/types/${card.type.id}`, { noPhoto: true });
 					}
 				} catch {
-					// Only the look of the card: the item is there, «Без фото» can be chosen on it.
+					// Only the look of the card: the item is there, «Фото не нужно» can be chosen on it.
 				}
 			}
 			if (photo && askPhoto) {

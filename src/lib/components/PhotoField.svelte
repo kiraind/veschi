@@ -31,7 +31,7 @@
 	 * onto the photo set it too. The caller saves: `onfile` / `onremove` (local unsaved files are shown through
 	 * `previewUrl`).
 	 *
-	 * With `onnophoto`, a thing without a photo also gets «Без фото» in the menu:
+	 * With `onnophoto`, a thing without a photo also gets «Фото не нужно» in the menu:
 	 * the square placeholder collapses into a small strip with the same buttons
 	 * (`noPhoto`); choosing it again brings the square back.
 	 */
@@ -59,9 +59,9 @@
 		container?: boolean;
 		/** Another round button, right above the photo menu button. */
 		corner?: Snippet;
-		/** «Без фото»: without a photo, a strip with the buttons instead of the square. */
+		/** «Фото не нужно»: without a photo, a strip with the buttons instead of the square. */
 		noPhoto?: boolean;
-		/** Turns «Без фото» on or off; without it the menu has no such item. */
+		/** Turns «Фото не нужно» on or off; without it the menu has no such item. */
 		onnophoto?: (noPhoto: boolean) => Promise<void>;
 	} = $props();
 
@@ -146,7 +146,7 @@
 <div class="space-y-1">
 	<!-- Photos are square (uploads are padded to a square on the server). -->
 	<!-- Full width on phones, up to 256 px on wider screens. -->
-	<!-- «Без фото»: a strip as wide, the same buttons in a row (the same elements, so the menu stays bound). -->
+	<!-- «Фото не нужно»: a strip as wide, the same buttons in a row (the same elements, so the menu stays bound). -->
 	<div
 		class="relative w-full sm:max-w-64 {collapsed
 			? 'flex items-center gap-2 rounded-lg bg-gray-100 p-2 text-gray-300 dark:bg-gray-800 dark:text-gray-600'
@@ -182,7 +182,7 @@
 					? 'p-1 text-sm'
 					: 'flex-col p-4'}"
 			>
-				<!-- The strip of «Без фото» is too low for the big icon. -->
+				<!-- The strip of «Фото не нужно» is too low for the big icon. -->
 				{#if !collapsed}<ImageOutline class="h-10 w-10" />{/if}Отпустите, чтобы поставить фото
 			</div>
 		{/if}
@@ -251,7 +251,7 @@
 							run(() => onnophoto(!noPhoto));
 						}}
 					>
-						<EyeSlashOutline class="h-5 w-5" />Без фото
+						<EyeSlashOutline class="h-5 w-5" />Фото не нужно
 						{#if noPhoto}<CheckOutline class="ms-auto h-5 w-5" />{/if}
 					</DropdownItem>
 				{/if}

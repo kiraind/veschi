@@ -253,7 +253,7 @@ describe('types', () => {
 			expect(await storage().get(thumbKeyOf(second))).toBeNull();
 		});
 
-		it('keeps «Без фото» until a photo is set', async () => {
+		it('keeps «Фото не нужно» until a photo is set', async () => {
 			const type = await createType(actor, { name: 'Провод', noPhoto: true });
 			expect((await getType(actor, type.id)).noPhoto).toBe(true);
 			await updateType(actor, type.id, { name: 'Провод USB' });

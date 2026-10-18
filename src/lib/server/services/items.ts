@@ -118,7 +118,7 @@ export interface ItemCard {
 		description: string | null;
 		isContainer: boolean;
 		photoKey: string | null;
-		/** «Без фото»: the photo area is a strip while there is no photo. */
+		/** «Фото не нужно»: the photo area is a strip while there is no photo. */
 		noPhoto: boolean;
 	} | null;
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
