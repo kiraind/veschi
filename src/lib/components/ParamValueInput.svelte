@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { Button, Fileupload, Input, Radio, Select } from 'flowbite-svelte';
+	import { Fileupload, Input, Radio, Select } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import type { ParamDraft } from '$lib/domain/param-draft';
-	import { fileNameFromTemplate, formatFileSize, type ParamDefView } from '$lib/domain/params';
+	import { fileNameFromTemplate, type ParamDefView } from '$lib/domain/params';
 	import type { FileValue } from '$lib/server/services/files';
 	import DateInput from './DateInput.svelte';
+	import FileValueEditor from './FileValueEditor.svelte';
 	import LinkPicker from './LinkPicker.svelte';
 
 	/**
@@ -118,21 +119,7 @@
 	<Input type="url" bind:value={draft.url} placeholder="https://…" aria-label="Ссылка" />
 {:else if draft.valueType === 'FILE'}
 	{#if draft.file}
-		<div class="flex flex-col gap-2">
-			<Input bind:value={draft.file.fileName} aria-label="Имя файла" />
-			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-sm text-gray-500 dark:text-gray-400"
-					>{formatFileSize(draft.file.fileSize)}</span
-				>
-				<Button
-					color="alternative"
-					size="sm"
-					class="h-10"
-					type="button"
-					onclick={() => (draft.file = null)}>Заменить</Button
-				>
-			</div>
-		</div>
+		<FileValueEditor bind:file={draft.file} onreplace={() => (draft.file = null)} />
 	{:else}
 		<Fileupload disabled={uploading} onchange={(e) => upload(e.currentTarget)} aria-label="Файл" />
 		{#if uploading}<span class="text-sm text-gray-500 dark:text-gray-400">Загрузка…</span>{/if}
