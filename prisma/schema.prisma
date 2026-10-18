@@ -189,8 +189,11 @@ model Item {
   // A sticker is ordered for this record («Заказать наклейку»): it is printed
   // and bound to the record with the next batch (issueBatch).
   stickerOrderedAt  DateTime?
-  // Width of the ordered sticker in mm: 20 or 40.
+  // Width of the ordered sticker in mm: 10, 20 or 40.
   stickerOrderWidth Int       @default(20)
+  // Caption of the ordered sticker when it differs from the item's name;
+  // null — the name at print time.
+  stickerCaption    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

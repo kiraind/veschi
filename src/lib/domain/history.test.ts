@@ -151,6 +151,14 @@ describe('describeEvent', () => {
 		expect(
 			plain(describeEvent(event({ kind: 'sticker.printed', data: { code: 'K7M4QX' } })).title)
 		).toBe('Наклейка K7M-4QX напечатана для вещи Отвёртка');
+		const caption = describeEvent(
+			event({
+				kind: 'sticker.captionChanged',
+				data: { before: 'Отвёртка', after: 'Отвёртка крестовая' }
+			})
+		);
+		expect(plain(caption.title)).toBe('Изменена подпись наклейки для вещи Отвёртка');
+		expect(caption.details.map(plain)).toEqual(['«Отвёртка» → «Отвёртка крестовая»']);
 		const unprinted = describeEvent(
 			event({ kind: 'stickers.unprinted', subjectKind: 'batch', data: { count: 140, ordered: 2 } })
 		);

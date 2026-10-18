@@ -512,6 +512,8 @@
 		itemId={item.id}
 		quantity={item.quantity}
 		ordered={card.stickerOrder}
+		caption={card.stickerCaption}
+		name={item.displayName}
 		bound={card.sticker?.status === 'BOUND' ? card.sticker.code : null}
 	/>
 	<MoveSheet
