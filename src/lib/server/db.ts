@@ -1,9 +1,21 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { pgConfig } from '$lib/server/migrate';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-/** Shared Prisma client (one per process; reused across Vite HMR reloads in dev). */
-export const db: PrismaClient = globalForPrisma.prisma ?? new PrismaClient();
+/**
+ * Shared Prisma client (one per process; reused across Vite HMR reloads in dev).
+ * It talks to PostgreSQL through `pg` (engineType = "client" in schema.prisma).
+ */
+export const db: PrismaClient = globalForPrisma.prisma ?? createClient();
+
+function createClient(): PrismaClient {
+	// The client connects on the first query: during `vite build` there is no DATABASE_URL.
+	const url = process.env.DATABASE_URL;
+	const { config, schema } = url ? pgConfig(url) : { config: {}, schema: undefined };
+	return new PrismaClient({ adapter: new PrismaPg(config, { schema }) });
+}
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
 
