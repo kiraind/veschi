@@ -74,13 +74,7 @@
 
 	const pdfUrl = (id: string) => `/api/stickers/batches/${id}/pdf`;
 
-	function sheetsLabel(n: number): string {
-		const mod10 = n % 10;
-		const mod100 = n % 100;
-		if (mod10 === 1 && mod100 !== 11) return `${n} лист`;
-		if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} листа`;
-		return `${n} листов`;
-	}
+	const sheetsLabel = (n: number) => `${n} ${plural(n, ['лист', 'листа', 'листов'])}`;
 
 	async function issue(event: SubmitEvent) {
 		event.preventDefault();
@@ -277,7 +271,7 @@
 					За раз можно напечатать не больше {MAX_SHEETS_PER_BATCH} листов.
 				</p>
 			{/if}
-			{#if error}<p class="text-sm text-red-600 dark:text-red-500">{error}</p>{/if}
+			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 
 			<div class="flex flex-wrap gap-2">
 				<Button type="submit" disabled={busy || plan.total === 0 || tooMany}>
