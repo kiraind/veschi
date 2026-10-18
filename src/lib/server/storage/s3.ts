@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
+import { AppError } from '$lib/server/errors';
 import { authorization, EMPTY_SHA256, sha256Hex, uriEncode } from './sigv4';
 import type { Storage, StoredObject } from './types';
 
@@ -45,6 +46,16 @@ export class S3Storage implements Storage {
 
 	async put(key: string, data: Buffer, contentType: string): Promise<void> {
 		const res = await this.request('PUT', key, data, { 'content-type': contentType });
+		if (res.status === 413) {
+			// A proxy in front of MinIO (nginx: client_max_body_size, 1 MB by default)
+			// rejects the body with its own page; S3 itself answers 400 EntityTooLarge.
+			console.error(await s3Error('PUT', key, res));
+			throw new AppError(
+				413,
+				'too_large',
+				'Хранилище файлов не приняло такой большой файл. Если перед MinIO стоит nginx, увеличьте в нём client_max_body_size'
+			);
+		}
 		if (!res.ok) throw await s3Error('PUT', key, res);
 		await res.body?.cancel();
 	}
@@ -95,12 +106,24 @@ export class S3Storage implements Storage {
 
 async function errorCode(res: Response): Promise<string | undefined> {
 	const text = await res.text().catch(() => '');
-	return /<Code>([^<]+)<\/Code>/.exec(text)?.[1];
+	return tag(text, 'Code');
 }
 
+function tag(text: string, name: string): string | undefined {
+	return new RegExp(`<${name}>([^<]*)</${name}>`, 'i').exec(text)?.[1]?.trim();
+}
+
+/**
+ * A readable error for a failed request: status, the S3 error code and message,
+ * or, for a page from a proxy instead of S3, its Server header and title.
+ */
 async function s3Error(method: string, key: string, res: Response): Promise<Error> {
-	const code = await errorCode(res);
+	const text = await res.text().catch(() => '');
+	const code = tag(text, 'Code');
+	const detail = code
+		? [code, tag(text, 'Message')].filter(Boolean).join(': ')
+		: [res.headers.get('server'), tag(text, 'title')].filter(Boolean).join(': ');
 	return new Error(
-		`S3 ${method} ${key || '(bucket)'} failed: ${res.status}${code ? ` ${code}` : ''}`
+		`S3 ${method} ${key || '(bucket)'} failed: ${res.status}${detail ? ` ${detail}` : ''}`
 	);
 }
