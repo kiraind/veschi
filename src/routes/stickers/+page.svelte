@@ -3,10 +3,9 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Button, Card, Checkbox, Input, Label } from 'flowbite-svelte';
 	import Notice from '$lib/components/Notice.svelte';
-	import { FilePdfOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+	import { FilePdfOutline, PenOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
-	import EditButton from '$lib/components/EditButton.svelte';
 	import Sheet from '$lib/components/Sheet.svelte';
 	import StickerCaptionForm from '$lib/components/StickerCaptionForm.svelte';
 	import StickerWidthSelect from '$lib/components/StickerWidthSelect.svelte';
@@ -176,15 +175,21 @@
 					{#each data.orders as order (order.itemId)}
 						<li class="flex items-center gap-2 py-2">
 							<div class="min-w-0 flex-1 break-words">
-								<a href="/items/{order.itemId}" class="hover:underline">{order.caption}</a
-								><EditButton
-									label="Изменить подпись «{order.caption}»"
-									onclick={() => editCaption(order)}
-								/>
+								<a href="/items/{order.itemId}" class="hover:underline">{order.caption}</a>
 								{#if order.customCaption}
 									<span class="block text-sm text-gray-500 dark:text-gray-400">{order.name}</span>
 								{/if}
 							</div>
+							<button
+								type="button"
+								class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:outline-none disabled:opacity-50 dark:text-gray-500 dark:hover:text-primary-400 dark:focus-visible:ring-primary-800"
+								aria-label="Изменить подпись «{order.caption}»"
+								title="Изменить подпись"
+								disabled={busy}
+								onclick={() => editCaption(order)}
+							>
+								<PenOutline class="h-5 w-5" />
+							</button>
 							<StickerWidthSelect
 								value={order.width}
 								onpick={(width) => setOrderWidth(order.itemId, width)}
