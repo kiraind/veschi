@@ -66,6 +66,7 @@ prisma/              схема и миграции
 - Тяжёлое, что нужно не на каждой странице, загружается через `import()` в момент использования (так `QrScanner` через `$lib/scan-decoder.ts` грузит jsQR или, для штрихкодов, zxing-wasm, а где есть — берёт встроенный `BarcodeDetector`).
 - Страницы, `__data.json` и ответы API сжимаются gzip в `hooks.server.ts` (`compress` из `$lib/server/compress`); статика сжата при сборке.
 - Prisma с `relationJoins`: `include` загружает связи одним SQL-запросом. Независимые чтения в `load` идут через `Promise.all`.
+- Prisma без нативного движка (`engineType = "client"`): запросы собирает WebAssembly-компилятор, к PostgreSQL они идут через `pg` и `@prisma/adapter-pg` (`src/lib/server/db.ts`). Так в образе нет движка на 17 МБ.
 - **Идентификаторы** — cuid (`@default(cuid())`, колонки `TEXT`); во входных данных — `idSchema` из `$lib/domain/id`.
 - **Правка на месте**: отдельных страниц «Изменить» нет. Название или описание правится через карандаш (`EditButton`, ставится в строку в конце текста) и шторку (`TextEditSheet` поверх `Sheet` — Drawer снизу); количество, «Использовать» и «Выкинуть» — `QuantitySheet`. Тип вещи после создания не меняется.
 - Наклейка — всегда на одну вещь: у записи с наклейкой количество 1 (`STICKER_QUANTITY` в `services/items.ts`); `bindSticker` отделяет одну вещь от записи с количеством больше 1.

@@ -10,7 +10,6 @@
 ARG NODE_IMAGE=node:24-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
-# libssl3 from the base image is enough for the Prisma engines (linux-musl-openssl-3.0.x).
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ENV CHECKPOINT_DISABLE=1 \
@@ -24,16 +23,16 @@ FROM base AS deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Application build and the generated Prisma client (with the musl query engine).
+# Application build and the generated Prisma client.
 # The runtime stage copies both; removed from them first: the server's source maps
 # (node runs without --enable-source-maps) and the client's type declarations,
-# edge and WebAssembly builds (on Node.js it loads index.js and the native engine).
+# edge and WebAssembly builds (on Node.js it loads index.js and the query compiler).
 FROM deps AS build
 COPY . .
 RUN npx prisma generate && npm run build \
     && find build -name '*.map' -delete \
     && cd node_modules/.prisma/client \
-    && rm -f ./*.d.ts edge.js wasm.js wasm-*-loader.mjs query_engine_bg.js query_engine_bg.wasm
+    && rm -f ./*.d.ts edge.js wasm.js wasm-*-loader.mjs
 
 # Production dependencies only. Migrations are applied by the app itself
 # (src/lib/server/migrate.ts), so the Prisma CLI is not needed: npm keeps it with
@@ -45,7 +44,7 @@ RUN npx prisma generate && npm run build \
 # - sharp builds for glibc and WebAssembly: the lockfile has no libc field, so npm
 #   installs them next to the musl build;
 # - Prisma client runtimes for other databases, edge and WebAssembly (the generated
-#   client loads only runtime/library.js);
+#   client loads only runtime/client.js);
 # - source maps, type declarations and the TypeScript sources of zod;
 # - files that npm packages ship by mistake or only for browsers: the yarn release
 #   inside pdfkit, its browser and standalone builds, xml2js.bc.js (nothing requires it),
@@ -72,7 +71,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
         node_modules/@swc/helpers/_ node_modules/@swc/helpers/src node_modules/@swc/helpers/scripts \
     && for l in node_modules/.bin/*; do [ -e "$l" ] || rm "$l"; done \
     && find node_modules/@prisma/client/runtime -type f \
-        ! -name 'library.js' ! -name 'index-browser.js' -delete \
+        ! -name 'client.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM ${ALPINE_IMAGE} AS runtime

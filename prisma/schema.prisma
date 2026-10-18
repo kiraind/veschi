@@ -8,7 +8,9 @@
 
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  // No native query engine: queries are compiled by a WebAssembly module and
+  // sent through `pg` (src/lib/server/db.ts), which saves ~15 MB in the image.
+  engineType      = "client"
   // `include` / nested `select` load relations in the same SQL query (a JOIN)
   // instead of one extra round-trip per relation.
   previewFeatures = ["relationJoins"]

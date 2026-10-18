@@ -5,7 +5,7 @@ import type { Actor } from '$lib/server/scope';
 /** Deletes all rows from every application table. */
 export async function resetDatabase(): Promise<void> {
 	const tables = await db.$queryRaw<{ tablename: string }[]>`
-		SELECT tablename FROM pg_tables
+		SELECT tablename::text AS tablename FROM pg_tables
 		WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations'
 	`;
 	if (tables.length === 0) return;
