@@ -143,3 +143,28 @@ export function draftToInput(d: ParamDraft): Partial<ParamInput> & Record<string
 			return { ...base, valueType: d.valueType, refIds: d.refs.map((r) => r.id) };
 	}
 }
+
+/** Nothing typed or picked yet (a yes/no value always has an answer). */
+export function isEmptyDraft(d: ParamDraft): boolean {
+	switch (d.valueType) {
+		case 'STRING':
+			return !d.text.trim();
+		case 'NUMBER':
+			return !d.number.trim();
+		case 'RANGE':
+			return !d.min.trim() && !d.max.trim();
+		case 'ENUM':
+			return d.optionIds.length === 0;
+		case 'URL':
+			return !d.url.trim();
+		case 'FILE':
+			return !d.file;
+		case 'DATE':
+			return !d.date;
+		case 'BOOLEAN':
+			return false;
+		case 'ITEM':
+		case 'TYPE':
+			return d.refs.length === 0;
+	}
+}

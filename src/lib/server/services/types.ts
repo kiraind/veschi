@@ -188,32 +188,56 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 	};
 }
 
-export async function createType(actor: Actor, input: unknown, tx?: Tx): Promise<ItemType> {
-	if (!tx) return writeTransaction((t) => createType(actor, input, t));
+/** `refIds`: parameters it is created with, so their history shows the type. */
+export async function createType(
+	actor: Actor,
+	input: unknown,
+	tx?: Tx,
+	refIds: string[] = []
+): Promise<ItemType> {
+	if (!tx) return writeTransaction((t) => createType(actor, input, t, refIds));
 	const { name, description, isContainer } = typeInputSchema.parse(input);
 	const type = await tx.itemType.create({
 		data: { name, description, isContainer, ...ownedBy(actor) }
 	});
-	await recordEvent(tx, actor, { kind: 'type.created', subject: typeRef(type), data: {} });
+	await recordEvent(tx, actor, {
+		kind: 'type.created',
+		subject: typeRef(type),
+		data: {},
+		refIds
+	});
 	return type;
 }
 
 /**
  * The type with this name (case-insensitive), created when there is none
- * (with `isContainer`; an existing type keeps its own mark).
+ * (with `isContainer`; an existing type keeps its own mark). A description
+ * and parameters (`paramDefIds`, their values set by the caller) are only for
+ * a new type: an existing one is not changed behind the user's back.
  */
 export async function findOrCreateType(
 	actor: Actor,
 	rawName: string,
 	tx: Tx = db,
-	{ isContainer = false }: { isContainer?: boolean } = {}
-) {
+	{
+		isContainer = false,
+		description = null,
+		paramDefIds = []
+	}: { isContainer?: boolean; description?: string | null; paramDefIds?: string[] } = {}
+): Promise<ItemType & { created: boolean }> {
 	const name = typeNameSchema.parse(rawName);
 	const existing = await tx.itemType.findFirst({
 		where: { name: { equals: escapeLike(name), mode: 'insensitive' }, ...visibleTo(actor) },
 		orderBy: { createdAt: 'asc' }
 	});
-	return existing ?? createType(actor, { name, isContainer }, tx);
+	if (existing && (description || paramDefIds.length > 0)) {
+		throw new ConflictError(
+			`Тип «${existing.name}» уже есть — выберите его в поле «Тип», а описание и параметры типа поменяйте на его странице`
+		);
+	}
+	if (existing) return { ...existing, created: false };
+	const type = await createType(actor, { name, isContainer, description }, tx, paramDefIds);
+	return { ...type, created: true };
 }
 
 /**

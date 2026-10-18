@@ -21,10 +21,15 @@ import { notTaken, partCount, placePart } from './split';
 import { bindSticker } from './stickers';
 import { setBarcode } from './barcodes';
 import { requireWorkbench } from './workbench';
-import { CONTAINER_QUANTITY, findOrCreateType } from './types';
+import { CONTAINER_QUANTITY, findOrCreateType, typeDescriptionSchema } from './types';
 import { addTypeToCategory, assertItemComplete, categoryInfoOf } from './categories';
 import { missingParams, type CategoryRef, type RequiredParam } from '$lib/domain/categories';
-import { type StickerWidth, toStickerWidth } from '$lib/domain/sticker-sheet';
+import {
+	DEFAULT_STICKER_WIDTH,
+	isStickerWidth,
+	type StickerWidth,
+	toStickerWidth
+} from '$lib/domain/sticker-sheet';
 
 const ownName = z
 	.string()
@@ -55,7 +60,15 @@ export const createItemSchema = z
 		newTypeIsContainer: z.boolean().default(false),
 		/** Categories of a new type (newTypeName). */
 		newTypeCategoryIds: z.array(idSchema).max(50).default([]),
+		/** Description of a new type (newTypeName). */
+		newTypeDescription: typeDescriptionSchema.optional(),
+		/** Parameter values of a new type (newTypeName). */
+		newTypeParams: z.optional(paramListSchema),
 		stickerCode: z.string().trim().min(1).optional(),
+		/** «Нужна наклейка»: a sticker of this width waits for the next batch. */
+		orderStickerWidth: z.optional(
+			z.number().refine(isStickerWidth, 'Наклейки бывают шириной 10, 20 или 40 мм')
+		),
 		/** A packaging barcode to link to the type (existing or new). */
 		barcode: z.string().trim().min(1).max(40).optional(),
 		params: z.optional(paramListSchema)
@@ -63,6 +76,14 @@ export const createItemSchema = z
 	.refine((v) => Boolean(v.typeId) !== Boolean(v.newTypeName), {
 		message: 'Выберите тип или введите название нового',
 		path: ['typeId']
+	})
+	.refine((v) => !v.typeId || (!v.newTypeDescription && !v.newTypeParams?.length), {
+		message: 'Описание и параметры существующего типа меняются на его странице',
+		path: ['newTypeParams']
+	})
+	.refine((v) => !(v.stickerCode && v.orderStickerWidth), {
+		message: 'У вещи уже будет наклейка',
+		path: ['orderStickerWidth']
 	})
 	.refine((v) => !(v.parentId && v.workbenchId), {
 		message: 'Вещь кладётся либо в контейнер, либо на стол',
@@ -178,7 +199,9 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 		const type = data.typeId
 			? await findVisibleType(actor, data.typeId, tx)
 			: await findOrCreateType(actor, data.newTypeName ?? '', tx, {
-					isContainer: data.newTypeIsContainer
+					isContainer: data.newTypeIsContainer,
+					description: data.newTypeDescription,
+					paramDefIds: (data.newTypeParams ?? []).map((p) => p.defId)
 				});
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
@@ -189,6 +212,10 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 			for (const categoryId of new Set(data.newTypeCategoryIds)) {
 				await addTypeToCategory(actor, type.id, categoryId, tx);
 			}
+		}
+		// findOrCreateType refuses parameters for a type that exists already.
+		if (!data.typeId && data.newTypeParams?.length) {
+			await replaceParams(actor, { typeId: type.id }, data.newTypeParams, tx, { record: false });
 		}
 		await assertItemComplete(type.id, data.params ?? [], tx);
 		const item = await tx.item.create({
@@ -205,7 +232,10 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 							homeId: null,
 							createdOnBench: true
 						}
-					: { parentId: data.parentId ?? null })
+					: { parentId: data.parentId ?? null }),
+				...(data.orderStickerWidth
+					? { stickerOrderedAt: new Date(), stickerOrderWidth: data.orderStickerWidth }
+					: {})
 			}
 		});
 		if (bench) {
@@ -222,6 +252,14 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 			await replaceParams(actor, { itemId: item.id }, data.params, tx, { record: false });
 		}
 		if (data.stickerCode) await bindSticker(actor, data.stickerCode, item.id, tx);
+		if (data.orderStickerWidth) {
+			await recordEvent(tx, actor, {
+				kind: 'sticker.ordered',
+				subject: itemRef({ ...item, type }),
+				data:
+					data.orderStickerWidth === DEFAULT_STICKER_WIDTH ? {} : { width: data.orderStickerWidth }
+			});
+		}
 		return { id: item.id };
 	});
 }

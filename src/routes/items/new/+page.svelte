@@ -6,12 +6,11 @@
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { formatBarcode } from '$lib/domain/barcode';
 	import { page } from '$app/state';
-	import { Button, Card, Checkbox, Helper, Input, Label, Radio } from 'flowbite-svelte';
+	import { Button, Card, Checkbox, Helper, Input, Label, Radio, Textarea } from 'flowbite-svelte';
 	import Notice from '$lib/components/Notice.svelte';
 	import ContainerPicker from '$lib/components/ContainerPicker.svelte';
 	import PhotoField from '$lib/components/PhotoField.svelte';
 	import TypeAutocomplete from '$lib/components/TypeAutocomplete.svelte';
-	import ParamValueInput from '$lib/components/ParamValueInput.svelte';
 	import CategoryMultiSelect from '$lib/components/CategoryMultiSelect.svelte';
 	import InfoHint from '$lib/components/InfoHint.svelte';
 	import RequiredMark from '$lib/components/RequiredMark.svelte';
@@ -19,10 +18,14 @@
 	import { pickWorkbench } from '$lib/domain/workbench';
 	import { currentPosition } from '$lib/position';
 	import type { TypeCard, TypeInfo } from '$lib/server/services/types';
-	import { inCategories, requiredAt, type RequiredParam } from '$lib/domain/categories';
+	import { requiredAt, type RequiredParam } from '$lib/domain/categories';
 	import type { CategoryCard } from '$lib/server/services/categories';
 	import { untrack } from 'svelte';
-	import { draftToInput, emptyDraft, type ParamDraft } from '$lib/domain/param-draft';
+	import { draftToInput, isEmptyDraft } from '$lib/domain/param-draft';
+	import { withRequired, type ParamEntry } from '$lib/domain/param-entries';
+	import { DEFAULT_STICKER_WIDTH, type StickerWidth } from '$lib/domain/sticker-sheet';
+	import ParamEntries from '$lib/components/ParamEntries.svelte';
+	import StickerWidthSelect from '$lib/components/StickerWidthSelect.svelte';
 	import { paramInputSchema, type ParamInput } from '$lib/domain/params';
 	import type { PageData } from './$types';
 
@@ -76,30 +79,35 @@
 	/** Categories to put a new type into (an existing type has its own). */
 	let newTypeCategoryIds = $state<string[]>([]);
 
-	/** What the categories of the type (or of the new type) require on each item. */
-	async function loadRequired(id: string | null, categoryIds: string[]): Promise<RequiredParam[]> {
-		if (id) return (await api.get<TypeCard>(`/api/types/${id}`)).itemRequired;
+	/** What the categories of the type (or of the new type) require on each item and on the type. */
+	async function loadRequired(
+		id: string | null,
+		categoryIds: string[]
+	): Promise<{ item: RequiredParam[]; type: RequiredParam[] }> {
+		if (id) return { item: (await api.get<TypeCard>(`/api/types/${id}`)).itemRequired, type: [] };
 		const cards = await Promise.all(
 			categoryIds.map((c) => api.get<CategoryCard>(`/api/categories/${c}`))
 		);
-		return requiredAt(
-			cards.flatMap((card) =>
-				card.params.map((p) => ({
-					categoryId: card.category.id,
-					categoryName: card.category.name,
-					def: p.def,
-					level: p.level
-				}))
-			),
-			'ITEM'
+		const requirements = cards.flatMap((card) =>
+			card.params.map((p) => ({
+				categoryId: card.category.id,
+				categoryName: card.category.name,
+				def: p.def,
+				level: p.level
+			}))
 		);
+		return { item: requiredAt(requirements, 'ITEM'), type: requiredAt(requirements, 'TYPE') };
 	}
 
 	/**
-	 * Parameters the type's categories require on each item, with their values
-	 * being typed (kept when the list changes).
+	 * Parameter values of the new item and of the new type: those the categories
+	 * require first, then those added with «Параметр» (typed values are kept when
+	 * the requirements change).
 	 */
-	let required = $state<{ r: RequiredParam; draft: ParamDraft }[]>([]);
+	let itemParams = $state<ParamEntry[]>([]);
+	let typeParams = $state<ParamEntry[]>([]);
+	/** Description of a new type. */
+	let typeDescription = $state('');
 	let requiredKey = '';
 	$effect(() => {
 		const id = typeId;
@@ -107,26 +115,40 @@
 		const key = id ?? categoryIds.join(',');
 		requiredKey = key;
 		loadRequired(id, categoryIds)
-			.then((list) => {
+			.then((required) => {
 				if (requiredKey !== key) return;
-				const typed = new Map(untrack(() => required).map((e) => [e.r.def.id, e.draft]));
-				required = list.map((r) => ({ r, draft: typed.get(r.def.id) ?? emptyDraft(r.def) }));
+				itemParams = withRequired(
+					untrack(() => itemParams),
+					required.item
+				);
+				typeParams = withRequired(
+					untrack(() => typeParams),
+					required.type
+				);
 			})
 			.catch((e) => (error = errorText(e)));
 	});
 
-	/** Values of the required parameters, or an error message. */
-	function requiredParams(): ParamInput[] | string {
+	/**
+	 * Values to save, or an error message. Values not typed are left out, unless
+	 * required on each item (those of the type can be filled later).
+	 */
+	function paramInputs(entries: ParamEntry[], mandatory: boolean): ParamInput[] | string {
 		const result: ParamInput[] = [];
-		for (const { r, draft } of required) {
+		for (const { def, draft, categories } of entries) {
+			if (isEmptyDraft(draft) && !(mandatory && categories.length > 0)) continue;
 			const parsed = paramInputSchema.safeParse(draftToInput(draft));
 			if (!parsed.success) {
-				return `«${r.def.name}»: ${parsed.error.issues[0]?.message ?? 'проверьте значение'}`;
+				return `«${def.name}»: ${parsed.error.issues[0]?.message ?? 'проверьте значение'}`;
 			}
 			result.push(parsed.data);
 		}
 		return result;
 	}
+
+	/** «Нужна наклейка»: the next batch prints a sticker of this width for the item. */
+	let orderSticker = $state(false);
+	let stickerWidth = $state<StickerWidth>(DEFAULT_STICKER_WIDTH);
 
 	$effect(() => {
 		const url = photoUrl;
@@ -137,9 +159,10 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		const params = requiredParams();
-		if (typeof params === 'string') {
-			error = params;
+		const params = paramInputs(itemParams, true);
+		const newTypeParams = typeId ? [] : paramInputs(typeParams, false);
+		if (typeof params === 'string' || typeof newTypeParams === 'string') {
+			error = typeof params === 'string' ? params : (newTypeParams as string);
 			return;
 		}
 		busy = true;
@@ -149,13 +172,20 @@
 				params,
 				...(typeId
 					? { typeId }
-					: { newTypeName: typeName, newTypeIsContainer, newTypeCategoryIds }),
+					: {
+							newTypeName: typeName,
+							newTypeIsContainer,
+							newTypeCategoryIds,
+							newTypeDescription: typeDescription,
+							newTypeParams
+						}),
 				name,
 				// A container is a single instance: its quantity is always 1.
 				quantity: isContainer || freeSticker ? 1 : quantity,
 				parentId: parent?.id ?? null,
 				workbenchId: bench?.id,
 				stickerCode: freeSticker?.code,
+				orderStickerWidth: !freeSticker && orderSticker ? stickerWidth : undefined,
 				barcode: data.barcode ?? undefined
 			});
 			if (photo && askPhoto) {
@@ -241,8 +271,8 @@
 						годности.
 					</p>
 					<p>
-						Параметры «у каждой вещи» форма спросит сразу. Параметры «у типа» заполните потом на
-						странице типа — там они будут отмечены как «не заполнено».
+						Параметры «у каждой вещи» нужно заполнить сразу. Параметры «у типа» можно оставить
+						пустыми и заполнить потом на странице типа — там они будут отмечены как «не заполнено».
 					</p>
 				</InfoHint></span
 			>
@@ -250,6 +280,25 @@
 				<CategoryMultiSelect bind:selected={newTypeCategoryIds} />
 			</div>
 		</div>
+		<div>
+			<Label for="type-description">Описание типа</Label>
+			<Textarea
+				id="type-description"
+				class="mt-1 w-full"
+				rows={3}
+				maxlength={2000}
+				bind:value={typeDescription}
+				placeholder="Общее для всех вещей типа"
+			/>
+		</div>
+		<section class="space-y-2">
+			<h2 class="font-semibold">
+				Параметры типа<InfoHint title="Параметры типа">
+					<p>Значения общие для всех вещей этого типа, например производитель или напряжение.</p>
+				</InfoHint>
+			</h2>
+			<ParamEntries bind:entries={typeParams} holder="TYPE" mandatory={false} />
+		</section>
 	{/if}
 
 	{#if !isContainer}
@@ -275,13 +324,14 @@
 		</div>
 	{/if}
 
-	{#each required as entry (entry.r.def.id)}
-		<div class="space-y-1">
-			<span class="text-sm font-medium">{entry.r.def.name}<RequiredMark /></span>
-			<ParamValueInput bind:draft={entry.draft} def={entry.r.def} />
-			<Helper>Обязателен {inCategories(entry.r.categories)}</Helper>
-		</div>
-	{/each}
+	<section class="space-y-2">
+		<h2 class="font-semibold">
+			Индивидуальные параметры<InfoHint title="Индивидуальные параметры">
+				<p>Значения только этой вещи, например цвет или дата покупки.</p>
+			</InfoHint>
+		</h2>
+		<ParamEntries bind:entries={itemParams} holder="ITEM" mandatory />
+	</section>
 
 	{#if askPhoto}
 		<div class="space-y-1">
@@ -299,6 +349,15 @@
 						}
 					: undefined}
 			/>
+		</div>
+	{/if}
+
+	{#if !freeSticker}
+		<div class="flex min-h-10 flex-wrap items-center gap-3">
+			<Checkbox bind:checked={orderSticker}>Нужна наклейка</Checkbox>
+			{#if orderSticker}
+				<StickerWidthSelect value={stickerWidth} onpick={(w) => (stickerWidth = w)} />
+			{/if}
 		</div>
 	{/if}
 
