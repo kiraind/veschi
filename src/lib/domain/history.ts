@@ -90,6 +90,7 @@ export interface HistoryDataMap {
 	};
 	'item.restored': { to: Place; together: number };
 	'item.purged': { together: number };
+	/** `resultId`: only in events from before 2026-10-18, when binding split one thing off. */
 	'sticker.bound': { code: string; resultId?: string };
 	'sticker.unbound': { code: string };
 	/** `width` in mm, when not the default 20. */
@@ -97,7 +98,7 @@ export interface HistoryDataMap {
 	'sticker.orderCancelled': Record<string, never>;
 	/** The caption of the sticker waiting for print was edited. */
 	'sticker.captionChanged': { before: string; after: string };
-	/** An ordered sticker printed in a batch and bound to the item (`resultId` when split off). */
+	/** An ordered sticker printed in a batch and bound to the item (`resultId`: as for sticker.bound). */
 	'sticker.printed': { code: string; resultId?: string };
 	'params.changed': { changes: ParamChange[] };
 	'type.created': Record<string, never>;

@@ -1,4 +1,3 @@
-import type { Item } from '@prisma/client';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
 import { config } from '$lib/server/env';
 import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
@@ -7,7 +6,6 @@ import { renderStickerPdf } from '$lib/server/pdf/sticker-pdf';
 import { extractCode } from '$lib/domain/scan';
 import { itemDisplayName } from '$lib/domain/item';
 import { itemSubject, recordEvent } from './history';
-import { placePart } from './split';
 import { codeNeighbors, formatCode, generateCodes, normalizeCode } from '$lib/domain/sticker-code';
 import {
 	type BlankCounts,
@@ -24,16 +22,15 @@ import {
 /**
  * Binds a free sticker to an active item that has no sticker yet. Used when
  * creating an item from a scanned sticker and when attaching a sticker to an
- * existing item. A sticker marks one thing: when the record holds several,
- * one is split off into a record of its own (same place and own parameters)
- * and the sticker goes on it. Returns the id of the stickered record.
+ * existing item. The sticker goes on the whole record, whatever its quantity
+ * (a bag of screws gets one sticker).
  */
 export async function bindSticker(
 	actor: Actor,
 	codeInput: string,
 	itemId: string,
 	tx?: Tx
-): Promise<{ itemId: string }> {
+): Promise<void> {
 	if (!tx) return writeTransaction((t) => bindSticker(actor, codeInput, itemId, t));
 	const code = normalizeCode(codeInput);
 	if (!code) throw new ValidationError('Некорректный ID наклейки');
@@ -48,8 +45,10 @@ export async function bindSticker(
 	if (!item) throw new NotFoundError('Вещь не найдена');
 	const existing = await tx.sticker.findUnique({ where: { itemId } });
 	if (existing) throw new ConflictError('У вещи уже есть наклейка');
-	const target = await stickerTarget(tx, item);
-	await tx.sticker.update({ where: { id: sticker.id }, data: { status: 'BOUND', itemId: target } });
+	await tx.sticker.update({
+		where: { id: sticker.id },
+		data: { status: 'BOUND', itemId: item.id }
+	});
 	// The thing got a sticker by hand, so its order is no longer needed.
 	if (item.stickerOrderedAt) {
 		await tx.item.update({
@@ -60,32 +59,8 @@ export async function bindSticker(
 	await recordEvent(tx, actor, {
 		kind: 'sticker.bound',
 		subject: await itemSubject(tx, item.id),
-		data: { code, resultId: target }
+		data: { code }
 	});
-	return { itemId: target };
-}
-
-/**
- * The record a new sticker goes on. A sticker marks one thing: when the
- * record holds several, one is split off into a record of its own (same
- * place and own parameters).
- */
-async function stickerTarget(tx: Tx, item: Item): Promise<string> {
-	if (item.quantity <= 1) return item.id;
-	return placePart(
-		tx,
-		item,
-		1,
-		{
-			parentId: item.parentId,
-			takenById: item.takenById,
-			takenAt: item.takenAt,
-			homeId: item.homeId,
-			createdOnBench: item.createdOnBench,
-			splitFromId: item.splitFromId
-		},
-		{ merge: false }
-	);
 }
 
 /**
@@ -296,8 +271,7 @@ const stickerInUse = {
  * blank ones of each width, with extra blank stickers `fill` wide to fill the
  * last A4 sheet unless `fill` is null (FR-9). Every new code differs from every code ever issued in at least 3
  * positions (FR-11). Ordered stickers carry the item's name and are bound to
- * the item right away (one thing is split off a record holding several);
- * their orders are fulfilled.
+ * the item right away; their orders are fulfilled.
  */
 export async function issueBatch(
 	actor: Actor,
@@ -344,14 +318,10 @@ export async function issueBatch(
 				existing.map((s) => s.code),
 				plan.total
 			);
-			const targets: string[] = [];
-			for (const order of orders) {
-				const item = await tx.item.update({
-					where: { id: order.itemId },
-					data: { stickerOrderedAt: null, stickerCaption: null }
-				});
-				targets.push(await stickerTarget(tx, item));
-			}
+			await tx.item.updateMany({
+				where: { id: { in: orders.map((o) => o.itemId) } },
+				data: { stickerOrderedAt: null, stickerCaption: null }
+			});
 			const batch = await tx.stickerBatch.create({ data: { ...ownedBy(actor) } });
 			// Slots are in print order; an ordered sticker's slot points at its order.
 			const orderCodes: string[] = [];
@@ -368,7 +338,7 @@ export async function issueBatch(
 						batchId: batch.id,
 						...ownedBy(actor),
 						...(ordered
-							? { status: 'BOUND' as const, itemId: targets[index], fromOrder: true }
+							? { status: 'BOUND' as const, itemId: orders[index]!.itemId, fromOrder: true }
 							: {})
 					};
 				})
@@ -377,7 +347,7 @@ export async function issueBatch(
 				await recordEvent(tx, actor, {
 					kind: 'sticker.printed',
 					subject: await itemSubject(tx, order.itemId),
-					data: { code: orderCodes[i]!, resultId: targets[i] },
+					data: { code: orderCodes[i]! },
 					refIds: [batch.id]
 				});
 			}

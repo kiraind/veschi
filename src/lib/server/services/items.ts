@@ -43,10 +43,6 @@ const quantity = z
 	.min(1, 'Количество — не меньше 1')
 	.max(1_000_000);
 
-/** A sticker marks one thing, so a stickered record always holds exactly one. */
-export const STICKER_QUANTITY =
-	'У вещи с наклейкой количество всегда 1: наклейка обозначает одну вещь';
-
 export const createItemSchema = z
 	.object({
 		typeId: z.optional(idSchema),
@@ -208,7 +204,6 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 					paramDefIds: (data.newTypeParams ?? []).map((p) => p.defId)
 				});
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
-		if (data.stickerCode && data.quantity !== 1) throw new ValidationError(STICKER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const bench = data.workbenchId ? await requireWorkbench(actor, data.workbenchId, tx) : null;
 		if (data.barcode) await setBarcode(actor, type.id, data.barcode, {}, tx);
@@ -270,21 +265,20 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 
 /**
  * Changes the own name or quantity (≥ 1) of an active, ordinary item. The
- * quantity of a container or of an item with a sticker is always 1.
+ * quantity of a container is always 1.
  */
 export async function updateItem(actor: Actor, id: string, input: unknown): Promise<void> {
 	const data = updateItemSchema.parse(input);
 	await writeTransaction(async (tx) => {
 		const item = await tx.item.findFirst({
 			where: { id, ...visibleTo(actor) },
-			include: { type: true, sticker: true }
+			include: { type: true }
 		});
 		if (!item) throw new NotFoundError('Вещь не найдена');
 		if (item.isWorkbench) throw new ValidationError('Рабочий стол меняется на странице стола');
 		if (item.status !== 'ACTIVE') throw new ValidationError('Вещь в архиве');
 		if (data.quantity !== undefined && data.quantity !== item.quantity) {
 			if (item.type?.isContainer) throw new ValidationError(CONTAINER_QUANTITY);
-			if (item.sticker?.status === 'BOUND') throw new ValidationError(STICKER_QUANTITY);
 		}
 		await tx.item.update({ where: { id }, data: { name: data.name, quantity: data.quantity } });
 		const changes = diffFields({ name: item.name, quantity: item.quantity }, data);

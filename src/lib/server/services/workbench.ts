@@ -378,8 +378,8 @@ export interface PartOptions {
  * «Вернуть на место» for the whole record or part of its quantity. What goes
  * back merges into its split source when the source is active and still lies
  * in the home, untaken, and both are still the same thing with nothing
- * pointing at them (same own name and own values; no sticker, contents or
- * references); otherwise it goes into the home through `placePart`, so it
+ * pointing at them (same own name and own values; no contents or references,
+ * no sticker on what returns — the source keeps its own); otherwise it goes into the home through `placePart`, so it
  * may still join another identical record there. A part leaves the rest on the bench, still taken. Returns the id of
  * the record in the home.
  */
@@ -423,11 +423,13 @@ export async function returnHome(
 			});
 			// The same rules as for identical records in one place (see findTwin in split.ts):
 			// still the same thing (a renamed part or one with other own values stays apart),
-			// and neither record has a sticker, contents or references. A part is a fresh record.
+			// and neither record has contents or references. The source may have a sticker (it
+			// stays on the source); a whole record with its own sticker stays apart. A part is a
+			// fresh record.
 			if (
 				source &&
 				(await sameThing(tx, item, source)) &&
-				(await isPlainRecord(tx, source.id)) &&
+				(await isPlainRecord(tx, source.id, { allowSticker: true })) &&
 				(!whole || (await isPlainRecord(tx, item.id)))
 			) {
 				await tx.item.update({

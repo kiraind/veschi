@@ -21,17 +21,14 @@
 	 * now → «Сохранить»; less → «Использовать N» / «Выкинуть N» take N away, or
 	 * «Исправить количество» just sets it (miscounted: no use in the history); as
 	 * it is → «Использовать» / «Выкинуть» send the whole item to the archive.
-	 * `lock` explains why the quantity of this item is always 1 (a sticker).
 	 */
 	let {
 		open = $bindable(false),
 		item,
-		lock = null,
 		onarchived
 	}: {
 		open?: boolean;
 		item: { id: string; name: string; quantity: number };
-		lock?: string | null;
 		/** Called after the item went to the archive (the page may be gone). */
 		onarchived: () => Promise<void>;
 	} = $props();
@@ -126,7 +123,7 @@
 					color="alternative"
 					class="h-11 w-11 p-0"
 					aria-label="Меньше"
-					disabled={!!lock || busy || !valid || value <= 1}
+					disabled={busy || !valid || value <= 1}
 					onclick={() => value--}
 				>
 					<MinusOutline class="h-5 w-5" />
@@ -139,7 +136,7 @@
 						min="1"
 						step="1"
 						inputmode="numeric"
-						disabled={!!lock || busy}
+						disabled={busy}
 						bind:value
 					/>
 				</div>
@@ -147,15 +144,13 @@
 					color="alternative"
 					class="h-11 w-11 p-0"
 					aria-label="Больше"
-					disabled={!!lock || busy || !valid}
+					disabled={busy || !valid}
 					onclick={() => value++}
 				>
 					<PlusOutline class="h-5 w-5" />
 				</Button>
 			</div>
-			{#if lock}
-				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{lock}</p>
-			{:else if !valid}
+			{#if !valid}
 				<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">
 					Количество — целое число от 1
 				</p>

@@ -155,11 +155,14 @@ describe('history', () => {
 		const batch = await db.stickerBatch.create({ data: { ownerId: actor.userId } });
 		await db.sticker.create({ data: { ownerId: actor.userId, code: 'K7M4QX', batchId: batch.id } });
 		const nut = await createItem(actor, { typeId: screwType, name: 'Гайка', quantity: 2 });
-		const bound = await bindSticker(actor, 'K7M-4QX', nut.id);
-		await unbindSticker(actor, bound.itemId);
+		await bindSticker(actor, 'K7M-4QX', nut.id);
+		await unbindSticker(actor, nut.id);
 		expect(await kinds({ group: 'stickers' })).toEqual(['sticker.unbound', 'sticker.bound']);
-		// The stickered one was split off: its events are found by its own id too.
-		expect(await kinds({ entity: bound.itemId })).toEqual(['sticker.unbound', 'sticker.bound']);
+		expect(await kinds({ entity: nut.id })).toEqual([
+			'sticker.unbound',
+			'sticker.bound',
+			'item.created'
+		]);
 	});
 
 	it('keeps the history of deleted types and parameters', async () => {
