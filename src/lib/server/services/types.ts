@@ -37,7 +37,9 @@ export const typeDescriptionSchema = z
 export const typeInputSchema = z.object({
 	name: typeNameSchema,
 	description: typeDescriptionSchema.optional(),
-	isContainer: z.boolean().optional()
+	isContainer: z.boolean().optional(),
+	/** «Фото не нужно»: no photo is expected, the card collapses the photo area. */
+	noPhoto: z.boolean().optional()
 });
 
 /** Changes of a type: omitted fields stay as they are. */
@@ -59,6 +61,8 @@ export interface TypeInfo {
 	photoKey: string | null;
 	/** Packaging barcode in stored form. */
 	barcode: string | null;
+	/** «Фото не нужно»: the photo area is collapsed into a strip while there is no photo. */
+	noPhoto: boolean;
 }
 
 export interface TypeCard extends CategoryInfo {
@@ -84,7 +88,8 @@ function typeInfo(t: TypeInfo): TypeInfo {
 		description: t.description,
 		isContainer: t.isContainer,
 		photoKey: t.photoKey,
-		barcode: t.barcode
+		barcode: t.barcode,
+		noPhoto: t.noPhoto
 	};
 }
 
@@ -190,9 +195,9 @@ export async function getTypeCard(actor: Actor, id: string): Promise<TypeCard> {
 
 export async function createType(actor: Actor, input: unknown, tx?: Tx): Promise<ItemType> {
 	if (!tx) return writeTransaction((t) => createType(actor, input, t));
-	const { name, description, isContainer } = typeInputSchema.parse(input);
+	const { name, description, isContainer, noPhoto } = typeInputSchema.parse(input);
 	const type = await tx.itemType.create({
-		data: { name, description, isContainer, ...ownedBy(actor) }
+		data: { name, description, isContainer, noPhoto, ...ownedBy(actor) }
 	});
 	await recordEvent(tx, actor, { kind: 'type.created', subject: typeRef(type), data: {} });
 	return type;
@@ -217,12 +222,12 @@ export async function findOrCreateType(
 }
 
 /**
- * Changes the name, description or container mark. A type becomes a
+ * Changes the name, description, container mark or «Фото не нужно». A type becomes a
  * container only when each of its items (archived ones too) has quantity 1,
  * and stops being one only when nothing lies in its items.
  */
 export async function updateType(actor: Actor, id: string, input: unknown) {
-	const { name, description, isContainer } = typeUpdateSchema.parse(input);
+	const { name, description, isContainer, noPhoto } = typeUpdateSchema.parse(input);
 	return writeTransaction(async (tx) => {
 		const type = await findType(actor, id, tx);
 		if (isContainer === true && !type.isContainer) {
@@ -245,7 +250,7 @@ export async function updateType(actor: Actor, id: string, input: unknown) {
 		}
 		const updated = await tx.itemType.update({
 			where: { id },
-			data: { name, description, isContainer }
+			data: { name, description, isContainer, noPhoto }
 		});
 		const changes = diffFields(
 			{ name: type.name, description: type.description, isContainer: type.isContainer },
@@ -362,7 +367,8 @@ export async function setTypePhoto(actor: Actor, id: string, data: Buffer): Prom
 	await storage().put(photoKey, full, 'image/webp');
 	await storage().put(thumbKeyOf(photoKey), thumb, 'image/webp');
 	await writeTransaction(async (tx) => {
-		await tx.itemType.update({ where: { id }, data: { photoKey } });
+		// A photo brings the photo area back («Фото не нужно» is only for things without one).
+		await tx.itemType.update({ where: { id }, data: { photoKey, noPhoto: false } });
 		await recordEvent(tx, actor, {
 			kind: 'type.photo',
 			subject: typeRef(type),

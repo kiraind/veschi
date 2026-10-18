@@ -129,6 +129,9 @@ model ItemType {
   // the app; one per type and one type per barcode of an owner. Stored form of
   // src/lib/domain/barcode.ts (digits, UPC-A as EAN-13).
   barcode     String?
+  // «Фото не нужно»: with no photo, the card shows a small strip with the photo
+  // buttons instead of the square placeholder. A new photo turns it off.
+  noPhoto     Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

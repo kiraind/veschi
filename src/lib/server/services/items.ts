@@ -118,6 +118,8 @@ export interface ItemCard {
 		description: string | null;
 		isContainer: boolean;
 		photoKey: string | null;
+		/** «Фото не нужно»: the photo area is a strip while there is no photo. */
+		noPhoto: boolean;
 	} | null;
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
 	/** Width of the sticker ordered for the next batch («Заказать наклейку»), or null. */
@@ -404,7 +406,8 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 					name: item.type.name,
 					description: item.type.description,
 					isContainer: item.type.isContainer,
-					photoKey: item.type.photoKey
+					photoKey: item.type.photoKey,
+					noPhoto: item.type.noPhoto
 				}
 			: null,
 		sticker: item.sticker
