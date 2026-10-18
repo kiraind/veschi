@@ -6,6 +6,7 @@ import { discard, restore } from './archive';
 import { createItem, getItemCard, listContents, moveItem, updateItem } from './items';
 import { keyed, setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
+import { listStickerOrders } from './stickers';
 import { updateType } from './types';
 import { createWorkbench, listWorkbench, take } from './workbench';
 
@@ -54,6 +55,21 @@ describe('items', () => {
 		it('reuses an existing type with the same name, case-insensitively', async () => {
 			const a = await createItem(actor, { newTypeName: 'коробка' });
 			expect((await db.item.findUniqueOrThrow({ where: { id: a.id } })).typeId).toBe(boxType);
+		});
+
+		it('orders a sticker for the next batch («Нужна наклейка»)', async () => {
+			const { id } = await createItem(actor, {
+				typeId: thingType,
+				name: 'Паяльник',
+				orderStickerWidth: 40
+			});
+			expect((await getItemCard(actor, id)).stickerOrder).toBe(40);
+			expect((await listStickerOrders(actor)).map((o) => [o.caption, o.width])).toEqual([
+				['Паяльник', 40]
+			]);
+			await expect(createItem(actor, { typeId: thingType, orderStickerWidth: 15 })).rejects.toThrow(
+				'шириной 10, 20 или 40 мм'
+			);
 		});
 
 		it('binds a free sticker in the same transaction', async () => {
