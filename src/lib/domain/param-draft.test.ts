@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { draftFromView, draftToInput, emptyDraft, parseNumberInput } from './param-draft';
+import {
+	draftFromView,
+	draftToInput,
+	emptyDraft,
+	isEmptyDraft,
+	parseNumberInput
+} from './param-draft';
 import { paramInputSchema, type ParamView } from './params';
 
 const DEF = 'ctest00000000000000000d1';
@@ -59,5 +65,23 @@ describe('drafts', () => {
 	it('leaves an empty number invalid', () => {
 		const d = emptyDraft({ id: DEF, name: 'вес', valueType: 'NUMBER' });
 		expect(paramInputSchema.safeParse(draftToInput(d)).success).toBe(false);
+	});
+});
+
+describe('isEmptyDraft', () => {
+	it('tells untouched values from typed ones', () => {
+		const text = emptyDraft({ id: DEF, name: 'цвет', valueType: 'STRING' });
+		expect(isEmptyDraft(text)).toBe(true);
+		text.text = '  ';
+		expect(isEmptyDraft(text)).toBe(true);
+		text.text = 'красный';
+		expect(isEmptyDraft(text)).toBe(false);
+		const range = emptyDraft({ id: DEF, name: 'питание', valueType: 'RANGE' });
+		range.max = '16';
+		expect(isEmptyDraft(range)).toBe(false);
+		expect(isEmptyDraft(emptyDraft({ id: DEF, name: 'работает', valueType: 'BOOLEAN' }))).toBe(
+			false
+		);
+		expect(isEmptyDraft(emptyDraft({ id: DEF, name: 'зарядка', valueType: 'ITEM' }))).toBe(true);
 	});
 });

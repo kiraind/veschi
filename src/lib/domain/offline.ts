@@ -32,6 +32,43 @@ export function offlineCopyText(savedAt: string): string {
  */
 export type OfflineReason = 'network' | 'timeout' | 'down';
 
+/** What the proxy answered instead of the page (reason `down`), shown so the cause can be found. */
+export interface GatewayAnswer {
+	status: number;
+	statusText: string;
+	/** The `server` header: which proxy answered (nginx, Caddy, cloudflare…). */
+	server: string | null;
+	/** The text of its error page, without markup. */
+	body: string;
+}
+
+/** Longest part of the proxy's error page text shown on the «Сервер недоступен» page. */
+const GATEWAY_BODY_MAX = 300;
+
+/** Plain text of an error page: no tags, styles or scripts, spaces collapsed, cut to a few lines. */
+export function errorPageText(html: string): string {
+	const text = html
+		.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
+		.replace(/<[^>]*>/g, ' ')
+		.replace(/&nbsp;/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+	return text.length > GATEWAY_BODY_MAX ? `${text.slice(0, GATEWAY_BODY_MAX)}…` : text;
+}
+
+function escapeHtml(text: string): string {
+	return text.replace(
+		/[&<>"']/g,
+		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
+	);
+}
+
+/** The line about the proxy's answer: «Ответ 503 Service Unavailable от nginx: …». */
+export function gatewayAnswerText({ status, statusText, server, body }: GatewayAnswer): string {
+	const from = server ? ` от ${server}` : '';
+	return `Ответ ${[status, statusText].filter(Boolean).join(' ')}${from}${body ? `: ${body}` : ''}`;
+}
+
 /** How often the «Нет связи» page asks /healthz whether the server is back. */
 export const OFFLINE_RECHECK_MS = 5000;
 
@@ -55,8 +92,11 @@ const reasonText: Record<OfflineReason, { title: string; text: string }> = {
  * Unless the server was merely slow, it reloads by itself once /healthz answers
  * (asked every OFFLINE_RECHECK_MS and on the «online» event).
  */
-export function offlinePage(reason: OfflineReason): string {
+export function offlinePage(reason: OfflineReason, answer?: GatewayAnswer): string {
 	const { title, text } = reasonText[reason];
+	const answerLine = answer
+		? `\n\t<p class="answer">${escapeHtml(gatewayAnswerText(answer))}</p>`
+		: '';
 	// After a timeout the server may be up but slow: reloading by itself could loop.
 	const auto = reason !== 'timeout';
 	return `<!doctype html>
@@ -80,6 +120,7 @@ export function offlinePage(reason: OfflineReason): string {
 	button { width: 100%; min-height: 2.75rem; border: 0; border-radius: 0.5rem; background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 500; cursor: pointer; }
 	button:disabled { opacity: 0.7; }
 	.status { font-size: 0.875rem; margin: 0.75rem 0 0; }
+	.answer { font-size: 0.75rem; overflow-wrap: anywhere; }
 	a { color: var(--accent); }
 </style>
 </head>
@@ -87,7 +128,7 @@ export function offlinePage(reason: OfflineReason): string {
 <main>
 	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.8a15 15 0 0 1 4.2-2.6M10.7 5.1A15 15 0 0 1 22 8.8M5 12.9a10 10 0 0 1 5.2-2.7M16.8 11.3A10 10 0 0 1 19 12.9M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/></svg>
 	<h1>${title}</h1>
-	<p>${text}</p>
+	<p>${text}</p>${answerLine}
 	<button type="button" id="retry">Повторить</button>
 	<p class="status" id="status">${auto ? 'Страница откроется сама, когда сервер ответит.' : ''}</p>
 </main>

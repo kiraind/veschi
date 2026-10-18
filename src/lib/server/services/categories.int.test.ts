@@ -225,6 +225,48 @@ describe('categories', () => {
 		expect(await historyKinds(card.type!.id)).toContain('type.category');
 	});
 
+	it('creates a new type with its description and parameters together with an item', async () => {
+		const { id } = await createItem(actor, {
+			newTypeName: 'Молоко',
+			newTypeCategoryIds: [food.id],
+			newTypeDescription: '  Ультрапастеризованное  ',
+			newTypeParams: await keyed(actor, [
+				{ key: 'Калорийность', valueType: 'NUMBER', value: 60, unit: 'ккал' }
+			]),
+			params: await keyed(actor, [{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-25' }])
+		});
+		const card = await getItemCard(actor, id);
+		expect(card.type?.description).toBe('Ультрапастеризованное');
+		expect(card.typeParams.map((p) => p.key)).toEqual(['Калорийность']);
+		expect(card.itemParams.map((p) => p.key)).toEqual(['Срок годности']);
+		expect(card.missingTypeParams).toEqual([]);
+		// The type's history shows its creation once, not a separate change of its parameters.
+		expect(await historyKinds(card.type!.id)).toEqual([
+			'item.created',
+			'type.category',
+			'type.created'
+		]);
+
+		// An existing type of that name is not changed behind the user's back.
+		await expect(
+			createItem(actor, {
+				newTypeName: 'молоко',
+				newTypeDescription: 'Другое',
+				params: await keyed(actor, [
+					{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-25' }
+				])
+			})
+		).rejects.toThrow('Тип «Молоко» уже есть');
+		await expect(
+			createItem(actor, {
+				typeId: card.type!.id,
+				newTypeParams: await keyed(actor, [
+					{ key: 'Калорийность', valueType: 'NUMBER', value: 1, unit: 'ккал' }
+				])
+			})
+		).rejects.toThrow('меняются на его странице');
+	});
+
 	it('merges requirements of several categories', async () => {
 		const fragile = await createCategory(actor, { name: 'Хрупкое' });
 		const glass = await defIdFor(actor, 'Материал', 'STRING');
