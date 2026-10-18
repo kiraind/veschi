@@ -49,6 +49,22 @@ describe('authorization', () => {
 			})
 		).toMatch(/Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd$/);
 	});
+
+	it('collapses spaces inside header values, as S3 does when it checks the signature', () => {
+		const request = (contentType: string) =>
+			authorization({
+				...credentials,
+				method: 'PUT',
+				url: new URL('https://examplebucket.s3.amazonaws.com/a.txt'),
+				headers: {
+					'content-type': contentType,
+					host: 'examplebucket.s3.amazonaws.com',
+					'x-amz-content-sha256': EMPTY_SHA256,
+					'x-amz-date': '20130524T000000Z'
+				}
+			});
+		expect(request(' text/plain;   charset=utf-8 ')).toBe(request('text/plain; charset=utf-8'));
+	});
 });
 
 describe('uriEncode', () => {

@@ -93,8 +93,11 @@ export async function migrate(
 	const migrations = await readMigrations(dir);
 	const { config, schema } = pgConfig(databaseUrl);
 	const client = new pg.Client(config);
-	await client.connect();
+	// Without a listener a dropped connection is an unhandled 'error' event that
+	// kills the process; the pending query rejects on its own.
+	client.on('error', (e) => log(`Migration connection error: ${e.message}`));
 	try {
+		await client.connect();
 		await client.query('SELECT pg_advisory_lock($1)', [LOCK_KEY]);
 		// Prisma creates the schema from the URL too; `public` usually exists already.
 		await client.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schema)}`);
@@ -120,27 +123,35 @@ export async function migrate(
 		const done: string[] = [];
 		for (const m of migrations.filter((m) => !applied.has(m.name))) {
 			const id = randomUUID();
-			await client.query(
-				'INSERT INTO "_prisma_migrations" (id, checksum, migration_name, started_at) VALUES ($1, $2, $3, now())',
-				[id, m.checksum, m.name]
-			);
+			// The bookkeeping row commits together with the migration: if the process
+			// dies or the connection drops halfway, nothing is left behind and the next
+			// start simply runs the migration again.
 			try {
+				await client.query('BEGIN');
+				await client.query(
+					'INSERT INTO "_prisma_migrations" (id, checksum, migration_name, started_at) VALUES ($1, $2, $3, now())',
+					[id, m.checksum, m.name]
+				);
 				// A query without parameters goes over the simple protocol, which runs a whole script.
-				await client.query(`BEGIN;\n${m.sql}\n;COMMIT;`);
+				await client.query(m.sql);
+				await client.query(
+					'UPDATE "_prisma_migrations" SET finished_at = now(), applied_steps_count = 1 WHERE id = $1',
+					[id]
+				);
+				await client.query('COMMIT');
 			} catch (e) {
 				await client.query('ROLLBACK').catch(() => {});
-				await client.query(
-					'UPDATE "_prisma_migrations" SET logs = $2, rolled_back_at = now() WHERE id = $1',
-					[id, e instanceof Error ? e.message : String(e)]
-				);
+				await client
+					.query(
+						`INSERT INTO "_prisma_migrations" (id, checksum, migration_name, started_at, logs, rolled_back_at)
+						VALUES ($1, $2, $3, now(), $4, now())`,
+						[id, m.checksum, m.name, e instanceof Error ? e.message : String(e)]
+					)
+					.catch(() => {});
 				throw new Error(`Migration ${m.name} failed and was rolled back: ${String(e)}`, {
 					cause: e
 				});
 			}
-			await client.query(
-				'UPDATE "_prisma_migrations" SET finished_at = now(), applied_steps_count = 1 WHERE id = $1',
-				[id]
-			);
 			log(`Applied migration ${m.name}`);
 			done.push(m.name);
 		}

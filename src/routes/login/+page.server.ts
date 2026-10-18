@@ -13,14 +13,14 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const login = String(form.get('login') ?? '');
 		const password = String(form.get('password') ?? '');
-		const keys = [`login:${login.toLowerCase()}`, `address:${getClientAddress()}`];
-		const wait = loginThrottle.retryAfter(keys);
+		// Same normalization as the lookup in `authenticate`, so « admin» counts as «admin».
+		const keys = [`login:${login.trim().toLowerCase()}`, `address:${getClientAddress()}`];
+		const wait = loginThrottle.attempt(keys);
 		if (wait > 0) {
 			return fail(429, { login, message: `Слишком много попыток. Попробуйте через ${wait} с` });
 		}
 		const userId = login && password ? await authenticate(login, password) : null;
 		if (!userId) {
-			loginThrottle.fail(keys);
 			return fail(400, { login, message: 'Неверный логин или пароль' });
 		}
 		loginThrottle.succeed(keys);

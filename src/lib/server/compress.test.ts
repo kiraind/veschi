@@ -30,6 +30,11 @@ describe('compress', () => {
 		expect(gunzipSync(body).toString()).toBe(big);
 	});
 
+	it('turns a strong ETag into a weak one, since the bytes changed', () => {
+		const res = compress(request(), page(big, { etag: '"abc"' }));
+		expect(res.headers.get('etag')).toBe('W/"abc"');
+	});
+
 	it('gzips JSON of unknown length', () => {
 		const res = compress(
 			request(),
