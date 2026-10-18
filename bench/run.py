@@ -30,12 +30,12 @@ def sdmatte(image, mask, transparent):
 
 
 # name → nodes after LoadImage ("1"); the node named "out" is saved.
+# SDMatte takes about 80 minutes a photo on the runner's CPU: one variant per photo.
 VARIANTS = {
-    "ben2": lambda: {"out": rmbg(["1", 0], "BEN2")},
-    "sdmatte-transparent": lambda: {"m": birefnet(["1", 0], "BiRefNet_dynamic"),
-                                    "out": sdmatte(["1", 0], ["m", 1], True)},
-    "sdmatte": lambda: {"m": birefnet(["1", 0], "BiRefNet_dynamic"),
-                        "out": sdmatte(["1", 0], ["m", 1], False)},
+    "box": {"sdmatte-transparent": lambda: {"m": birefnet(["1", 0], "BiRefNet_dynamic"),
+                                            "out": sdmatte(["1", 0], ["m", 1], True)}},
+    "mug": {"sdmatte": lambda: {"m": birefnet(["1", 0], "BiRefNet_dynamic"),
+                                "out": sdmatte(["1", 0], ["m", 1], False)}},
 }
 
 
@@ -58,10 +58,10 @@ def main():
             break
         except Exception:
             time.sleep(2)
-    log = open(RESULTS / "log.txt", "w")
+    log = open(RESULTS / "log.txt", "a")
     failed = 0
     for photo in sorted((ROOT / "photos").iterdir()):
-        for name, nodes in VARIANTS.items():
+        for name, nodes in VARIANTS.get(photo.stem, {}).items():
             graph = {"1": {"class_type": "LoadImage", "inputs": {"image": photo.name}}}
             graph.update(nodes())
             prefix = f"{photo.stem}-{name}"
@@ -73,8 +73,9 @@ def main():
                     entry = call(f"/api/history/{pid}").get(pid)
                     if entry and (entry["status"].get("completed") or entry["status"].get("status_str") == "error"):
                         break
-                    if time.time() - started > 3600:
-                        raise TimeoutError("over an hour")
+                    if time.time() - started > 150 * 60:
+                        call("/api/interrupt", {})
+                        raise TimeoutError("over 150 minutes")
                     time.sleep(5)
                 if entry["status"].get("status_str") == "error":
                     raise RuntimeError(json.dumps(entry["status"].get("messages"))[-2000:])
