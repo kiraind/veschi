@@ -321,16 +321,18 @@
 						>
 							<FilePdfOutline class="me-1 h-4 w-4" />PDF
 						</Button>
-						<Button
-							color="alternative"
-							size="sm"
-							class="h-10"
-							type="button"
-							disabled={busy}
-							onclick={() => unprint(batch.id, batch.ordered)}
-						>
-							Не распечатано
-						</Button>
+						{#if batch.unprintable}
+							<Button
+								color="alternative"
+								size="sm"
+								class="h-10"
+								type="button"
+								disabled={busy}
+								onclick={() => unprint(batch.id, batch.ordered)}
+							>
+								Не распечатано
+							</Button>
+						{/if}
 					</div>
 				</Card>
 			</li>

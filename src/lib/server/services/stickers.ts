@@ -275,7 +275,20 @@ export interface BatchSummary {
 	free: number;
 	bound: number;
 	writtenOff: number;
+	/** «Не распечатано» still works: no sticker of the batch is in use yet. */
+	unprintable: boolean;
 }
+
+/**
+ * Stickers in use, which means their batch was printed: a blank one bound by
+ * scanning or written off, or an ordered one detached from its item.
+ */
+const stickerInUse = {
+	OR: [
+		{ fromOrder: false, status: { not: 'FREE' as const } },
+		{ fromOrder: true, itemId: null }
+	]
+};
 
 /**
  * Issues a batch of new stickers: one per ordered item (in `orderItemIds`,
@@ -385,7 +398,8 @@ export async function issueBatch(
 		ordered,
 		free: plan.total - ordered,
 		bound: ordered,
-		writtenOff: 0
+		writtenOff: 0,
+		unprintable: true
 	};
 }
 
@@ -403,7 +417,11 @@ export async function unprintBatch(actor: Actor, batchId: string): Promise<void>
 			where: { batchId: batch.id },
 			orderBy: { position: 'asc' }
 		});
-		const used = stickers.filter((s) => (s.fromOrder ? s.itemId === null : s.status !== 'FREE'));
+		const used = await tx.sticker.findMany({
+			where: { batchId: batch.id, ...stickerInUse },
+			orderBy: { position: 'asc' },
+			select: { code: true }
+		});
 		if (used.length > 0) {
 			const codes = used.slice(0, 3).map((s) => formatCode(s.code));
 			const more = used.length > 3 ? ` и ещё ${used.length - 3}` : '';
@@ -461,7 +479,7 @@ export async function listBatches(actor: Actor): Promise<BatchSummary[]> {
 	});
 	if (batches.length === 0) return [];
 	const ids = batches.map((b) => b.id);
-	const [byStatus, captioned, ordered] = await Promise.all([
+	const [byStatus, captioned, ordered, inUse] = await Promise.all([
 		db.sticker.groupBy({
 			by: ['batchId', 'status'],
 			where: { batchId: { in: ids } },
@@ -475,6 +493,11 @@ export async function listBatches(actor: Actor): Promise<BatchSummary[]> {
 		db.sticker.groupBy({
 			by: ['batchId'],
 			where: { batchId: { in: ids }, fromOrder: true },
+			_count: { _all: true }
+		}),
+		db.sticker.groupBy({
+			by: ['batchId'],
+			where: { batchId: { in: ids }, ...stickerInUse },
 			_count: { _all: true }
 		})
 	]);
@@ -491,7 +514,8 @@ export async function listBatches(actor: Actor): Promise<BatchSummary[]> {
 			ordered: ordered.find((g) => g.batchId === b.id)?._count._all ?? 0,
 			free,
 			bound,
-			writtenOff
+			writtenOff,
+			unprintable: !inUse.some((g) => g.batchId === b.id)
 		};
 	});
 }
