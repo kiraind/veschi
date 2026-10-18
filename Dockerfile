@@ -10,7 +10,6 @@
 ARG NODE_IMAGE=node:24-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
-# libssl3 from the base image is enough for the Prisma engines (linux-musl-openssl-3.0.x).
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ENV CHECKPOINT_DISABLE=1 \
@@ -24,10 +23,16 @@ FROM base AS deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Application build and the generated Prisma client (with the musl query engine).
+# Application build and the generated Prisma client.
+# The runtime stage copies both; removed from them first: the server's source maps
+# (node runs without --enable-source-maps) and the client's type declarations,
+# edge and WebAssembly builds (on Node.js it loads index.js and the query compiler).
 FROM deps AS build
 COPY . .
-RUN npx prisma generate && npm run build
+RUN npx prisma generate && npm run build \
+    && find build -name '*.map' -delete \
+    && cd node_modules/.prisma/client \
+    && rm -f ./*.d.ts edge.js wasm.js wasm-*-loader.mjs
 
 # Production dependencies only. Migrations are applied by the app itself
 # (src/lib/server/migrate.ts), so the Prisma CLI is not needed: npm keeps it with
@@ -39,20 +44,34 @@ RUN npx prisma generate && npm run build
 # - sharp builds for glibc and WebAssembly: the lockfile has no libc field, so npm
 #   installs them next to the musl build;
 # - Prisma client runtimes for other databases, edge and WebAssembly (the generated
-#   client loads only runtime/library.js);
-# - source maps and type declarations.
+#   client loads only runtime/client.js);
+# - source maps, type declarations and the TypeScript sources of zod;
+# - files that npm packages ship by mistake or only for browsers: the yarn release
+#   inside pdfkit, its browser and standalone builds, xml2js.bc.js (nothing requires it),
+#   browser builds and sources of fontkit, pngjs and pako, test coverage of pngjs;
+# - code nothing on the server loads: the brotli encoder (fontkit only decompresses),
+#   zod v3 (the app imports zod v4), the sources of @swc/helpers and its legacy
+#   `_` stubs (its package exports point to esm/ and cjs/).
 FROM base AS prod-deps
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
     && npm pkg delete devDependencies.prisma devDependencies.typescript \
     && npm prune --omit=dev \
     && test ! -e node_modules/prisma && test ! -e node_modules/@prisma/engines \
-    && rm -rf node_modules/typescript node_modules/jiti \
+    && rm -rf node_modules/typescript node_modules/jiti node_modules/.prisma \
         node_modules/@img/sharp-linux-* node_modules/@img/sharp-libvips-linux-* \
         node_modules/@img/sharp-wasm32 \
+        node_modules/zod/src \
+        node_modules/pdfkit/.yarn node_modules/pdfkit/js/pdfkit.standalone.js \
+        node_modules/pdfkit/js/pdfkit.browser.* \
+        node_modules/xml2js/lib/xml2js.bc.js \
+        node_modules/fontkit/src node_modules/fontkit/dist/browser* \
+        node_modules/brotli/build node_modules/pngjs/coverage node_modules/pngjs/browser.js \
+        node_modules/pako/dist node_modules/zod/v3 \
+        node_modules/@swc/helpers/_ node_modules/@swc/helpers/src node_modules/@swc/helpers/scripts \
     && for l in node_modules/.bin/*; do [ -e "$l" ] || rm "$l"; done \
     && find node_modules/@prisma/client/runtime -type f \
-        ! -name 'library.js' ! -name 'index-browser.js' -delete \
+        ! -name 'client.js' ! -name 'index-browser.js' -delete \
     && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete
 
 FROM ${ALPINE_IMAGE} AS runtime
