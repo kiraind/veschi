@@ -14,18 +14,13 @@ import {
 import { openFile, uploadParamFile } from './files';
 import { createItem } from './items';
 import {
-	addParam,
 	createParamDef,
-	deleteParam,
 	deleteParamDef,
 	getParamDef,
 	listParamDefs,
-	listParams,
-	moveParam,
-	setParams,
-	updateParam,
 	updateParamDef
-} from './params';
+} from './param-defs';
+import { addParam, deleteParam, listParams, moveParam, setParams, updateParam } from './params';
 
 describe('params', () => {
 	let actor: Actor;

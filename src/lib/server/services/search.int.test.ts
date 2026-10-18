@@ -5,7 +5,7 @@ import { createTestActor } from '$lib/server/testing/db';
 import { formatPath } from '$lib/domain/item';
 import { createItem, moveItem } from './items';
 import { enumDef, optionId, setKeyedParams } from '$lib/server/testing/params';
-import { updateParamDef } from './params';
+import { updateParamDef } from './param-defs';
 import { search, searchExamples } from './search';
 import { updateType } from './types';
 

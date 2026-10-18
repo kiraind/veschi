@@ -29,7 +29,7 @@ import {
 import { diffFields, type CategoryParamChange } from '$lib/domain/history';
 import { categoryRef, recordEvent, typeRef } from './history';
 import { assertNameFree } from './names';
-import { defInclude, defViews } from './params';
+import { defInclude, defViews } from './param-defs';
 
 /** Body of PUT /api/categories/[id]/params. */
 export const categoryParamsBodySchema = z.object({ params: categoryParamsSchema });

@@ -17,7 +17,8 @@ import {
 import { discard } from './archive';
 import { listHistory } from './history';
 import { createItem, getItemCard } from './items';
-import { addParam, deleteParam, deleteParamDef, listParams, setParams } from './params';
+import { deleteParamDef } from './param-defs';
+import { addParam, deleteParam, listParams, setParams } from './params';
 import { search } from './search';
 import { createType, getTypeCard } from './types';
 

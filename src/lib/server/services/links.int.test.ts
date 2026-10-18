@@ -7,17 +7,13 @@ import { MAX_LINK_TARGETS, MAX_PARAMS, type ParamDefView } from '$lib/domain/par
 import { createCategory, setCategoryParams } from './categories';
 import { createItem } from './items';
 import {
-	addParam,
 	createParamDef,
-	deleteParam,
 	deleteParamDef,
 	getParamDef,
 	listParamDefs,
-	listParams,
-	setParams,
-	updateParam,
 	updateParamDef
-} from './params';
+} from './param-defs';
+import { addParam, deleteParam, listParams, setParams, updateParam } from './params';
 import { createWorkbench, take } from './workbench';
 
 describe('links', () => {
