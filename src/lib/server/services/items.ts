@@ -122,6 +122,8 @@ export interface ItemCard {
 	sticker: { code: string; status: StickerStatus; caption: string | null } | null;
 	/** Width of the sticker ordered for the next batch («Заказать наклейку»), or null. */
 	stickerOrder: StickerWidth | null;
+	/** What the ordered sticker will say: its edited caption or the item's name. */
+	stickerCaption: string;
 	path: PathNode[];
 	/** The item's own parameters («Индивидуальные параметры»). */
 	itemParams: ParamView[];
@@ -409,6 +411,7 @@ export async function getItemCard(actor: Actor, id: string): Promise<ItemCard> {
 			? { code: item.sticker.code, status: item.sticker.status, caption: item.sticker.caption }
 			: null,
 		stickerOrder: item.stickerOrderedAt ? toStickerWidth(item.stickerOrderWidth) : null,
+		stickerCaption: item.stickerCaption ?? itemDisplayName(item),
 		path,
 		itemParams: own,
 		typeParams: inheritedParams(ofType, own),

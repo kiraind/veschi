@@ -95,6 +95,8 @@ export interface HistoryDataMap {
 	/** `width` in mm, when not the default 20. */
 	'sticker.ordered': { width?: number };
 	'sticker.orderCancelled': Record<string, never>;
+	/** The caption of the sticker waiting for print was edited. */
+	'sticker.captionChanged': { before: string; after: string };
 	/** An ordered sticker printed in a batch and bound to the item (`resultId` when split off). */
 	'sticker.printed': { code: string; resultId?: string };
 	'params.changed': { changes: ParamChange[] };
@@ -157,6 +159,7 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'sticker.unbound': 'stickers',
 	'sticker.ordered': 'stickers',
 	'sticker.orderCancelled': 'stickers',
+	'sticker.captionChanged': 'stickers',
 	'sticker.printed': 'stickers',
 	'params.changed': 'changes',
 	'type.created': 'changes',
@@ -478,6 +481,13 @@ export function describeEvent(e: HistoryEventView): EventText {
 		}
 		case 'sticker.orderCancelled':
 			return { title: [t('Наклейка больше не ждёт печати для вещи '), subject], details: [] };
+		case 'sticker.captionChanged': {
+			const d = e.data as HistoryData<'sticker.captionChanged'>;
+			return {
+				title: [t('Изменена подпись наклейки для вещи '), subject],
+				details: [[t(`«${formatChangeValue(d.before)}» → «${formatChangeValue(d.after)}»`)]]
+			};
+		}
 		case 'sticker.printed': {
 			const d = e.data as HistoryData<'sticker.printed'>;
 			return {

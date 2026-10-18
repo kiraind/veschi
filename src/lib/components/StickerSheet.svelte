@@ -1,18 +1,25 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
-	import { ArrowLeftOutline, PrinterOutline, QrCodeOutline } from 'flowbite-svelte-icons';
+	import {
+		ArrowLeftOutline,
+		PenOutline,
+		PrinterOutline,
+		QrCodeOutline
+	} from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { piecesGenitive } from '$lib/domain/plural';
 	import { formatCode } from '$lib/domain/sticker-code';
 	import { STICKER_WIDTHS, type StickerWidth } from '$lib/domain/sticker-sheet';
 	import QrScanner from './QrScanner.svelte';
+	import StickerCaptionForm from './StickerCaptionForm.svelte';
 	import Sheet from './Sheet.svelte';
 
 	/**
 	 * «+ Наклейка» on the card of an item without a sticker: bind a free sticker
 	 * by scanning it, or print one of the chosen width with the next batch.
-	 * For a sticker waiting for print it binds one instead or changes the width.
+	 * For a sticker waiting for print it binds one instead, changes the width or
+	 * edits the caption.
 	 * With a bound sticker it shows the sticker and unbinds it.
 	 */
 	let {
@@ -20,19 +27,25 @@
 		itemId,
 		quantity = 1,
 		ordered = null,
+		caption = '',
+		name = '',
 		bound = null
 	}: {
 		open?: boolean;
 		itemId: string;
 		/** Width of the sticker waiting for print, if there is one. */
 		ordered?: StickerWidth | null;
+		/** What the sticker waiting for print will say. */
+		caption?: string;
+		/** The item's name: the caption of a sticker by default. */
+		name?: string;
 		/** Code of the sticker bound to the item, if there is one. */
 		bound?: string | null;
 		/** A sticker marks one thing: binding it to several splits one off (see bindSticker). */
 		quantity?: number;
 	} = $props();
 
-	let step = $state<'choose' | 'bind' | 'print'>('choose');
+	let step = $state<'choose' | 'bind' | 'print' | 'caption'>('choose');
 	let busy = $state(false);
 	let error = $state('');
 
@@ -82,7 +95,13 @@
 
 <Sheet
 	bind:open
-	title={bound ? `Наклейка ${formatCode(bound)}` : step === 'print' ? 'Какой ширины?' : 'Наклейка'}
+	title={bound
+		? `Наклейка ${formatCode(bound)}`
+		: step === 'print'
+			? 'Какой ширины?'
+			: step === 'caption'
+				? 'Подпись наклейки'
+				: 'Наклейка'}
 >
 	{#if !bound && step !== 'choose'}
 		<button
@@ -128,7 +147,27 @@
 					{/if}
 				</span>
 			</button>
+			{#if ordered}
+				<button type="button" class={optionClass} onclick={() => (step = 'caption')}>
+					<PenOutline class={iconClass} />
+					<span class="min-w-0">
+						<span class="block font-medium">Изменить подпись</span>
+						<span class="{hintClass} line-clamp-2 break-words">{caption}</span>
+					</span>
+				</button>
+			{/if}
 		</div>
+	{:else if step === 'caption' && ordered}
+		<StickerCaptionForm
+			{itemId}
+			{caption}
+			{name}
+			width={ordered}
+			onsaved={async () => {
+				open = false;
+				await invalidateAll();
+			}}
+		/>
 	{:else if step === 'bind'}
 		{#if quantity > 1}
 			<p class="mb-2 text-sm text-gray-500 dark:text-gray-400">

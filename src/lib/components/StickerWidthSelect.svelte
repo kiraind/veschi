@@ -19,7 +19,8 @@
 </script>
 
 <Select
-	class="w-28 shrink-0 {className}"
+	class="w-24 shrink-0 {className}"
+	classes={{ select: 'ps-3 pe-8' }}
 	placeholder=""
 	aria-label={label}
 	title={label}
