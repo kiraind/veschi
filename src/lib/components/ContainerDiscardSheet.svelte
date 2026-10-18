@@ -2,6 +2,7 @@
 	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import { archivedToast } from '$lib/item-toasts';
+	import { toast } from '$lib/toast.svelte';
 	import { pieces, plural } from '$lib/domain/plural';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
@@ -69,9 +70,18 @@
 				contents,
 				workbenchId: contents === 'workbench' ? (workbenchId ?? undefined) : undefined
 			});
+			const together = contents === 'discard';
 			open = false;
 			await ondiscarded();
-			archivedToast(`Выкинули «${name}»`, id);
+			// Restoring brings back only what went to the archive with the container, so
+			// «Отменить» is offered only when that is everything; moved contents stay put.
+			if (together) archivedToast(`Выкинули «${name}» вместе с содержимым`, id);
+			else {
+				toast({
+					message: `Выкинули «${name}», содержимое переложено`,
+					link: { href: `/items/${id}`, label: 'Открыть' }
+				});
+			}
 		} catch (e) {
 			error = errorText(e);
 		} finally {

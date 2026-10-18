@@ -167,7 +167,7 @@ model Item {
   // Own name of this instance; when empty the type name is shown.
   name        String?
   // At least 1 (CHECK Item_quantity_positive); always 1 for containers (items
-  // of a container type), workbenches and items with a sticker (services).
+  // of a container type) and workbenches (services).
   quantity    Int        @default(1)
   // Where the item lies; null = top level.
   parentId    String?

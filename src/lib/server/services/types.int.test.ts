@@ -6,7 +6,7 @@ import { storage } from '$lib/server/storage';
 import { createTestActor } from '$lib/server/testing/db';
 import { createItem, getItemCard, moveItem } from './items';
 import { setKeyedParams } from '$lib/server/testing/params';
-import { createWorkbench, relocate, take } from './workbench';
+import { createWorkbench, take } from './workbench';
 import { openFile, thumbKeyOf } from './files';
 import {
 	createType,
@@ -176,7 +176,7 @@ describe('types', () => {
 				true
 			);
 
-			await relocate(actor, chip.id, null);
+			await moveItem(actor, chip.id, null);
 			await updateType(actor, type.id, { name: 'Коробка', isContainer: false });
 			expect((await getItemCard(actor, box.id)).item.isContainer).toBe(false);
 			await expect(moveItem(actor, chip.id, box.id)).rejects.toThrow('не контейнер');

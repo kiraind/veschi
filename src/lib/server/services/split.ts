@@ -2,7 +2,7 @@ import type { Item } from '@prisma/client';
 import type { Tx } from '$lib/server/db';
 import { ValidationError } from '$lib/server/errors';
 import { quantityError } from '$lib/domain/workbench';
-import { mirrorLinksOf } from './params';
+import { mirrorLinksOf, valueSignature } from './params';
 
 /** Where a moved part ends up and whether it counts as taken to a workbench. */
 export interface Placement {
@@ -44,23 +44,7 @@ async function paramSignatures(tx: Tx, ids: string[]): Promise<Map<string, strin
 		orderBy: { defId: 'asc' }
 	});
 	const result = new Map<string, string[]>(ids.map((id) => [id, []]));
-	for (const r of rows) {
-		result
-			.get(r.itemId ?? '')
-			?.push(
-				JSON.stringify([
-					r.defId,
-					r.textValue,
-					r.numberValue,
-					r.numberMax,
-					r.dateValue?.toISOString() ?? null,
-					r.boolValue,
-					r.fileKey,
-					r.enumValues.map((v) => v.optionId).sort(),
-					r.refs.map((ref) => ref.itemId ?? ref.typeId).sort()
-				])
-			);
-	}
+	for (const r of rows) result.get(r.itemId ?? '')?.push(`${r.defId}:${valueSignature(r)}`);
 	return new Map([...result].map(([id, parts]) => [id, parts.join(';')]));
 }
 
@@ -94,9 +78,10 @@ async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void
 
 /**
  * Can a record be dissolved into an identical one? Not when it is a
- * container or a workbench, or something points at it: a sticker, contents,
- * a link from a parameter, a collection. With `allowSticker` a sticker does
- * not count: the record survives a merge into it and keeps its sticker.
+ * container or a workbench, or something points at it: a sticker or a
+ * pending sticker order, contents, a link from a parameter, a collection.
+ * With `allowSticker` a sticker and an order do not count: the record
+ * survives a merge into it and keeps them.
  */
 export async function isPlainRecord(
 	tx: Tx,
@@ -115,7 +100,7 @@ export async function isPlainRecord(
 		item &&
 		!item.isWorkbench &&
 		!item.type?.isContainer &&
-		(allowSticker || !item.sticker) &&
+		(allowSticker || (!item.sticker && !item.stickerOrderedAt)) &&
 		item._count.children === 0 &&
 		item._count.paramRefs === 0 &&
 		item._count.collectionEntries === 0
@@ -125,9 +110,10 @@ export async function isPlainRecord(
 /**
  * An active record that `count` of `item` placed at `placement` would
  * duplicate: same owner, type, own name, place, workbench state and own
- * parameter values, with nothing pointing at it. What moves must be plain
- * too: a part always is (unless its type is a container), a whole record
- * only without a sticker, contents or references. Null when there is none.
+ * parameter values, with nothing pointing at it (no sticker or sticker
+ * order either). What moves must be plain too: a part always is (unless its
+ * type is a container), a whole record only without a sticker, an order,
+ * contents or references. Null when there is none.
  */
 async function findTwin(
 	tx: Tx,
@@ -153,6 +139,7 @@ async function findTwin(
 			createdOnBench: placement.createdOnBench ?? false,
 			splitFromId: placement.splitFromId,
 			sticker: null,
+			stickerOrderedAt: null,
 			children: { none: {} },
 			paramRefs: { none: {} },
 			collectionEntries: { none: {} }
@@ -195,7 +182,7 @@ async function isPlainType(tx: Tx, typeId: string | null): Promise<boolean> {
  *
  * When an identical record already lies at the destination (see `findTwin`),
  * what moves is added to its quantity instead of lying there as a second
- * record; a whole record is then deleted (it has no sticker or contents).
+ * record; a whole record is then deleted (it has no sticker, order or contents).
  * `merge: false` always keeps the part a record of its own.
  * Returns the id of the record that holds what moved.
  */

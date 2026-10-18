@@ -96,7 +96,6 @@ export function assertIsContainer(item: {
 	}
 }
 
-/** Throws when something lies in the container or was taken from it to a workbench. */
 /** Active things inside the containers, and things from them taken to a workbench. */
 export async function countContents(
 	containerIds: string | string[],
@@ -110,6 +109,7 @@ export async function countContents(
 	return { inside, taken };
 }
 
+/** Throws when something lies in the container or was taken from it to a workbench. */
 export async function assertNothingInside(containerIds: string | string[], tx: Tx): Promise<void> {
 	const { inside, taken } = await countContents(containerIds, tx);
 	if (inside > 0) throw new ValidationError('Внутри лежат вещи — сначала переложите их');
