@@ -26,7 +26,7 @@ src/
     components/      Svelte-компоненты
     api.ts           браузерный клиент JSON API (`api.get/post/...`, ApiError, `errorText`)
     connection.svelte.ts  доступен ли сервер: о запросах сообщает api.ts, плашку показывает ConnectionNotice
-    tabs.svelte.ts   стеки вкладок: активная вкладка и последняя страница в каждой (правила — domain/tabs.ts)
+    tabs.svelte.ts   стеки вкладок: активная вкладка, стек страниц каждой, «Назад» внутри вкладки (правила — domain/tabs.ts)
   service-worker.ts  PWA: кэш файлов приложения, сохранённые копии страниц, страница «Нет связи»
   routes/
     api/**/+server.ts   JSON API (все изменения данных идут через него)

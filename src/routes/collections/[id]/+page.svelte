@@ -1,7 +1,8 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { Button } from 'flowbite-svelte';
-	import { ArrowLeftOutline, PlusOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+	import { PlusOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import AddEntrySheet from '$lib/components/AddEntrySheet.svelte';
@@ -89,12 +90,7 @@
 
 <svelte:head><title>{collection.name} — veschi</title></svelte:head>
 
-<p class="mb-2">
-	<a
-		class="inline-flex items-center gap-1 py-2 text-sm text-primary-700 hover:underline dark:text-primary-400"
-		href="/collections"><ArrowLeftOutline class="h-4 w-4" />Коллекции</a
-	>
-</p>
+<BackTrail fallback={{ href: '/collections', title: 'Коллекции' }} />
 <!-- Named by the text alone: the pen is not part of the heading's name. -->
 <h1 class="text-2xl font-bold wrap-anywhere" aria-labelledby="page-title">
 	<span id="page-title">{collection.name}</span><EditButton

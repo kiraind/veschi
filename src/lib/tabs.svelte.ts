@@ -1,22 +1,46 @@
 /**
- * Tab stacks (see `$lib/domain/tabs`): which tab is active and the page last open in each.
+ * Tab stacks (see `$lib/domain/tabs`): which tab is active and the pages opened in each.
  * The active tab is saved with every history entry (`page.state.tab`), so Back and Forward
- * light up the tab the page was opened in. The last pages survive a reload (sessionStorage).
- * Only the browser changes this state: on the server it stays empty for every request.
+ * light up the tab the page was opened in. When the browser's Back would leave the tab while
+ * the tab still has a page below, it is sent to that page instead. The stacks survive a
+ * reload (sessionStorage). Only the browser changes this state: on the server it stays empty.
  */
-import { afterNavigate, replaceState } from '$app/navigation';
+import { tick } from 'svelte';
+import { afterNavigate, beforeNavigate, goto, replaceState } from '$app/navigation';
 import { page } from '$app/state';
-import { ownerOf, resolveTab, tabHref, type TabPages } from '$lib/domain/tabs';
+import {
+	backTarget,
+	historyDistance,
+	ownerOf,
+	resolveTab,
+	tabHref,
+	visit,
+	type StackEntry
+} from '$lib/domain/tabs';
 
-const STORAGE_KEY = 'veschi:tabs';
+const STORAGE_KEY = 'veschi:stacks';
+/** Pages outside any tab keep their stack under this key. */
+const NO_TAB = '';
+const TITLE_SUFFIX = ' — veschi';
 
-function loadPages(): TabPages {
+type Stacks = Record<string, StackEntry[]>;
+
+function loadStacks(): Stacks {
 	try {
 		const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '{}');
-		return { last: { ...saved?.last }, top: { ...saved?.top } };
+		return saved && typeof saved === 'object' ? saved : {};
 	} catch {
-		return { last: {}, top: {} };
+		return {};
 	}
+}
+
+/**
+ * SvelteKit's number of the current browser history entry: the same after a navigation
+ * with `replaceState`, one more after a new entry. (Not public API, hence optional.)
+ */
+function historyIndex(): number | undefined {
+	const index = history.state?.['sveltekit:history'];
+	return typeof index === 'number' ? index : undefined;
 }
 
 /** Saves the tab with the current history entry (on the first page, once the router is up). */
@@ -30,23 +54,44 @@ function saveTab(tab: string | null, href: string) {
 	}
 }
 
+export interface TabLink {
+	href: string;
+	label: string;
+}
+
 class Tabs {
 	/** The active tab; undefined until the first navigation in the browser. */
 	current = $state<string | null | undefined>(undefined);
-	/** Pages last open in each tab. */
-	pages = $state<TabPages>({ last: {}, top: {} });
+	/** Pages opened in each tab, the current one on top. */
+	stacks = $state<Stacks>({});
 
-	#roots: readonly string[] = [];
+	#links: readonly TabLink[] = [];
 	#tapped: string | null = null;
 	#restored = false;
+	#index: number | undefined;
 
 	/** The active tab, also during server rendering and before the first navigation. */
 	active(): string | null {
-		return this.current === undefined ? ownerOf(page.url.pathname, this.#roots) : this.current;
+		return this.current === undefined ? ownerOf(page.url.pathname, this.#roots()) : this.current;
 	}
 
 	href(root: string): string {
-		return tabHref(root, this.active(), this.pages);
+		return tabHref(root, this.active(), this.stacks[root]);
+	}
+
+	/** Pages the user came through in this tab to the current one (empty before hydration). */
+	trail(): StackEntry[] {
+		const stack = this.#stack();
+		return stack.at(-1)?.path === page.url.pathname ? stack.slice(0, -1) : [];
+	}
+
+	/** Goes back to a page of the trail: through the browser history when it is right there. */
+	back(entry: StackEntry) {
+		const stack = this.#stack();
+		const at = stack.indexOf(entry);
+		const distance = at === -1 ? null : historyDistance(stack, at);
+		if (distance) history.go(-distance);
+		else goto(entry.href, { replaceState: true });
 	}
 
 	/** Click handler of a tab link: the page it opens belongs to that tab. */
@@ -56,9 +101,40 @@ class Tabs {
 		if (plain) this.#tapped = root;
 	}
 
-	/** Call once from the root layout with the addresses of all tabs. */
-	track(roots: readonly string[]) {
-		this.#roots = roots;
+	#roots() {
+		return this.#links.map((l) => l.href);
+	}
+
+	#stack(): StackEntry[] {
+		return (this.current === undefined ? undefined : this.stacks[this.current ?? NO_TAB]) ?? [];
+	}
+
+	#save() {
+		try {
+			sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.stacks));
+		} catch {
+			// Private mode or storage full: the stacks just don't survive a reload.
+		}
+	}
+
+	/** Call once from the root layout with all tabs. */
+	track(links: readonly TabLink[]) {
+		this.#links = links;
+		const roots = this.#roots();
+
+		// The browser's Back goes to the page before in its own history, which may be another
+		// tab: the tab's previous page is opened instead, in place of the current one.
+		beforeNavigate((navigation) => {
+			if (navigation.type !== 'popstate' || navigation.delta !== -1 || !navigation.to) return;
+			const target = backTarget(this.#stack(), navigation.to.url.pathname);
+			if (!target) return;
+			navigation.cancel();
+			// Cancelling sends the browser forward again; replace the page once it is back.
+			addEventListener('popstate', () => goto(target.href, { replaceState: true }), {
+				once: true
+			});
+		});
+
 		afterNavigate((navigation) => {
 			const tapped = this.#tapped;
 			this.#tapped = null;
@@ -76,20 +152,42 @@ class Tabs {
 			// Read after hydration: links rendered on the server must not change while hydrating.
 			if (!this.#restored) {
 				this.#restored = true;
-				this.pages = loadPages();
+				this.stacks = loadStacks();
 			}
 			if (page.state.tab !== tab) saveTab(tab, page.url.href);
-			if (tab === null) return;
-			// A page that failed (deleted item, 404) is not worth coming back to.
-			const address = path + navigation.to.url.search;
-			if (page.status >= 400) delete this.pages.last[tab];
-			else this.pages.last[tab] = address;
-			if (path === tab) this.pages.top[tab] = address;
-			try {
-				sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.pages));
-			} catch {
-				// Private mode or storage full: the stacks just don't survive a reload.
+
+			const index = historyIndex();
+			const replace =
+				navigation.type !== 'popstate' &&
+				navigation.type !== 'enter' &&
+				index !== undefined &&
+				index === this.#index;
+			this.#index = index;
+			const key = tab ?? NO_TAB;
+			let stack = this.stacks[key] ?? [];
+			// Opened directly inside a section: the breadcrumbs lead to the section's first page.
+			const link = this.#links.find((l) => l.href === tab);
+			if (stack.length === 0 && link && path !== link.href) {
+				stack = [{ path: link.href, href: link.href, title: link.label }];
 			}
+			const entry: StackEntry = {
+				path,
+				href: path + navigation.to.url.search,
+				title: '',
+				index,
+				failed: page.status >= 400 || undefined
+			};
+			this.stacks[key] = visit(stack, { entry, tab, replace });
+			this.#save();
+
+			// The page sets its <title> as it renders.
+			tick().then(() => {
+				const top = this.stacks[key]?.at(-1);
+				if (top?.path !== path) return;
+				const title = document.title;
+				top.title = title.endsWith(TITLE_SUFFIX) ? title.slice(0, -TITLE_SUFFIX.length) : title;
+				this.#save();
+			});
 		});
 	}
 }

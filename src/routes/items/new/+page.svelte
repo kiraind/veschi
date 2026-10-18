@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import { goto } from '$app/navigation';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -234,6 +235,8 @@
 </script>
 
 <svelte:head><title>{heading} — veschi</title></svelte:head>
+
+<BackTrail />
 
 <h1 class="mb-3 text-2xl font-bold">{heading}</h1>
 

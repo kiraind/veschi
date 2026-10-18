@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackTrail from '$lib/components/BackTrail.svelte';
 	import { pieces } from '$lib/domain/plural';
 	import { formatIsoDateTime } from '$lib/domain/dates';
 	import { invalidateAll } from '$app/navigation';
@@ -42,11 +43,7 @@
 
 <svelte:head><title>Архив — veschi</title></svelte:head>
 
-<a
-	href="/history"
-	class="mb-1 inline-block text-sm text-primary-700 hover:underline dark:text-primary-400"
-	>← История</a
->
+<BackTrail fallback={{ href: '/history', title: 'История' }} />
 <h1 class="mb-3 text-2xl font-bold">Архив</h1>
 <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
 	Выкинутые и использованные вещи. Их можно вернуть в каталог.
