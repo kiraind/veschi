@@ -2,3 +2,5 @@ box-ben2: 35 s
 box-sdmatte-transparent: FAILED after 3601 s: over an hour
 box-sdmatte: FAILED after 3601 s: over an hour
 mug-ben2: 2296 s
+box-sdmatte-transparent: FAILED after 9002 s: Expecting value: line 1 column 1 (char 0)
+mug-sdmatte: FAILED after 9002 s: Expecting value: line 1 column 1 (char 0)
