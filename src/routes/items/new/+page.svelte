@@ -316,12 +316,7 @@
 					<p>Значения общие для всех вещей этого типа, например производитель или напряжение.</p>
 				</InfoHint>
 			</h2>
-			<ParamEntries
-				bind:entries={typeParams}
-				holder="TYPE"
-				mandatory={false}
-				holderName={typeName}
-			/>
+			<ParamEntries bind:entries={typeParams} holder="TYPE" holderName={typeName} />
 		</section>
 	{/if}
 
@@ -347,12 +342,7 @@
 				<p>Значения только этой вещи, например цвет или дата покупки.</p>
 			</InfoHint>
 		</h2>
-		<ParamEntries
-			bind:entries={itemParams}
-			holder="ITEM"
-			mandatory
-			holderName={name.trim() || typeName}
-		/>
+		<ParamEntries bind:entries={itemParams} holder="ITEM" holderName={name.trim() || typeName} />
 	</section>
 
 	{#if askPhoto}

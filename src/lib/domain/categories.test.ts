@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	categoryNames,
 	categoryParamsSchema,
+	fromCategories,
 	inCategories,
 	incompleteOwners,
 	missingParams,
@@ -80,6 +81,8 @@ describe('category names', () => {
 		expect(inCategories([c('Еда'), c('Хрупкое'), c('Химия')])).toBe(
 			'в категориях «Еда», «Хрупкое» и «Химия»'
 		);
+		expect(fromCategories([c('Еда')])).toBe('Из категории «Еда»');
+		expect(fromCategories([c('Еда'), c('Хрупкое')])).toBe('Из категорий «Еда» и «Хрупкое»');
 	});
 });
 
