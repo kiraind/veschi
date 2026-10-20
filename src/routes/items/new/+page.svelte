@@ -136,13 +136,13 @@
 	});
 
 	/**
-	 * Values to save, or an error message. Values not typed are left out, unless
-	 * required on each item (those of the type can be filled later).
+	 * Values to save, or an error message. Optional values not typed are left
+	 * out; required ones (red star) must be filled.
 	 */
-	function paramInputs(entries: ParamEntry[], mandatory: boolean): ParamInput[] | string {
+	function paramInputs(entries: ParamEntry[]): ParamInput[] | string {
 		const result: ParamInput[] = [];
 		for (const { def, draft, categories } of entries) {
-			if (isEmptyDraft(draft) && !(mandatory && categories.length > 0)) continue;
+			if (isEmptyDraft(draft) && categories.length === 0) continue;
 			const parsed = paramInputSchema.safeParse(draftToInput(draft));
 			if (!parsed.success) {
 				return `«${def.name}»: ${parsed.error.issues[0]?.message ?? 'проверьте значение'}`;
@@ -165,8 +165,8 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		const params = paramInputs(itemParams, true);
-		const newTypeParams = typeId ? [] : paramInputs(typeParams, false);
+		const params = paramInputs(itemParams);
+		const newTypeParams = typeId ? [] : paramInputs(typeParams);
 		if (typeof params === 'string' || typeof newTypeParams === 'string') {
 			error = typeof params === 'string' ? params : (newTypeParams as string);
 			return;
@@ -289,10 +289,7 @@
 						Категория задаёт обязательные параметры типа, например у «Еды» — калорийность и срок
 						годности.
 					</p>
-					<p>
-						Параметры «у каждой вещи» нужно заполнить сразу. Параметры «у типа» можно оставить
-						пустыми и заполнить потом на странице типа — там они будут отмечены как «не заполнено».
-					</p>
+					<p>Их значения нужно заполнить сразу: и у типа, и у вещи.</p>
 				</InfoHint></span
 			>
 			<div class="mt-1">
@@ -316,12 +313,7 @@
 					<p>Значения общие для всех вещей этого типа, например производитель или напряжение.</p>
 				</InfoHint>
 			</h2>
-			<ParamEntries
-				bind:entries={typeParams}
-				holder="TYPE"
-				mandatory={false}
-				holderName={typeName}
-			/>
+			<ParamEntries bind:entries={typeParams} holder="TYPE" holderName={typeName} />
 		</section>
 	{/if}
 
@@ -347,12 +339,7 @@
 				<p>Значения только этой вещи, например цвет или дата покупки.</p>
 			</InfoHint>
 		</h2>
-		<ParamEntries
-			bind:entries={itemParams}
-			holder="ITEM"
-			mandatory
-			holderName={name.trim() || typeName}
-		/>
+		<ParamEntries bind:entries={itemParams} holder="ITEM" holderName={name.trim() || typeName} />
 	</section>
 
 	{#if askPhoto}
