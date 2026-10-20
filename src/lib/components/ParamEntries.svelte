@@ -13,8 +13,8 @@
 	 * Parameter values of a type or an item that does not exist yet («Новая
 	 * вещь»): each value is typed right in the form; «Параметр» picks (or
 	 * creates) one more in a sheet, as ParamSection does on a card. Values the
-	 * categories require cannot be removed and must be filled: the red star marks
-	 * them, the hint below names the categories (never a text «обязателен»).
+	 * categories require cannot be removed: the red star marks them (those of a
+	 * new type may still stay empty, the form decides), the hint below names the categories (never a text «обязателен»).
 	 */
 	let {
 		entries = $bindable(),
