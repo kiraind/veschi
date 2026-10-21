@@ -257,6 +257,18 @@ describe('categories', () => {
 				])
 			})
 		).rejects.toThrow('Тип «Молоко» уже есть');
+		// Nor are its categories: the type stays only in «Еда».
+		const tools = await createCategory(actor, { name: 'Инструменты' });
+		await expect(
+			createItem(actor, {
+				newTypeName: 'молоко',
+				newTypeCategoryIds: [tools.id],
+				params: await keyed(actor, [
+					{ key: 'Срок годности', valueType: 'DATE', date: '2026-10-25' }
+				])
+			})
+		).rejects.toThrow('Тип «Молоко» уже есть');
+		expect((await getItemCard(actor, id)).categories).toEqual([food]);
 		await expect(
 			createItem(actor, {
 				typeId: card.type!.id,

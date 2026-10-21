@@ -7,15 +7,7 @@ import { isWorkbenchIconKey } from '$lib/domain/workbench-icons';
 import { diffFields, type ChangeValue } from '$lib/domain/history';
 import { discard } from './archive';
 import { itemSubject, placeRef, recordEvent } from './history';
-import {
-	assertCanPlace,
-	assertIsContainer,
-	containerTypeInclude,
-	getPath,
-	getPaths,
-	isContainerItem,
-	type PathNode
-} from './paths';
+import { getPath, getPaths, isContainerItem, type PathNode } from './paths';
 import { isPlainRecord, notTaken, partCount, placePart, sameThing } from './split';
 
 // ---------------------------------------------------------------------------
@@ -201,6 +193,9 @@ export async function take(
 		const item = await requireActiveItem(actor, itemId, tx);
 		const bench = await requireWorkbench(actor, workbenchId, tx);
 		const count = partCount(item, quantity);
+		if (item.takenById && item.parentId === bench.id) {
+			throw new ValidationError('Вещь уже лежит на этом столе');
+		}
 		const homeId = item.takenById ? item.homeId : item.parentId;
 		const taken = {
 			parentId: bench.id,
@@ -379,7 +374,7 @@ export interface PartOptions {
  * back merges into its split source when the source is active and still lies
  * in the home, untaken, and both are still the same thing with nothing
  * pointing at them (same own name and own values; no contents or references,
- * no sticker on what returns — the source keeps its own); otherwise it goes into the home through `placePart`, so it
+ * no sticker or sticker order on what returns — the source keeps its own); otherwise it goes into the home through `placePart`, so it
  * may still join another identical record there. A part leaves the rest on the bench, still taken. Returns the id of
  * the record in the home.
  */
@@ -423,8 +418,8 @@ export async function returnHome(
 			});
 			// The same rules as for identical records in one place (see findTwin in split.ts):
 			// still the same thing (a renamed part or one with other own values stays apart),
-			// and neither record has contents or references. The source may have a sticker (it
-			// stays on the source); a whole record with its own sticker stays apart. A part is a
+			// and neither record has contents or references. The source may have a sticker or
+			// an order (they stay on the source); a whole record with its own stays apart. A part is a
 			// fresh record.
 			if (
 				source &&
@@ -450,54 +445,6 @@ export async function returnHome(
 		const id = await placePart(tx, item, count, { parentId: item.homeId, ...notTaken });
 		await returned(id);
 		return { itemId: id, merged: false };
-	});
-}
-
-/**
- * «Положить в другое место»: puts the item or part of its quantity into
- * another container (null = top level); what moves forgets where it was
- * taken from, a rest stays on the bench. Returns the id of the moved record.
- */
-export async function relocate(
-	actor: Actor,
-	itemId: string,
-	containerId: string | null,
-	{ quantity }: PartOptions = {}
-): Promise<{ itemId: string }> {
-	return writeTransaction(async (tx) => {
-		const item = await requireActiveItem(actor, itemId, tx);
-		const count = partCount(item, quantity);
-		if (containerId === item.parentId && !item.takenById) {
-			throw new ValidationError('Вещь уже лежит здесь');
-		}
-		if (containerId) {
-			const container = await tx.item.findFirst({
-				where: { id: containerId, ...visibleTo(actor) },
-				include: containerTypeInclude
-			});
-			if (!container) throw new NotFoundError('Контейнер не найден');
-			if (container.isWorkbench) {
-				throw new ValidationError('Чтобы положить вещь на стол, используйте «На стол»');
-			}
-			if (container.status !== 'ACTIVE') throw new ValidationError('Контейнер в архиве');
-			assertIsContainer(container);
-			await assertCanPlace(item.id, container.id, tx);
-		}
-		const subject = await itemSubject(tx, item.id);
-		const from = await placeRef(tx, item.parentId);
-		const resultId = await placePart(tx, item, count, { parentId: containerId, ...notTaken });
-		await recordEvent(tx, actor, {
-			kind: 'item.moved',
-			subject,
-			data: {
-				quantity: count,
-				of: item.quantity,
-				from,
-				to: await placeRef(tx, containerId),
-				resultId
-			}
-		});
-		return { itemId: resultId };
 	});
 }
 

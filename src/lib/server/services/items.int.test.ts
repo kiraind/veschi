@@ -6,7 +6,7 @@ import { discard, restore } from './archive';
 import { createItem, getItemCard, listContents, moveItem, updateItem } from './items';
 import { keyed, setKeyedParams } from '$lib/server/testing/params';
 import { search } from './search';
-import { listStickerOrders } from './stickers';
+import { listStickerOrders, orderSticker, setStickerOrderCaption } from './stickers';
 import { updateType } from './types';
 import { createWorkbench, listWorkbench, take } from './workbench';
 
@@ -528,11 +528,11 @@ describe('items', () => {
 		});
 
 		it('keeps the mark of an existing type with the same name', async () => {
-			const { id } = await createItem(actor, {
-				newTypeName: 'вещь',
-				newTypeIsContainer: true,
-				quantity: 3
-			});
+			// A ticked «Это контейнер» for an existing plain type asks to pick that type instead.
+			await expect(
+				createItem(actor, { newTypeName: 'вещь', newTypeIsContainer: true, quantity: 3 })
+			).rejects.toThrow('Тип «Вещь» уже есть');
+			const { id } = await createItem(actor, { newTypeName: 'вещь', quantity: 3 });
 			expect((await db.item.findUniqueOrThrow({ where: { id } })).typeId).toBe(thingType);
 			expect((await db.itemType.findUniqueOrThrow({ where: { id: thingType } })).isContainer).toBe(
 				false
@@ -652,6 +652,40 @@ describe('items', () => {
 			const loose = (await createItem(actor, { typeId, quantity: 4, parentId: shelf })).id;
 			expect(await moveItem(actor, loose, drawer)).toEqual({ itemId: loose });
 			expect((await db.item.findUniqueOrThrow({ where: { id: chips } })).quantity).toBe(7);
+		});
+
+		it('keeps records waiting for a sticker apart', async () => {
+			const { itemId: inDrawer } = await moveItem(actor, chips, drawer, { quantity: 3 });
+			const typeId = (await db.item.findUniqueOrThrow({ where: { id: chips } })).typeId;
+			// A whole record with an order is not dissolved into the plain one: the order stays.
+			const ordered = (await createItem(actor, { typeId, quantity: 4, parentId: shelf })).id;
+			await orderSticker(actor, ordered, 40);
+			await setStickerOrderCaption(actor, ordered, 'Таймеры');
+			expect(await moveItem(actor, ordered, drawer)).toEqual({ itemId: ordered });
+			expect((await db.item.findUniqueOrThrow({ where: { id: inDrawer } })).quantity).toBe(3);
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ itemId: ordered, width: 40, caption: 'Таймеры', quantity: 4 }
+			]);
+			// Nor does a plain record merge into the ordered one, as with a bound sticker.
+			await db.item.delete({ where: { id: inDrawer } });
+			const loose = (await createItem(actor, { typeId, quantity: 2, parentId: shelf })).id;
+			expect(await moveItem(actor, loose, drawer)).toEqual({ itemId: loose });
+			expect((await db.item.findUniqueOrThrow({ where: { id: ordered } })).quantity).toBe(4);
+		});
+
+		it('keeps records whose file names differ apart', async () => {
+			const def = (
+				await db.paramDef.create({
+					data: { ownerId: actor.userId, name: 'Даташит', valueType: 'FILE' }
+				})
+			).id;
+			const file = { defId: def, valueType: 'FILE' as const, fileKey: 'files/ne555' };
+			await db.param.create({ data: { ...file, itemId: chips, fileName: 'ne555.pdf' } });
+			const { itemId: part } = await moveItem(actor, chips, drawer, { quantity: 3 });
+			await db.param.updateMany({ where: { itemId: part }, data: { fileName: 'ne555-ti.pdf' } });
+			// The rest is not dissolved into the part: each keeps its own file name.
+			expect(await moveItem(actor, chips, drawer, { quantity: 2 })).not.toEqual({ itemId: part });
+			expect((await db.item.findUniqueOrThrow({ where: { id: part } })).quantity).toBe(3);
 		});
 
 		it('keeps records with different own values, names or references apart', async () => {
