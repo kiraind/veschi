@@ -1,19 +1,14 @@
 <script lang="ts">
 	import { pieces, piecesAccusative } from '$lib/domain/plural';
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Input, Label } from 'flowbite-svelte';
-	import {
-		CheckCircleOutline,
-		EditOutline,
-		MinusOutline,
-		PlusOutline,
-		TrashBinOutline
-	} from 'flowbite-svelte-icons';
+	import { Button } from 'flowbite-svelte';
+	import { CheckCircleOutline, EditOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 	import { api, errorText } from '$lib/api';
 	import { confirmAction } from '$lib/confirm.svelte';
 	import { archivedToast } from '$lib/item-toasts';
 	import { toast } from '$lib/toast.svelte';
 	import Sheet from './Sheet.svelte';
+	import StepperField from './StepperField.svelte';
 
 	/**
 	 * The quantity button on the card of a thing (containers have «Выкинуть»
@@ -33,7 +28,6 @@
 		onarchived: () => Promise<void>;
 	} = $props();
 
-	const id = $props.id();
 	let value = $state(1);
 	let busy = $state(false);
 	let error = $state('');
@@ -114,52 +108,16 @@
 	const hintClass = 'block text-sm text-gray-500 dark:text-gray-400';
 </script>
 
+{#snippet takenHint()}Станет на {piecesAccusative(taken)} меньше.{/snippet}
+
 <Sheet bind:open title="Количество: {item.name}">
 	<div class="flex flex-col gap-4">
-		<div>
-			<Label for="qty-{id}">Сколько штук</Label>
-			<div class="mt-1 flex items-center gap-2">
-				<Button
-					color="alternative"
-					class="h-11 w-11 p-0"
-					aria-label="Меньше"
-					disabled={busy || !valid || value <= 1}
-					onclick={() => value--}
-				>
-					<MinusOutline class="h-5 w-5" />
-				</Button>
-				<div class="w-24">
-					<Input
-						id="qty-{id}"
-						class="text-center text-lg"
-						type="number"
-						min="1"
-						step="1"
-						inputmode="numeric"
-						disabled={busy}
-						bind:value
-					/>
-				</div>
-				<Button
-					color="alternative"
-					class="h-11 w-11 p-0"
-					aria-label="Больше"
-					disabled={busy || !valid}
-					onclick={() => value++}
-				>
-					<PlusOutline class="h-5 w-5" />
-				</Button>
-			</div>
-			{#if !valid}
-				<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">
-					Количество — целое число от 1
-				</p>
-			{:else if taken > 0}
-				<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-					Станет на {piecesAccusative(taken)} меньше.
-				</p>
-			{/if}
-		</div>
+		<StepperField
+			label="Сколько штук"
+			bind:value
+			disabled={busy}
+			hint={taken > 0 ? takenHint : undefined}
+		/>
 
 		{#if added}
 			<div class="flex flex-wrap gap-2">
