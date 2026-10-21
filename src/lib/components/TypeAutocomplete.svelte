@@ -1,6 +1,6 @@
 <script lang="ts">
 	import RequiredMark from './RequiredMark.svelte';
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { Badge, Input, Label } from 'flowbite-svelte';
 	import { CloseOutline } from 'flowbite-svelte-icons';
 	import { api } from '$lib/api';
@@ -21,7 +21,8 @@
 		label = 'Тип',
 		allowNew = true,
 		required = true,
-		autofocus = false
+		autofocus = false,
+		onpick
 	}: {
 		typeId?: string | null;
 		typeName?: string;
@@ -34,12 +35,23 @@
 		required?: boolean;
 		/** The field takes the cursor when it appears (it opens on a button press). */
 		autofocus?: boolean;
+		/** Called when an existing type is picked (from the list or by leaving the field with its name). */
+		onpick?: (type: TypeSummary) => void;
 	} = $props();
 
 	const uid = $props.id();
 	let suggestions = $state<TypeSummary[]>([]);
 	let focused = $state(false);
 	let request = 0;
+	/** The pause after blur that lets a tap on a suggestion land first. */
+	let blurTimer: ReturnType<typeof setTimeout> | undefined;
+	let destroyed = false;
+
+	// A field closed by a tap (e.g. «Отмена») must not pick a type afterwards.
+	onDestroy(() => {
+		destroyed = true;
+		clearTimeout(blurTimer);
+	});
 
 	$effect(() => {
 		const q = typeName.trim();
@@ -63,6 +75,7 @@
 		typeName = type.name;
 		selected = type;
 		suggestions = [];
+		onpick?.(type);
 	}
 
 	/**
@@ -84,8 +97,8 @@
 					.get<TypeSummary[]>(`/api/types?q=${encodeURIComponent(typed)}`)
 					.catch(() => [] as TypeSummary[])
 			).find(isExact);
-		// Not if the field changed or a type was picked meanwhile.
-		if (exact && !typeId && typeName.trim() === typed) pick(exact);
+		// Not if the field changed, a type was picked or the field closed meanwhile.
+		if (exact && !destroyed && !typeId && typeName.trim() === typed) pick(exact);
 	}
 
 	async function reset() {
@@ -134,7 +147,10 @@
 					selected = null;
 				}}
 				onfocus={() => (focused = true)}
-				onblur={() => setTimeout(leave, 150)}
+				onblur={() => {
+					clearTimeout(blurTimer);
+					blurTimer = setTimeout(leave, 150);
+				}}
 				autocomplete="off"
 				placeholder="Например, NE555 или Нож Victorinox"
 				{required}

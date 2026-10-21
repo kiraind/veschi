@@ -45,6 +45,8 @@
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
+		// The form may sit inside another one (a sheet on «Новая вещь»).
+		event.stopPropagation();
 		busy = true;
 		error = '';
 		try {

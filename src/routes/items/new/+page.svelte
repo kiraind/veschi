@@ -123,6 +123,7 @@
 		loadRequired(id, categoryIds)
 			.then((required) => {
 				if (requiredKey !== key) return;
+				error = '';
 				itemParams = withRequired(
 					untrack(() => itemParams),
 					required.item
@@ -132,7 +133,9 @@
 					required.type
 				);
 			})
-			.catch((e) => (error = errorText(e)));
+			.catch((e) => {
+				if (requiredKey === key) error = errorText(e);
+			});
 	});
 
 	/**
@@ -165,6 +168,8 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
+		// A form inside the page (a sheet's «Создать», the scanner's manual ID) is not this one.
+		if (event.target !== event.currentTarget) return;
 		const params = paramInputs(itemParams, true);
 		const newTypeParams = typeId ? [] : paramInputs(typeParams, false);
 		if (typeof params === 'string' || typeof newTypeParams === 'string') {
@@ -450,7 +455,7 @@
 		{#if picking}
 			<ContainerPicker
 				onpick={(c) => {
-					parent = { ...c, path: '' };
+					parent = { ...c, path: c.path ?? '' };
 					benchId = null;
 					picking = false;
 				}}

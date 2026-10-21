@@ -2,7 +2,9 @@
 @component
 Date field shown and typed as ISO «ГГГГ-ММ-ДД» regardless of the browser locale,
 with a Monday-first Russian calendar popover. `value` is 'YYYY-MM-DD' or ''.
-Usage: `<DateInput bind:value aria-label="Дата" />`.
+Usage: `<DateInput bind:value aria-label="Дата" />`. `invalid` is true while the typed
+text is not a date (`value` then keeps the last valid date): outside a form it is
+the only way to know.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -31,7 +33,8 @@ Usage: `<DateInput bind:value aria-label="Дата" />`.
 		placeholder = 'ГГГГ-ММ-ДД',
 		'aria-label': ariaLabel,
 		disabled = false,
-		required = false
+		required = false,
+		invalid = $bindable(false)
 	}: {
 		value?: string;
 		id?: string;
@@ -39,6 +42,7 @@ Usage: `<DateInput bind:value aria-label="Дата" />`.
 		'aria-label'?: string;
 		disabled?: boolean;
 		required?: boolean;
+		invalid?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -63,6 +67,10 @@ Usage: `<DateInput bind:value aria-label="Дата" />`.
 				setError('');
 			}
 		});
+	});
+
+	$effect(() => {
+		invalid = !!error;
 	});
 
 	const today = $derived(formatIsoDate(new Date()));
@@ -151,7 +159,7 @@ Usage: `<DateInput bind:value aria-label="Дата" />`.
 		onchange={onChange}
 		{placeholder}
 		aria-label={ariaLabel}
-		aria-invalid={error ? true : undefined}
+		aria-invalid={invalid || undefined}
 		aria-describedby={error ? errorId : undefined}
 		autocomplete="off"
 		spellcheck={false}

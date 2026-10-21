@@ -17,12 +17,15 @@
 	let {
 		draft = $bindable(),
 		def,
-		holderName = ''
+		holderName = '',
+		invalid = $bindable(false)
 	}: {
 		draft: ParamDraft;
 		def: ParamDefView | null;
 		/** The item's or the type's name, for the file name template. */
 		holderName?: string;
+		/** A date typed that is not a date (the draft keeps the previous one). */
+		invalid?: boolean;
 	} = $props();
 
 	let uploading = $state(false);
@@ -126,7 +129,7 @@
 		{#if uploadError}<span class="text-sm text-red-600 dark:text-red-500">{uploadError}</span>{/if}
 	{/if}
 {:else if draft.valueType === 'DATE'}
-	<DateInput bind:value={draft.date} aria-label={draft.key} />
+	<DateInput bind:value={draft.date} bind:invalid aria-label={draft.key} />
 {:else if draft.valueType === 'ITEM' || draft.valueType === 'TYPE'}
 	<LinkPicker bind:value={draft.refs} kind={draft.valueType} />
 {:else if draft.valueType === 'BOOLEAN'}

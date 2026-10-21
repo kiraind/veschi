@@ -97,7 +97,11 @@
 				</ul>
 			{:else if !q}
 				<p class="text-sm text-gray-500 dark:text-gray-400">
-					Параметров пока нет — введите название нового.
+					{defs.some((d) => !holder || fitsHolder(d, holder))
+						? 'Все параметры уже в списке — введите название нового.'
+						: defs.length
+							? 'Подходящих параметров нет — введите название нового.'
+							: 'Параметров пока нет — введите название нового.'}
 				</p>
 			{/if}
 			{#if exact && exclude.includes(exact.id)}

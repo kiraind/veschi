@@ -66,6 +66,8 @@
 	let editingId = $state<string | null>(null);
 	let adding = $state(false);
 	let draft = $state<ParamDraft | null>(null);
+	/** The date field holds text that is not a date: the draft still has the old date. */
+	let dateInvalid = $state(false);
 	/** Definition of the edited value, for drop-down options (loaded on demand). */
 	let def = $state<ParamDefView | null>(null);
 	let busy = $state(false);
@@ -146,6 +148,8 @@
 
 	function parsedDraft() {
 		if (!draft) return null;
+		// The field shows what is wrong; saving now would save the previous date.
+		if (draft.valueType === 'DATE' && dateInvalid) return null;
 		const parsed = paramInputSchema.safeParse(draftToInput(draft));
 		if (!parsed.success) {
 			error = parsed.error.issues[0]?.message ?? 'Проверьте значение';
@@ -261,7 +265,12 @@
 			<span class="-mt-2 text-sm text-gray-500 dark:text-gray-400">
 				{PARAM_VALUE_TYPE_LABELS[draft.valueType]}
 			</span>
-			<ParamValueInput bind:draft def={def?.id === draft.defId ? def : null} {holderName} />
+			<ParamValueInput
+				bind:draft
+				bind:invalid={dateInvalid}
+				def={def?.id === draft.defId ? def : null}
+				{holderName}
+			/>
 			{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 			<div class="flex flex-wrap items-center gap-2">
 				<Button type="button" onclick={() => (param ? save(param) : saveNew())} disabled={busy}

@@ -147,6 +147,8 @@
 
 	function submitManual(event: SubmitEvent) {
 		event.preventDefault();
+		// The form may sit inside another one (a sheet on «Новая вещь»).
+		event.stopPropagation();
 		// A sticker ID has 6 characters and a barcode 8 or more digits, so they never clash.
 		const sticker = onscan ? (normalizeCode(manual) ?? extractCode(manual)) : null;
 		const digits = /^[\d\s-]+$/.test(manual.trim());

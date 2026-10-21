@@ -46,9 +46,12 @@
 
 	async function moveTo(to: { id: string; name: string } | null) {
 		const parentId = to?.id ?? null;
-		if (problem) return;
+		// A second tap on a destination while the first move is in flight would move again.
+		if (problem || busy) return;
 		busy = true;
 		error = '';
+		// Before the request: afterwards `item` shows what is left.
+		const what = item.quantity > 1 ? `${piecesAccusative(amount)} ` : '';
 		try {
 			await api.post(`/api/items/${item.id}/move`, {
 				parentId,
@@ -56,7 +59,6 @@
 			});
 			open = false;
 			await onmoved();
-			const what = item.quantity > 1 ? `${piecesAccusative(amount)} ` : '';
 			toast(
 				to
 					? {
@@ -84,6 +86,7 @@
 			excludeId={item.id}
 			excludeIds={item.parentId && !item.onBench ? [item.parentId] : []}
 			suggestFor={item.id}
+			disabled={busy}
 			onpick={moveTo}
 		/>
 		{#if item.parentId}

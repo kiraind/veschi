@@ -77,14 +77,13 @@
 		if (!selectedId || quantityProblem) return;
 		busy = true;
 		error = '';
+		// Before the request: afterwards `item` shows what is left.
+		const message = `${item.quantity > 1 ? pieces(quantity) : `«${item.name}»`} на столе «${selected?.name}»`;
 		try {
 			await api.post(`/api/items/${item.id}/take`, { workbenchId: selectedId, quantity });
 			open = false;
 			await invalidateAll();
-			toast({
-				message: `${item.quantity > 1 ? pieces(quantity) : `«${item.name}»`} на столе «${selected?.name}»`,
-				link: { href: '/workbench', label: 'Открыть' }
-			});
+			toast({ message, link: { href: '/workbench', label: 'Открыть' } });
 		} catch (e) {
 			error = errorText(e);
 		} finally {
