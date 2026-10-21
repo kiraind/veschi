@@ -18,6 +18,7 @@
 	}: { typeId: string; barcode: string | null; open?: boolean } = $props();
 
 	let scanning = $state(false);
+	let busy = $state(false);
 	let error = $state('');
 
 	// Every opening starts over: the scanner right away when there is no barcode yet.
@@ -29,6 +30,9 @@
 	});
 
 	async function run(action: () => Promise<unknown>) {
+		// A second scan or tap while the first request is in flight.
+		if (busy) return;
+		busy = true;
 		error = '';
 		try {
 			await action();
@@ -36,6 +40,8 @@
 			await invalidateAll();
 		} catch (e) {
 			error = errorText(e);
+		} finally {
+			busy = false;
 		}
 	}
 
@@ -53,13 +59,14 @@
 	{#if barcode && !scanning}
 		<p class="font-mono text-2xl">{formatBarcode(barcode)}</p>
 		<div class="mt-4 flex flex-wrap gap-2">
-			<Button color="alternative" onclick={() => (scanning = true)}>Заменить</Button>
-			<Button color="red" outline onclick={unlink}>Отвязать</Button>
+			<Button color="alternative" onclick={() => (scanning = true)} disabled={busy}>Заменить</Button
+			>
+			<Button color="red" outline onclick={unlink} disabled={busy}>Отвязать</Button>
 		</div>
 	{:else}
 		<QrScanner
 			onbarcode={(code) => run(() => api.put(`/api/types/${typeId}/barcode`, { code }))}
-			active={open && scanning}
+			active={open && scanning && !busy}
 			submitLabel="Привязать"
 		/>
 	{/if}

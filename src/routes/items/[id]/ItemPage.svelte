@@ -117,6 +117,9 @@
 
 	/** «Положить сюда существующую»: asks how much when the picked item has more than one. */
 	async function pickChild(c: { id: string; name: string }) {
+		// A second tap while the first pick is checked or moved.
+		if (busy) return;
+		busy = true;
 		error = '';
 		try {
 			const fresh = await api.get<{ item: { quantity: number } }>(`/api/items/${c.id}`);
@@ -128,6 +131,8 @@
 		} catch (e) {
 			error = errorText(e);
 			return;
+		} finally {
+			busy = false;
 		}
 		await moveHere(c.id);
 	}
@@ -406,6 +411,7 @@
 				excludeId={item.id}
 				excludeParentId={item.id}
 				containersOnly={false}
+				disabled={busy}
 				onpick={pickChild}
 			/>
 		{/if}

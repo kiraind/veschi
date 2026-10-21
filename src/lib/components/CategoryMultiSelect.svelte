@@ -20,14 +20,20 @@
 	let query = $state('');
 	let busy = $state(false);
 	let error = $state('');
+	let loadError = $state('');
 
 	$effect(() => {
-		api.get<CategorySummary[]>('/api/categories').then((list) => (categories = list));
+		api
+			.get<CategorySummary[]>('/api/categories')
+			.then((list) => (categories = list))
+			.catch((e) => (loadError = errorText(e, 'Не удалось загрузить категории')));
 	});
 
 	const q = $derived(normalizeParamKey(query));
 	const needle = $derived(searchKey(query));
 	const exact = $derived((categories ?? []).find((c) => normalizeParamKey(c.name) === q));
+	/** «Новая категория» only once the list is there: an existing one would be created again. */
+	const canCreate = $derived(!!q && !exact && categories !== null);
 	const shown = $derived.by(() => {
 		const all = categories ?? [];
 		const chosen = all.filter((c) => selected.includes(c.id));
@@ -66,7 +72,7 @@
 		if (first) {
 			if (!selected.includes(first.id)) toggle(first.id);
 			query = '';
-		} else if (!busy) {
+		} else if (!busy && canCreate) {
 			create();
 		}
 	}
@@ -81,7 +87,7 @@
 		aria-label="Найти категорию или ввести новую"
 		autocomplete="off"
 	/>
-	{#if shown.length || (q && !exact)}
+	{#if shown.length || canCreate}
 		<div class="flex flex-wrap gap-2" role="group" aria-label="Категории">
 			{#each shown as category (category.id)}
 				{@const on = selected.includes(category.id)}
@@ -94,7 +100,7 @@
 					onclick={() => toggle(category.id)}>{category.name}</button
 				>
 			{/each}
-			{#if q && !exact}
+			{#if canCreate}
 				<Button type="button" color="alternative" class="h-10" onclick={create} disabled={busy}>
 					<PlusOutline class="me-1 h-4 w-4" />Новая категория «{query.trim()}»
 				</Button>
@@ -104,6 +110,9 @@
 		<p class="text-sm text-gray-500 dark:text-gray-400">
 			Категорий пока нет — введите название новой.
 		</p>
+	{/if}
+	{#if loadError}
+		<p class="text-sm text-red-600 dark:text-red-500" role="alert">{loadError}</p>
 	{/if}
 	{#if error}<p class="text-sm text-red-600 dark:text-red-500" role="alert">{error}</p>{/if}
 </div>

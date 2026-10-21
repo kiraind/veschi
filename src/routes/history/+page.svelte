@@ -70,17 +70,20 @@
 		if (!cursor) return;
 		loading = true;
 		error = null;
+		// The filter can change while the page loads: its events then belong to no list.
+		const of = data.page;
 		try {
 			const page = await api.get<HistoryPage>(
 				`/api/history${historySearch(data.filters, { before: cursor })}`
 			);
+			if (of !== data.page) return;
 			more = {
-				of: data.page,
+				of,
 				events: [...(current ? more.events : []), ...page.events],
 				cursor: page.nextCursor
 			};
 		} catch (e) {
-			error = errorText(e);
+			if (of === data.page) error = errorText(e);
 		} finally {
 			loading = false;
 		}

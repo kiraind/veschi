@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { Button, Input, Label } from 'flowbite-svelte';
-	import { MinusOutline, PlusOutline } from 'flowbite-svelte-icons';
+	import { Button } from 'flowbite-svelte';
 	import { api, errorText } from '$lib/api';
 	import { quantityError } from '$lib/domain/workbench';
 	import { confirmAction } from '$lib/confirm.svelte';
@@ -10,6 +9,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import DiscardContents, { type Contents } from './DiscardContents.svelte';
 	import Sheet from './Sheet.svelte';
+	import StepperField from './StepperField.svelte';
 
 	/**
 	 * The sheet «Использовать / выкинуть» of an item on a workbench: use part of
@@ -30,7 +30,6 @@
 		open?: boolean;
 	} = $props();
 
-	const id = $props.id();
 	let busy = $state(false);
 	let error = $state('');
 	let useCount = $state(1);
@@ -118,45 +117,13 @@
 <Sheet bind:open title="Использовать или выкинуть: {item.name}">
 	<div class="flex flex-col gap-4">
 		{#if item.quantity > 1}
-			<div>
-				<Label for="use-{id}">Сколько использовать (из {item.quantity})</Label>
-				<div class="mt-1 flex items-center gap-2">
-					<Button
-						color="alternative"
-						class="h-11 w-11 p-0"
-						aria-label="Меньше"
-						disabled={busy || useCount <= 1}
-						onclick={() => useCount--}
-					>
-						<MinusOutline class="h-5 w-5" />
-					</Button>
-					<div class="w-24">
-						<Input
-							id="use-{id}"
-							class="text-center text-lg"
-							type="number"
-							min="1"
-							max={item.quantity}
-							step="1"
-							inputmode="numeric"
-							disabled={busy}
-							bind:value={useCount}
-						/>
-					</div>
-					<Button
-						color="alternative"
-						class="h-11 w-11 p-0"
-						aria-label="Больше"
-						disabled={busy || useCount >= item.quantity}
-						onclick={() => useCount++}
-					>
-						<PlusOutline class="h-5 w-5" />
-					</Button>
-				</div>
-				{#if useProblem}
-					<p class="mt-1 text-sm text-red-600 dark:text-red-500" role="alert">{useProblem}</p>
-				{/if}
-			</div>
+			<StepperField
+				label="Сколько использовать (из {item.quantity})"
+				bind:value={useCount}
+				max={item.quantity}
+				disabled={busy}
+				error={useProblem ?? ''}
+			/>
 		{/if}
 
 		{#if item.hasChildren}

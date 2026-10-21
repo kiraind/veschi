@@ -59,6 +59,8 @@
 	};
 
 	async function run(action: () => Promise<unknown>) {
+		// A second scan or tap while the first request is in flight.
+		if (busy) return;
 		busy = true;
 		error = '';
 		try {
@@ -161,7 +163,7 @@
 			}}
 		/>
 	{:else if step === 'bind'}
-		<QrScanner onscan={bind} active={open && step === 'bind'} submitLabel="Привязать" />
+		<QrScanner onscan={bind} active={open && step === 'bind' && !busy} submitLabel="Привязать" />
 	{:else}
 		<div class="flex flex-col gap-1">
 			{#each STICKER_WIDTHS as width (width)}
