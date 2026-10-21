@@ -22,4 +22,12 @@ describe('LoginThrottle', () => {
 		throttle.succeed(['admin']);
 		expect(throttle.retryAfter(['admin'])).toBe(0);
 	});
+
+	it('counts an attempt before the password is checked, so parallel ones are limited too', () => {
+		const throttle = new LoginThrottle(() => 0);
+		const results = Array.from({ length: 8 }, () => throttle.attempt(['admin']));
+		expect(results.filter((wait) => wait === 0)).toHaveLength(5);
+		throttle.succeed(['admin']);
+		expect(throttle.attempt(['admin'])).toBe(0);
+	});
 });

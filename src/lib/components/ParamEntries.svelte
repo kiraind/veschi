@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Helper } from 'flowbite-svelte';
 	import { PlusOutline, TrashBinOutline } from 'flowbite-svelte-icons';
-	import { inCategories } from '$lib/domain/categories';
+	import { fromCategories } from '$lib/domain/categories';
 	import { addedEntry, type ParamEntry } from '$lib/domain/param-entries';
 	import type { LinkKind } from '$lib/domain/params';
 	import ParamDefPicker from './ParamDefPicker.svelte';
@@ -13,19 +13,17 @@
 	 * Parameter values of a type or an item that does not exist yet («Новая
 	 * вещь»): each value is typed right in the form; «Параметр» picks (or
 	 * creates) one more in a sheet, as ParamSection does on a card. Values the
-	 * categories require cannot be removed; with `mandatory` they get the red star.
+	 * categories require cannot be removed: the red star marks them (those of a
+	 * new type may still stay empty, the form decides), the hint below names the categories (never a text «обязателен»).
 	 */
 	let {
 		entries = $bindable(),
 		holder,
-		mandatory,
 		holderName
 	}: {
 		entries: ParamEntry[];
 		/** The values go to a type (TYPE) or an item (ITEM). */
 		holder: LinkKind;
-		/** Required values must be filled now (on each item), not later (on the type). */
-		mandatory: boolean;
 		/** Name of the type or the item to be (`{name}` in file name templates). */
 		holderName: string;
 	} = $props();
@@ -38,7 +36,7 @@
 		<div class="space-y-1">
 			<div class="flex min-h-10 items-center justify-between gap-2">
 				<span class="text-sm font-medium [overflow-wrap:anywhere]"
-					>{entry.def.name}{#if mandatory && entry.categories.length > 0}<RequiredMark />{/if}</span
+					>{entry.def.name}{#if entry.categories.length > 0}<RequiredMark />{/if}</span
 				>
 				{#if entry.categories.length === 0}
 					<button
@@ -52,7 +50,7 @@
 			</div>
 			<ParamValueInput bind:draft={entry.draft} def={entry.def} {holderName} />
 			{#if entry.categories.length > 0}
-				<Helper>Обязателен {inCategories(entry.categories)}</Helper>
+				<Helper>{fromCategories(entry.categories)}</Helper>
 			{/if}
 		</div>
 	{/each}

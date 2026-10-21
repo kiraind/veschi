@@ -100,6 +100,9 @@ export class S3Storage implements Storage {
 		const { accessKey, secretKey, region } = this.options;
 		headers.authorization = authorization({ method, url, headers, accessKey, secretKey, region });
 		delete headers.host; // fetch sets it itself
+		// Unsigned, so a proxy may change it: otherwise fetch asks for gzip, unpacks it
+		// silently, and the object comes back without its Content-Length.
+		headers['accept-encoding'] = 'identity';
 		return fetch(url, { method, headers, body: body ? new Uint8Array(body) : undefined });
 	}
 }

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { apiHandler, parseBody } from '$lib/server/api';
 import { changePassword } from '$lib/server/auth/session';
-import { ValidationError } from '$lib/server/errors';
+import { loginThrottle } from '$lib/server/auth/throttle';
+import { AppError, ValidationError } from '$lib/server/errors';
 import type { RequestHandler } from './$types';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -17,7 +18,18 @@ const schema = z.object({
 /** Changes the signed-in user's password; the current one must be confirmed. */
 export const POST: RequestHandler = apiHandler(async ({ actor, request, locals }) => {
 	const { currentPassword, newPassword } = await parseBody(request, schema);
+	// The current password is guessable here as on the sign-in page, so the same limit applies.
+	const keys = [`password:${actor.userId}`];
+	const wait = loginThrottle.attempt(keys);
+	if (wait > 0) {
+		throw new AppError(
+			429,
+			'too_many_attempts',
+			`Слишком много попыток. Попробуйте через ${wait} с`
+		);
+	}
 	if (!(await changePassword(actor.userId, currentPassword, newPassword, locals.sessionId))) {
 		throw new ValidationError('Неверный текущий пароль');
 	}
+	loginThrottle.succeed(keys);
 });

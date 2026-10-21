@@ -5,10 +5,10 @@ import { createTestActor } from '$lib/server/testing/db';
 import { linkDef } from '$lib/server/testing/params';
 import { discard } from './archive';
 import { listHistory } from './history';
-import { createItem } from './items';
+import { createItem, moveItem } from './items';
 import { addParam } from './params';
 import { bindSticker } from './stickers';
-import { consume, createWorkbench, deleteWorkbench, relocate } from './workbench';
+import { consume, createWorkbench, deleteWorkbench } from './workbench';
 import type { HistoryFilters } from '$lib/domain/history';
 
 const only = (f: Partial<HistoryFilters>): HistoryFilters => ({
@@ -71,7 +71,7 @@ describe('service guards', () => {
 	it('refuses to «put elsewhere» into the place the item already lies in', async () => {
 		const shelf = await box();
 		const id = await screws(3, shelf);
-		await expect(relocate(actor, id, shelf)).rejects.toThrow('уже лежит здесь');
+		await expect(moveItem(actor, id, shelf)).rejects.toThrow('уже лежит здесь');
 	});
 
 	it('binds no sticker to a workbench; deleting a bench writes its old sticker off', async () => {

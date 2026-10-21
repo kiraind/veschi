@@ -26,6 +26,17 @@ export class LoginThrottle {
 		return wait;
 	}
 
+	/**
+	 * Starts an attempt: refuses it (returns seconds to wait) or counts it as a
+	 * failure up front, so parallel requests cannot all pass the check before any
+	 * failure is recorded. `succeed` forgets it once the password turns out right.
+	 */
+	attempt(keys: string[]): number {
+		const wait = this.retryAfter(keys);
+		if (wait === 0) this.fail(keys);
+		return wait;
+	}
+
 	fail(keys: string[]): void {
 		const now = this.now();
 		for (const key of keys) this.failures.set(key, [...this.recent(key, now), now]);

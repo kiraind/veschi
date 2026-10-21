@@ -138,6 +138,14 @@ export function inCategories(categories: CategoryRef[]): string {
 }
 
 /**
+ * «Из категории «Еда»», «Из категорий «Еда» и «Хрупкое»» — the hint under a
+ * required form field; the field itself says «required» by its red star.
+ */
+export function fromCategories(categories: CategoryRef[]): string {
+	return `Из ${categories.length > 1 ? 'категорий' : 'категории'} ${categoryNames(categories)}`;
+}
+
+/**
  * Notices on the search page: categories whose types or items lack required
  * values, and categories that require nothing yet. Each leads to the category
  * card, which lists what to fill or where to add parameters.

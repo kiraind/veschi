@@ -3,15 +3,16 @@ import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import { discard } from './archive';
+import { moveItem } from './items';
 import { getPath } from './paths';
-import { setKeyedParams } from '$lib/server/testing/params';
+import { defIdFor, setKeyedParams } from '$lib/server/testing/params';
+import { listStickerOrders, orderSticker, setStickerOrderCaption } from './stickers';
 import {
 	consume,
 	createWorkbench,
 	deleteWorkbench,
 	listWorkbench,
 	listWorkbenches,
-	relocate,
 	returnHome,
 	take,
 	updateWorkbench
@@ -79,7 +80,7 @@ describe('workbench service', () => {
 			const knife = await item('Нож');
 			await take(actor, knife.id, { workbenchId: garage });
 			await expect(deleteWorkbench(actor, garage)).rejects.toThrow('На столе есть вещи');
-			await relocate(actor, knife.id, null);
+			await moveItem(actor, knife.id, null);
 			await deleteWorkbench(actor, garage);
 			expect((await listWorkbenches(actor)).workbenches).toEqual([]);
 		});
@@ -263,6 +264,57 @@ describe('workbench service', () => {
 			expect(await reload(itemId)).toMatchObject({ quantity: 9, parentId: box.id });
 		});
 
+		it('keeps a returned part with a pending sticker order apart from the source', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 9 });
+			await orderSticker(actor, itemId, 40);
+			await setStickerOrderCaption(actor, itemId, 'Таймеры');
+			expect(await returnHome(actor, itemId)).toEqual({ itemId, merged: false });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 1 });
+			expect(await listStickerOrders(actor)).toMatchObject([
+				{ itemId, width: 40, caption: 'Таймеры' }
+			]);
+		});
+
+		it('merges a returned part into a source that waits for a sticker', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 9 });
+			await orderSticker(actor, chips.id);
+			expect(await returnHome(actor, itemId)).toEqual({ itemId: chips.id, merged: true });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 10 });
+			expect((await listStickerOrders(actor)).map((o) => o.itemId)).toEqual([chips.id]);
+		});
+
+		it('keeps a part whose file was renamed apart from its source when returned', async () => {
+			const file = await defIdFor(actor, 'Даташит', 'FILE');
+			await db.param.create({
+				data: {
+					defId: file,
+					itemId: chips.id,
+					valueType: 'FILE',
+					fileKey: 'files/ne555',
+					fileName: 'ne555.pdf'
+				}
+			});
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 2 });
+			await db.param.updateMany({
+				where: { itemId, defId: file },
+				data: { fileName: 'ne555-ti.pdf' }
+			});
+			expect(await returnHome(actor, itemId)).toEqual({ itemId, merged: false });
+			expect(await reload(chips.id)).toMatchObject({ quantity: 8 });
+		});
+
+		it('refuses to take an item to the bench it already lies on', async () => {
+			const { itemId } = await take(actor, chips.id, { workbenchId: garage, quantity: 4 });
+			await expect(take(actor, itemId, { workbenchId: garage })).rejects.toThrow(
+				'уже лежит на этом столе'
+			);
+			await expect(take(actor, itemId, { workbenchId: garage, quantity: 1 })).rejects.toThrow(
+				'уже лежит на этом столе'
+			);
+			expect(await reload(itemId)).toMatchObject({ quantity: 4, parentId: garage });
+			expect(await db.item.count({ where: { parentId: garage } })).toBe(1);
+		});
+
 		it('takes part of a stickered record: the sticker stays on the rest', async () => {
 			await db.sticker.create({
 				data: { ownerId: actor.userId, code: 'K7M4QX', status: 'BOUND', itemId: chips.id }
@@ -333,9 +385,9 @@ describe('workbench service', () => {
 				expect(await reload(chips.id)).toMatchObject({ quantity: 6, parentId: null });
 			});
 
-			it('relocates 3 of 4 into a drawer: a new untaken record, 1 stays on the bench', async () => {
+			it('moves 3 of 4 into a drawer: a new untaken record, 1 stays on the bench', async () => {
 				const drawer = await item('Ящик');
-				const { itemId } = await relocate(actor, onBench, drawer.id, { quantity: 3 });
+				const { itemId } = await moveItem(actor, onBench, drawer.id, { quantity: 3 });
 				expect(itemId).not.toBe(onBench);
 				expect(await reload(itemId)).toMatchObject({
 					quantity: 3,
@@ -354,19 +406,19 @@ describe('workbench service', () => {
 				expect((await listWorkbench(actor)).map((i) => [i.id, i.quantity])).toEqual([[onBench, 1]]);
 			});
 
-			it('relocates into a drawer that has the same thing: adds to it', async () => {
+			it('moves into a drawer that has the same thing: adds to it', async () => {
 				const drawer = await item('Ящик');
-				const first = await relocate(actor, onBench, drawer.id, { quantity: 1 });
+				const first = await moveItem(actor, onBench, drawer.id, { quantity: 1 });
 				const twin = await reload(first.itemId);
 				expect(twin).toMatchObject({ quantity: 1, parentId: drawer.id, splitFromId: null });
 				// A part merges into the record already there…
-				expect(await relocate(actor, onBench, drawer.id, { quantity: 2 })).toEqual({
+				expect(await moveItem(actor, onBench, drawer.id, { quantity: 2 })).toEqual({
 					itemId: twin.id
 				});
 				expect(await reload(twin.id)).toMatchObject({ quantity: 3 });
 				expect(await reload(onBench)).toMatchObject({ quantity: 1, parentId: garage });
 				// …and so does the whole rest, whose record disappears.
-				expect(await relocate(actor, onBench, drawer.id)).toEqual({ itemId: twin.id });
+				expect(await moveItem(actor, onBench, drawer.id)).toEqual({ itemId: twin.id });
 				expect(await reload(twin.id)).toMatchObject({ quantity: 4, takenById: null });
 				expect(await db.item.findUnique({ where: { id: onBench } })).toBeNull();
 				expect(await listWorkbench(actor)).toEqual([]);
@@ -384,14 +436,14 @@ describe('workbench service', () => {
 				expect(await reload(onBench)).toMatchObject({ quantity: 1, parentId: garage });
 			});
 
-			it('relocates all 4 as the record itself', async () => {
-				expect(await relocate(actor, onBench, null, { quantity: 4 })).toEqual({ itemId: onBench });
+			it('moves all 4 as the record itself', async () => {
+				expect(await moveItem(actor, onBench, null, { quantity: 4 })).toEqual({ itemId: onBench });
 				expect(await reload(onBench)).toMatchObject({ parentId: null, takenById: null });
 			});
 
 			it('rejects parts out of range', async () => {
 				await expect(returnHome(actor, onBench, { quantity: 5 })).rejects.toThrow('не больше 4');
-				await expect(relocate(actor, onBench, null, { quantity: 0 })).rejects.toThrow(
+				await expect(moveItem(actor, onBench, null, { quantity: 0 })).rejects.toThrow(
 					'целое число'
 				);
 				expect(await reload(onBench)).toMatchObject({ quantity: 4, parentId: garage });
@@ -454,20 +506,20 @@ describe('workbench service', () => {
 		expect(await reload(knife.id)).toMatchObject({ parentId: null, takenById: null });
 	});
 
-	it('relocates into another container and forgets the home', async () => {
+	it('moves into another container and forgets the home', async () => {
 		const drawer = await item('Ящик');
 		const toolbox = await item('Ящик с инструментами');
 		const knife = await item('Нож', drawer.id);
 		await take(actor, knife.id, { workbenchId: garage });
-		await relocate(actor, knife.id, toolbox.id);
+		await moveItem(actor, knife.id, toolbox.id);
 		expect(await reload(knife.id)).toMatchObject({
 			parentId: toolbox.id,
 			homeId: null,
 			takenById: null,
 			takenAt: null
 		});
-		await expect(relocate(actor, toolbox.id, toolbox.id)).rejects.toThrow('саму себя');
-		await expect(relocate(actor, knife.id, garage)).rejects.toThrow('На стол');
+		await expect(moveItem(actor, toolbox.id, toolbox.id)).rejects.toThrow('саму себя');
+		await expect(moveItem(actor, knife.id, garage)).rejects.toThrow('На стол');
 	});
 
 	describe('return is unavailable', () => {

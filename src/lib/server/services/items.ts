@@ -2,7 +2,7 @@ import type { StickerStatus } from '@prisma/client';
 import { z } from 'zod';
 import { idSchema } from '$lib/domain/id';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
-import { NotFoundError, ValidationError } from '$lib/server/errors';
+import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleTo, type Actor } from '$lib/server/scope';
 import { compareNames, itemDisplayName } from '$lib/domain/item';
 import { inheritedParams, paramListSchema, type ParamView } from '$lib/domain/params';
@@ -203,17 +203,29 @@ export async function createItem(actor: Actor, input: unknown): Promise<{ id: st
 					description: data.newTypeDescription,
 					paramDefIds: (data.newTypeParams ?? []).map((p) => p.defId)
 				});
+		const created = 'created' in type && type.created;
+		// Like a description and parameters, categories and the container mark are only for a
+		// new type: an existing one with this name is not changed behind the user's back.
+		if (
+			!data.typeId &&
+			!created &&
+			(data.newTypeCategoryIds.length > 0 || (data.newTypeIsContainer && !type.isContainer))
+		) {
+			throw new ConflictError(
+				`Тип «${type.name}» уже есть — выберите его в поле «Тип», а категории и отметку «Контейнер» поменяйте на его странице`
+			);
+		}
 		if (type.isContainer && data.quantity !== 1) throw new ValidationError(CONTAINER_QUANTITY);
 		if (data.parentId) await findPlaceableParent(actor, data.parentId, tx);
 		const bench = data.workbenchId ? await requireWorkbench(actor, data.workbenchId, tx) : null;
 		if (data.barcode) await setBarcode(actor, type.id, data.barcode, {}, tx);
-		if (!data.typeId) {
+		if (created) {
 			for (const categoryId of new Set(data.newTypeCategoryIds)) {
 				await addTypeToCategory(actor, type.id, categoryId, tx);
 			}
 		}
 		// findOrCreateType refuses parameters for a type that exists already.
-		if (!data.typeId && data.newTypeParams?.length) {
+		if (created && data.newTypeParams?.length) {
 			await replaceParams(actor, { typeId: type.id }, data.newTypeParams, tx, { record: false });
 		}
 		await assertItemComplete(type.id, data.params ?? [], tx);

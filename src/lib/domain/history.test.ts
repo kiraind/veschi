@@ -135,6 +135,22 @@ describe('describeEvent', () => {
 		]);
 	});
 
+	it('old sticker events name the record split off for the sticker', () => {
+		for (const kind of ['sticker.bound', 'sticker.printed'] as const) {
+			const text = describeEvent(
+				event({ kind, data: { code: 'K7M4QX', resultId: 'i2' }, live: ['i2'] })
+			);
+			expect(text.details.map(plain)).toEqual(['Отделена 1 штука: Отвёртка']);
+			expect(text.details[0]![1]).toEqual({ text: 'Отвёртка', href: '/items/i2' });
+		}
+	});
+
+	it('an unknown kind reads as a plain line instead of failing', () => {
+		const text = describeEvent(event({ kind: 'item.teleported' as never, data: {} }));
+		expect(plain(text.title)).toBe('Событие: Отвёртка');
+		expect(text.details).toEqual([]);
+	});
+
 	it('describes archive, stickers and parameters', () => {
 		expect(
 			plain(
@@ -164,6 +180,14 @@ describe('describeEvent', () => {
 		);
 		expect(plain(unprinted.title)).toBe('Наклейки не распечатаны, ID освобождены: 140');
 		expect(unprinted.details.map(plain)).toEqual(['Снова ждут печати: 2']);
+		const width = describeEvent(
+			event({ kind: 'sticker.widthChanged', data: { before: 20, after: 40 } })
+		);
+		expect(plain(width.title)).toBe('Изменена ширина наклейки для вещи Отвёртка');
+		expect(width.details.map(plain)).toEqual(['20 мм → 40 мм']);
+		expect(
+			plain(describeEvent(event({ kind: 'sticker.unprinted', data: { code: 'K7M4QX' } })).title)
+		).toBe('Наклейка K7M-4QX не распечатана, снова ждёт печати для вещи Отвёртка');
 		const params = describeEvent(
 			event({
 				kind: 'params.changed',
