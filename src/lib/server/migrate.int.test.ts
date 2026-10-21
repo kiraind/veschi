@@ -135,6 +135,21 @@ describe('migrate', () => {
 		expect(await migrate(url, dir, () => {})).toEqual(['2_bad']);
 	});
 
+	it('leaves nothing behind when the connection drops mid-migration', async () => {
+		const schema = newSchema();
+		const url = urlWithSchema(schema);
+		const dir = await tempMigrations({
+			'1_ok': 'CREATE TABLE "A" ("id" INTEGER);',
+			'2_cut': 'CREATE TABLE "B" ("id" INTEGER);\nSELECT pg_terminate_backend(pg_backend_pid());'
+		});
+		await expect(migrate(url, dir, () => {})).rejects.toThrow(/2_cut failed/);
+		const rows = await migrationsTable(schema);
+		expect(rows.map((r) => r.migration_name)).toEqual(['1_ok']);
+
+		await writeFile(join(dir, '2_cut', 'migration.sql'), 'CREATE TABLE "B" ("id" INTEGER);');
+		expect(await migrate(url, dir, () => {})).toEqual(['2_cut']);
+	});
+
 	it('runs scripts with function bodies and DO blocks', async () => {
 		const schema = newSchema();
 		const dir = await tempMigrations({

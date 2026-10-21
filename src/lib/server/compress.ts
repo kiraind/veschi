@@ -21,6 +21,9 @@ export function compress(request: Request, response: Response): Response {
 	headers.delete('content-length');
 	headers.set('content-encoding', 'gzip');
 	headers.append('vary', 'accept-encoding');
+	// A strong ETag promises these exact bytes; the gzipped body is a different set.
+	const etag = headers.get('etag');
+	if (etag?.startsWith('"')) headers.set('etag', `W/${etag}`);
 	return new Response(response.body.pipeThrough(new CompressionStream('gzip')), {
 		status: response.status,
 		statusText: response.statusText,

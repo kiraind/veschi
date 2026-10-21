@@ -53,7 +53,8 @@ export function authorization({
 		method,
 		url.pathname,
 		query,
-		...names.map((n) => `${n}:${headers[n]!.trim()}`),
+		// SigV4 canonical form: values trimmed, inner runs of spaces collapsed to one.
+		...names.map((n) => `${n}:${headers[n]!.trim().replace(/\s+/g, ' ')}`),
 		'',
 		names.join(';'),
 		headers['x-amz-content-sha256']
