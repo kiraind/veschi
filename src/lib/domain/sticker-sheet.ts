@@ -5,10 +5,10 @@ import { CHARS, FALLBACK_WIDTH, UNITS_PER_EM, WIDTHS } from './caption-metrics';
  * side margins, cut into stickers 10 mm wide (20 per row), 20 mm wide (10 per
  * row) or 40 mm wide (5 per row). A 20 or 40 mm sticker is the QR with the ID
  * inside and a 1 mm white border, plus up to three caption lines under it. A
- * 10 mm sticker is a 10 × 10 mm square: the QR with the ID (`K7M-4QX`) under
- * it across the whole width, and no caption. A row holds stickers of one
- * width and is as tall as its tallest sticker, so the sheet can be cut along
- * straight lines. All sizes are in millimetres.
+ * 10 mm sticker is the QR with the ID (`K7M-4QX`) under it across the whole
+ * width, then the caption lines in a smaller font. A row holds stickers of
+ * one width and is as tall as its tallest sticker, so the sheet can be cut
+ * along straight lines. All sizes are in millimetres.
  */
 export const PAGE_WIDTH_MM = 210;
 export const PAGE_HEIGHT_MM = 297;

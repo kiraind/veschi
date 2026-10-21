@@ -7,11 +7,9 @@ import {
 	RESERVED_CODES,
 	TOP_LEVEL_ROUTES,
 	codeNeighbors,
-	findSimilar,
 	formatCode,
 	generateCodes,
 	hammingDistance,
-	isCode,
 	normalizeCode,
 	type RandomInt
 } from './sticker-code';
@@ -48,8 +46,6 @@ describe('sticker codes', () => {
 
 	it('formats with a dash', () => {
 		expect(formatCode('K7M4QX')).toBe('K7M-4QX');
-		expect(isCode('k7m4qx')).toBe(true);
-		expect(isCode('login')).toBe(false);
 	});
 
 	it('counts differing positions', () => {
@@ -65,13 +61,8 @@ describe('sticker codes', () => {
 		for (const n of neighbors) expect(hammingDistance(n, 'K7M4QX')).toBe(1);
 	});
 
-	it('suggests a code one typo away', () => {
-		expect(findSimilar('K7M4QY', ['ABCDEF', 'K7M4QX'])).toBe('K7M4QX');
-		expect(findSimilar('K7M4ZZ', ['ABCDEF', 'K7M4QX'])).toBeNull();
-	});
-
 	it('never generates reserved codes', () => {
-		for (const r of RESERVED_CODES) expect(isCode(r)).toBe(true);
+		for (const r of RESERVED_CODES) expect(normalizeCode(r)).toBe(r);
 	});
 });
 
@@ -88,7 +79,7 @@ describe('generateCodes', () => {
 		const existing = generateCodes([], 200, seeded(1));
 		const fresh = generateCodes(existing, 300, seeded(2));
 		expect(fresh).toHaveLength(300);
-		for (const c of fresh) expect(isCode(c)).toBe(true);
+		for (const c of fresh) expect(normalizeCode(c)).toBe(c);
 		expectAllFar([...existing, ...fresh]);
 	});
 

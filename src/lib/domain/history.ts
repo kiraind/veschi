@@ -97,10 +97,14 @@ export interface HistoryDataMap {
 	/** `width` in mm, when not the default 20. */
 	'sticker.ordered': { width?: number };
 	'sticker.orderCancelled': Record<string, never>;
+	/** The width of the sticker waiting for print was changed, in mm. */
+	'sticker.widthChanged': { before: number; after: number };
 	/** The caption of the sticker waiting for print was edited. */
 	'sticker.captionChanged': { before: string; after: string };
 	/** An ordered sticker printed in a batch and bound to the item (`resultId`: as for sticker.bound). */
 	'sticker.printed': { code: string; resultId?: string };
+	/** The batch with the item's printed sticker was marked unprinted: the item waits again. */
+	'sticker.unprinted': { code: string };
 	'params.changed': { changes: ParamChange[] };
 	'type.created': Record<string, never>;
 	'type.updated': { changes: Change[] };
@@ -161,8 +165,10 @@ const GROUP_OF: Record<HistoryKind, HistoryGroup> = {
 	'sticker.unbound': 'stickers',
 	'sticker.ordered': 'stickers',
 	'sticker.orderCancelled': 'stickers',
+	'sticker.widthChanged': 'stickers',
 	'sticker.captionChanged': 'stickers',
 	'sticker.printed': 'stickers',
+	'sticker.unprinted': 'stickers',
 	'params.changed': 'changes',
 	'type.created': 'changes',
 	'type.updated': 'changes',
@@ -388,6 +394,11 @@ export function describeEvent(e: HistoryEventView): EventText {
 				? [t(` (${pieces(quantity)})`)]
 				: [];
 	const changes = (list: Change[]) => list.map(changeLine);
+	// Old sticker events: binding split one thing off into a new record that got the sticker.
+	const splitOff = (resultId: string | undefined): Segment[][] =>
+		resultId
+			? [[t('Отделена 1 штука: '), link({ id: resultId, name: e.subjectName, kind: 'item' })]]
+			: [];
 
 	switch (e.kind) {
 		case 'item.created': {
@@ -467,7 +478,7 @@ export function describeEvent(e: HistoryEventView): EventText {
 			const d = e.data as HistoryData<'sticker.bound'>;
 			return {
 				title: [t(`Наклейка ${formatCode(d.code)} наклеена на вещь `), subject],
-				details: []
+				details: splitOff(d.resultId)
 			};
 		}
 		case 'sticker.unbound': {
@@ -484,6 +495,13 @@ export function describeEvent(e: HistoryEventView): EventText {
 		}
 		case 'sticker.orderCancelled':
 			return { title: [t('Наклейка больше не ждёт печати для вещи '), subject], details: [] };
+		case 'sticker.widthChanged': {
+			const d = e.data as HistoryData<'sticker.widthChanged'>;
+			return {
+				title: [t('Изменена ширина наклейки для вещи '), subject],
+				details: [[t(`${d.before} мм → ${d.after} мм`)]]
+			};
+		}
 		case 'sticker.captionChanged': {
 			const d = e.data as HistoryData<'sticker.captionChanged'>;
 			return {
@@ -495,6 +513,16 @@ export function describeEvent(e: HistoryEventView): EventText {
 			const d = e.data as HistoryData<'sticker.printed'>;
 			return {
 				title: [t(`Наклейка ${formatCode(d.code)} напечатана для вещи `), subject],
+				details: splitOff(d.resultId)
+			};
+		}
+		case 'sticker.unprinted': {
+			const d = e.data as HistoryData<'sticker.unprinted'>;
+			return {
+				title: [
+					t(`Наклейка ${formatCode(d.code)} не распечатана, снова ждёт печати для вещи `),
+					subject
+				],
 				details: []
 			};
 		}
@@ -636,6 +664,9 @@ export function describeEvent(e: HistoryEventView): EventText {
 				details: d.ordered ? [[t(`Снова ждут печати: ${d.ordered}`)]] : []
 			};
 		}
+		default:
+			// A kind this release does not know (data from another version): one plain line.
+			return { title: [t('Событие: '), subject], details: [] };
 	}
 }
 
