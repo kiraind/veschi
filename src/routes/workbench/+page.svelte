@@ -101,14 +101,17 @@
 			<ul class="flex flex-col gap-3">
 				{#each bench.items as item (item.id)}
 					<li>
-						<Card class="max-w-none space-y-3 p-4">
+						<!-- The whole card opens the item: the name link stretches over it, the buttons sit above. -->
+						<Card
+							class="relative max-w-none space-y-3 p-4 has-[a:hover]:bg-gray-50 dark:has-[a:hover]:bg-gray-700/50"
+						>
 							<div class="flex items-start gap-3">
 								<Thumb photoKey={item.photoKey} size={56} container={item.isContainer} />
 								<div class="min-w-0">
 									<div class="flex flex-wrap items-center gap-2">
 										<a
 											href="/items/{item.id}"
-											class="min-w-0 font-semibold break-words text-primary-700 hover:underline dark:text-primary-500"
+											class="min-w-0 font-semibold break-words text-primary-700 after:absolute after:inset-0 after:rounded-lg hover:underline focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-500 dark:text-primary-500"
 											>{item.name}</a
 										>
 										{#if item.quantity > 1}<Badge
@@ -132,7 +135,7 @@
 								</div>
 							</div>
 
-							<div class="grid grid-cols-3 gap-2 sm:flex">
+							<div class="relative grid grid-cols-3 gap-2 sm:flex">
 								{#if item.isNew}
 									<!-- Takes the place of both «На место» and «Переложить». -->
 									<Button
