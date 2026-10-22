@@ -1,5 +1,6 @@
 import type { Item } from '@prisma/client';
 import type { Tx } from '$lib/server/db';
+import type { Actor } from '$lib/server/scope';
 import { ValidationError } from '$lib/server/errors';
 import { quantityError } from '$lib/domain/workbench';
 import { mirrorLinksOf, valueSignature } from './params';
@@ -52,7 +53,7 @@ async function paramSignatures(tx: Tx, ids: string[]): Promise<Map<string, strin
  * Gives `toId` copies of the own parameter values of `fromId`; what its links
  * point at gets `toId` in the inverse values too.
  */
-async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void> {
+async function copyOwnParams(actor: Actor, tx: Tx, fromId: string, toId: string): Promise<void> {
 	const params = await tx.param.findMany({
 		where: { itemId: fromId },
 		include: {
@@ -73,7 +74,7 @@ async function copyOwnParams(tx: Tx, fromId: string, toId: string): Promise<void
 			data: { ...p, itemId: toId, enumValues: { create: enumValues }, refs: { create: refs } }
 		});
 	}
-	await mirrorLinksOf({ itemId: toId }, tx);
+	await mirrorLinksOf(actor, { itemId: toId }, tx);
 }
 
 /**
@@ -187,6 +188,7 @@ async function isPlainType(tx: Tx, typeId: string | null): Promise<boolean> {
  * Returns the id of the record that holds what moved.
  */
 export async function placePart(
+	actor: Actor,
 	tx: Tx,
 	item: Item,
 	count: number,
@@ -229,6 +231,6 @@ export async function placePart(
 			splitFromId
 		}
 	});
-	await copyOwnParams(tx, item.id, part.id);
+	await copyOwnParams(actor, tx, item.id, part.id);
 	return part.id;
 }

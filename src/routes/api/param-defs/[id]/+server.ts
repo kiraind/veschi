@@ -1,6 +1,6 @@
 import { apiHandler, parseBody } from '$lib/server/api';
 import { paramDefInputSchema } from '$lib/domain/params';
-import { deleteParamDef, getParamDef, updateParamDef } from '$lib/server/services/params';
+import { deleteParamDef, getParamDef, updateParamDef } from '$lib/server/services/param-defs';
 import type { RequestEvent } from './$types';
 
 export const GET = apiHandler<RequestEvent>(async ({ actor, params }) =>

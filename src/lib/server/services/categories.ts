@@ -1,9 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { escapeLike } from '$lib/domain/search';
 import { idSchema } from '$lib/domain/id';
 import { db, type Tx, writeTransaction } from '$lib/server/db';
-import { ConflictError, NotFoundError, ValidationError } from '$lib/server/errors';
+import { NotFoundError, ValidationError } from '$lib/server/errors';
 import { ownedBy, visibleSql, visibleTo, type Actor } from '$lib/server/scope';
 import { itemDisplayName } from '$lib/domain/item';
 import {
@@ -23,14 +22,14 @@ import {
 } from '$lib/domain/categories';
 import {
 	LINK_HOLDER_LABELS,
-	normalizeParamKey,
 	type LinkKind,
 	type ParamDefView,
 	type ParamInput
 } from '$lib/domain/params';
 import { diffFields, type CategoryParamChange } from '$lib/domain/history';
 import { categoryRef, recordEvent, typeRef } from './history';
-import { defInclude, defViews } from './params';
+import { assertNameFree } from './names';
+import { defInclude, defViews } from './param-defs';
 
 /** Body of PUT /api/categories/[id]/params. */
 export const categoryParamsBodySchema = z.object({ params: categoryParamsSchema });
@@ -61,7 +60,7 @@ export async function categoriesOfTypes(
 		orderBy: { category: { name: 'asc' } }
 	});
 	const defIds = [...new Set(links.flatMap((l) => l.category.params.map((p) => p.defId)))];
-	const defs = await viewsOf(defIds, tx);
+	const defs = await viewsOf(null, defIds, tx);
 	for (const { typeId, category } of links) {
 		const entry = result.get(typeId);
 		if (!entry) continue;
@@ -81,10 +80,14 @@ export async function categoriesOfTypes(
 	return result;
 }
 
-async function viewsOf(defIds: string[], tx: Tx): Promise<Map<string, ParamDefView>> {
+async function viewsOf(
+	actor: Actor | null,
+	defIds: string[],
+	tx: Tx
+): Promise<Map<string, ParamDefView>> {
 	if (defIds.length === 0) return new Map();
 	const defs = await tx.paramDef.findMany({ where: { id: { in: defIds } }, include: defInclude });
-	return new Map((await defViews(defs, tx)).map((d) => [d.id, d]));
+	return new Map((await defViews(actor, defs, tx)).map((d) => [d.id, d]));
 }
 
 /**
@@ -118,20 +121,6 @@ async function findCategory(actor: Actor, id: string, tx: Tx = db) {
 	const category = await tx.category.findFirst({ where: { id, ...visibleTo(actor) } });
 	if (!category) throw new NotFoundError('Категория не найдена');
 	return category;
-}
-
-async function assertNameFree(actor: Actor, name: string, exceptId: string | null, tx: Tx) {
-	const same = await tx.category.findMany({
-		where: {
-			name: { equals: escapeLike(name), mode: 'insensitive' },
-			...visibleTo(actor),
-			...(exceptId ? { id: { not: exceptId } } : {})
-		},
-		select: { name: true }
-	});
-	if (same.some((c) => normalizeParamKey(c.name) === normalizeParamKey(name))) {
-		throw new ConflictError(`Категория «${name}» уже есть`);
-	}
 }
 
 /** Categories sorted by name, with their required parameters and type counts. */
@@ -186,6 +175,7 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 		})
 	]);
 	const defs = await viewsOf(
+		actor,
 		rows.map((r) => r.defId),
 		db
 	);
@@ -223,7 +213,11 @@ export async function getCategoryCard(actor: Actor, id: string): Promise<Categor
 	const sums = links.length
 		? await db.item.groupBy({
 				by: ['typeId'],
-				where: { typeId: { in: links.map((l) => l.typeId) }, status: 'ACTIVE' },
+				where: {
+					typeId: { in: links.map((l) => l.typeId) },
+					status: 'ACTIVE',
+					...visibleTo(actor)
+				},
 				_sum: { quantity: true }
 			})
 		: [];
@@ -303,7 +297,7 @@ export async function categoryNotices(actor: Actor): Promise<CategoryNotices> {
 export async function createCategory(actor: Actor, input: unknown): Promise<CategoryRef> {
 	const { name, description } = categoryInputSchema.parse(input);
 	return writeTransaction(async (tx) => {
-		await assertNameFree(actor, name, null, tx);
+		await assertNameFree('category', actor, name, null, tx);
 		const category = await tx.category.create({
 			data: { name, description, ...ownedBy(actor) }
 		});
@@ -321,7 +315,7 @@ export async function updateCategory(actor: Actor, id: string, input: unknown): 
 	const { name, description } = categoryUpdateSchema.parse(input);
 	await writeTransaction(async (tx) => {
 		const category = await findCategory(actor, id, tx);
-		if (name !== undefined) await assertNameFree(actor, name, id, tx);
+		if (name !== undefined) await assertNameFree('category', actor, name, id, tx);
 		const updated = await tx.category.update({ where: { id }, data: { name, description } });
 		const changes = diffFields(
 			{ name: category.name, description: category.description },

@@ -196,13 +196,18 @@ describe('describeEvent', () => {
 				data: {
 					changes: [
 						{ name: 'Сопротивление', change: 'changed' },
-						{ name: 'Цвет', change: 'removed' }
+						{ name: 'Цвет', change: 'removed' },
+						{ name: 'Вес', change: 'moved' }
 					]
 				}
 			})
 		);
 		expect(plain(params.title)).toBe('Параметры типа Резистор изменены');
-		expect(params.details.map(plain)).toEqual(['«Сопротивление» изменён', '«Цвет» удалён']);
+		expect(params.details.map(plain)).toEqual([
+			'«Сопротивление» изменён',
+			'«Цвет» удалён',
+			'«Вес» перемещён в списке'
+		]);
 		expect(
 			plain(
 				describeEvent(

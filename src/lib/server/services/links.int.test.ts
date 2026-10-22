@@ -3,21 +3,17 @@ import { db } from '$lib/server/db';
 import type { Actor } from '$lib/server/scope';
 import { createTestActor } from '$lib/server/testing/db';
 import { linkDef } from '$lib/server/testing/params';
-import type { ParamDefView } from '$lib/domain/params';
+import { MAX_LINK_TARGETS, MAX_PARAMS, type ParamDefView } from '$lib/domain/params';
 import { createCategory, setCategoryParams } from './categories';
 import { createItem } from './items';
 import {
-	addParam,
 	createParamDef,
-	deleteParam,
 	deleteParamDef,
 	getParamDef,
 	listParamDefs,
-	listParams,
-	setParams,
-	updateParam,
 	updateParamDef
-} from './params';
+} from './param-defs';
+import { addParam, deleteParam, listParams, setParams, updateParam } from './params';
 import { createWorkbench, take } from './workbench';
 
 describe('links', () => {
@@ -163,6 +159,76 @@ describe('links', () => {
 		expect(part).not.toBe(screws);
 		expect(await links({ itemId: part })).toEqual({ 'Является деталью': ['Радио'] });
 		expect(await links({ itemId: radio })).toEqual({ 'Содержит деталь': ['Винт', 'Винт'] });
+		// The part added to the radio's value is in the radio's history.
+		const last = await db.historyEvent.findFirstOrThrow({
+			where: { kind: 'params.changed', subjectId: radio },
+			orderBy: { createdAt: 'desc' }
+		});
+		expect(last.data).toEqual({ changes: [{ name: 'Содержит деталь', change: 'changed' }] });
+		expect(last.refIds).toContain(contains.id);
+	});
+
+	it('refuses a new link to an archived item next to a kept one', async () => {
+		const fits = await linkDef(actor, 'Совместим с', 'ITEM', 'ITEM', 'Совместим с');
+		const radio = await item('Радио');
+		const lamp = await item('Лампа');
+		const kept = { defId: contains.id, valueType: 'ITEM' as const, refIds: [lamp] };
+		await setParams(actor, { itemId: radio }, [kept]);
+		await db.item.update({ where: { id: lamp }, data: { status: 'ARCHIVED' } });
+		// The kept link stays valid; the same item through another parameter is a new link.
+		await setParams(actor, { itemId: radio }, [kept]);
+		await expect(
+			setParams(actor, { itemId: radio }, [
+				kept,
+				{ defId: fits.id, valueType: 'ITEM', refIds: [lamp] }
+			])
+		).rejects.toThrow('«Лампа» в архиве');
+		expect(await links({ itemId: lamp })).toEqual({ 'Является деталью': ['Радио'] });
+	});
+
+	it('refuses a link the other side has no room for', async () => {
+		const radio = await item('Радио');
+		const lamp = await item('Лампа');
+		const { typeId } = await db.item.findUniqueOrThrow({ where: { id: radio } });
+		const devices = await db.item.createManyAndReturn({
+			data: Array.from({ length: MAX_LINK_TARGETS }, () => ({ ownerId: actor.userId, typeId }))
+		});
+		await db.param.create({
+			data: {
+				itemId: lamp,
+				defId: partOf.id,
+				valueType: 'ITEM',
+				position: 0,
+				refs: { create: devices.map((d) => ({ itemId: d.id })) }
+			}
+		});
+		const link = { defId: contains.id, valueType: 'ITEM' as const, refIds: [lamp] };
+		await expect(addParam(actor, { itemId: radio }, link)).rejects.toThrow(
+			`«Лампа»: в «Является деталью» уже ${MAX_LINK_TARGETS} ссылок`
+		);
+		expect(await listParams(actor, { itemId: radio })).toEqual([]);
+
+		// The same for a holder that already has as many values as allowed.
+		const knob = await item('Ручка');
+		const defs = await db.paramDef.createManyAndReturn({
+			data: Array.from({ length: MAX_PARAMS }, (_, i) => ({
+				ownerId: actor.userId,
+				name: `П${i}`,
+				valueType: 'STRING' as const
+			}))
+		});
+		await db.param.createMany({
+			data: defs.map((d, position) => ({
+				itemId: knob,
+				defId: d.id,
+				valueType: 'STRING' as const,
+				textValue: 'x',
+				position
+			}))
+		});
+		await expect(addParam(actor, { itemId: radio }, { ...link, refIds: [knob] })).rejects.toThrow(
+			`«Ручка»: уже ${MAX_PARAMS} параметров`
+		);
 	});
 
 	it('renames the inverse and keeps the kind of link', async () => {

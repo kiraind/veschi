@@ -66,7 +66,8 @@ export const MAX_PARAM_FILE_SIZE = 50 * 1024 * 1024;
 /** Longest name of a FILE parameter's file. */
 export const MAX_FILE_NAME = 255;
 
-const MAX_PARAMS = 100;
+/** Most parameter values one type or item may hold. */
+export const MAX_PARAMS = 100;
 const MAX_OPTIONS = 200;
 
 const unit = z.pipe(
@@ -391,11 +392,6 @@ function withUnit(text: string, u: string | null | undefined): string {
 	return u ? `${text} ${u}` : text;
 }
 
-/** Dates are shown as stored, ISO «2027-05-01» (the same as everywhere in the app). */
-export function formatDate(iso: string): string {
-	return iso;
-}
-
 /** The extension of a file name with its dot («.pdf»), or '' when it has none. */
 export function fileExtension(fileName: string): string {
 	return /[^.]\.[^.\s]{1,10}$/u.exec(fileName)?.[0].slice(1) ?? '';
@@ -413,7 +409,7 @@ export function fileNameFromTemplate(
 	fileName: string
 ): string {
 	const base = (template ?? '')
-		.replaceAll(/\{name\}/giu, holderName.trim())
+		.replaceAll(/\{name\}/giu, () => holderName.trim())
 		// eslint-disable-next-line no-control-regex
 		.replaceAll(/[\u0000-\u001f\s]+/gu, ' ')
 		.trim();
@@ -450,7 +446,8 @@ export function formatParamValue(
 		case 'FILE':
 			return p.fileName;
 		case 'DATE':
-			return formatDate(p.date);
+			// Shown as stored, ISO «2027-05-01» (the same as everywhere in the app).
+			return p.date;
 		case 'BOOLEAN':
 			return p.value ? 'да' : 'нет';
 		case 'ITEM':

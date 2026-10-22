@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	formatDate,
 	fileExtension,
 	fileNameFromTemplate,
 	formatFileSize,
@@ -267,8 +266,7 @@ describe('formatting', () => {
 		).toBe('Блок питания 12 В, Кабель');
 	});
 
-	it('formats dates and sizes', () => {
-		expect(formatDate('2026-12-31')).toBe('2026-12-31');
+	it('formats sizes', () => {
 		expect(formatFileSize(500)).toBe('500 Б');
 		expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2,5 МБ');
 	});
@@ -317,6 +315,10 @@ describe('file names', () => {
 		// The template may end with the extension itself.
 		expect(fileNameFromTemplate('Чек {name}.pdf', 'Дрель', 'IMG_1.pdf')).toBe('Чек Дрель.pdf');
 		expect(fileNameFromTemplate('Чек\n {name}', 'Дрель', 'a.jpg')).toBe('Чек Дрель.jpg');
+		// `$` sequences in the name stay as they are (no replacement patterns).
+		expect(fileNameFromTemplate('Инструкция {name}', "Касса $$ и $& и $` $'", 'a.pdf')).toBe(
+			"Инструкция Касса $$ и $& и $` $'.pdf"
+		);
 	});
 
 	it('keeps the file own name without a template or when nothing is left of it', () => {

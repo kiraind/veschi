@@ -14,18 +14,13 @@ import {
 import { openFile, uploadParamFile } from './files';
 import { createItem } from './items';
 import {
-	addParam,
 	createParamDef,
-	deleteParam,
 	deleteParamDef,
 	getParamDef,
 	listParamDefs,
-	listParams,
-	moveParam,
-	setParams,
-	updateParam,
 	updateParamDef
-} from './params';
+} from './param-defs';
+import { addParam, deleteParam, listParams, moveParam, setParams, updateParam } from './params';
 
 describe('params', () => {
 	let actor: Actor;
@@ -274,6 +269,29 @@ describe('params', () => {
 		await expect(deleteParam(other, w.id)).rejects.toThrow('не найден');
 	});
 
+	it('records a move in the history and rewrites only the rows that change place', async () => {
+		const [a, b, c] = await Promise.all(
+			['А', 'Б', 'В'].map((name) => createParamDef(actor, { name, valueType: 'STRING' }))
+		);
+		const values = [];
+		for (const def of [a!, b!, c!]) {
+			values.push(
+				await addParam(actor, { typeId }, { defId: def.id, valueType: 'STRING', text: 'x' })
+			);
+		}
+		const first = await db.param.findUniqueOrThrow({ where: { id: values[0]!.id } });
+		await moveParam(actor, values[2]!.id, -1);
+		expect((await listParams(actor, { typeId })).map((p) => p.key)).toEqual(['А', 'В', 'Б']);
+		expect((await db.param.findUniqueOrThrow({ where: { id: first.id } })).updatedAt).toEqual(
+			first.updatedAt
+		);
+		const event = await db.historyEvent.findFirstOrThrow({
+			where: { subjectId: typeId, kind: 'params.changed' },
+			orderBy: { createdAt: 'desc' }
+		});
+		expect(event.data).toEqual({ changes: [{ name: 'В', change: 'moved' }] });
+	});
+
 	describe('definitions', () => {
 		it('creates definitions with unique names and counts usage', async () => {
 			const def = await createParamDef(actor, { name: 'Цвет', valueType: 'STRING' });
@@ -299,6 +317,17 @@ describe('params', () => {
 			const card = await getParamDef(actor, def.id);
 			expect(card.types.map((t) => t.name)).toEqual(['Паяльник']);
 			expect(card.items.map((i) => i.id)).toEqual([itemId]);
+		});
+
+		it('counts and lists only the values at types and items the actor sees', async () => {
+			const def = await createParamDef(actor, { name: 'Цвет', valueType: 'STRING' });
+			const other = await createTestActor('other');
+			const foreign = await db.itemType.create({ data: { ownerId: other.userId, name: 'Чужой' } });
+			await db.param.create({
+				data: { typeId: foreign.id, defId: def.id, valueType: 'STRING', textValue: 'x' }
+			});
+			expect((await listParamDefs(actor))[0]).toMatchObject({ typeCount: 0, itemCount: 0 });
+			expect((await getParamDef(actor, def.id)).types).toEqual([]);
 		});
 
 		it('keeps the unit on the definition and shows it in every value', async () => {

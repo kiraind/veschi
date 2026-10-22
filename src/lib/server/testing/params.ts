@@ -10,7 +10,8 @@ import {
 	type ParamView,
 	type paramInputSchema
 } from '$lib/domain/params';
-import { createParamDef, setParams, type ParamTarget } from '$lib/server/services/params';
+import { createParamDef } from '$lib/server/services/param-defs';
+import { setParams, type ParamTarget } from '$lib/server/services/params';
 
 /**
  * A parameter value given by its name, as tests write it. `unit` is stored on
