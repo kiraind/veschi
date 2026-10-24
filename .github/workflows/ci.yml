@@ -3,6 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  # Release runs the same checks on the commit it releases.
+  workflow_call:
+    inputs:
+      skip-docker:
+        description: Skip the Docker job (Release builds and smoke-tests the image itself)
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -93,6 +100,7 @@ jobs:
   docker:
     name: Docker image
     needs: [checks, integration, build]
+    if: ${{ !inputs.skip-docker }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -28,14 +28,26 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # The same checks as CI, run on the commit being released, so a release never
+  # depends on finding (or waiting for) the CI run of that commit.
+  ci:
+    name: CI
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip-docker: true
+    # Must cover what ci.yml's jobs ask for, even the skipped Docker job.
+    permissions:
+      contents: read
+      packages: write
+
   release:
     name: Release
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-      actions: read
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -59,33 +71,6 @@ jobs:
           version=$(node scripts/release-version.mjs "$BUMP" "$last")
           echo "Releasing $version (previous: ${last:-none})"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # Releases only a commit that CI has checked on master; waits if CI is still running
-      # (a release started right after a merge).
-      # The run is looked up among the latest CI runs, not with `--commit`: GitHub's head_sha
-      # filter sometimes returns nothing for a run that exists, and the release failed with
-      # "No CI run". A run that has just been queued may also appear a little later, so retry.
-      - name: Require green CI
-        run: |
-          sha=$(git rev-parse HEAD)
-          id=
-          for attempt in 1 2 3 4 5 6; do
-            id=$(gh run list --workflow ci.yml --limit 100 \
-              --json databaseId,headSha,headBranch,event \
-              --jq "map(select(.headSha == \"$sha\" and .headBranch == \"master\" and .event == \"push\"))[0].databaseId // empty")
-            [ -n "$id" ] && break
-            sleep 20
-          done
-          if [ -z "$id" ]; then
-            echo "::error::No CI run for $sha on master"
-            exit 1
-          fi
-          gh run watch "$id" --interval 30 > /dev/null || true
-          run=$(gh run view "$id" --json conclusion,url)
-          if [ "$(jq -r .conclusion <<<"$run")" != success ]; then
-            echo "::error::CI for $sha ended with $(jq -r .conclusion <<<"$run"): $(jq -r .url <<<"$run")"
-            exit 1
-          fi
 
       - name: Release commit and tag
         env:
