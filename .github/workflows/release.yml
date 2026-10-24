@@ -28,14 +28,26 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # The same checks as CI, run on the commit being released, so a release never
+  # depends on finding (or waiting for) the CI run of that commit.
+  ci:
+    name: CI
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip-docker: true
+    # Must cover what ci.yml's jobs ask for, even the skipped Docker job.
+    permissions:
+      contents: read
+      packages: write
+
   release:
     name: Release
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-      actions: read
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -59,24 +71,6 @@ jobs:
           version=$(node scripts/release-version.mjs "$BUMP" "$last")
           echo "Releasing $version (previous: ${last:-none})"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # Releases only a commit that CI has checked on master; waits if CI is still running
-      # (a release started right after a merge).
-      - name: Require green CI
-        run: |
-          sha=$(git rev-parse HEAD)
-          id=$(gh run list --workflow ci.yml --commit "$sha" --event push --limit 1 \
-            --json databaseId --jq '.[0].databaseId // empty')
-          if [ -z "$id" ]; then
-            echo "::error::No CI run for $sha on master"
-            exit 1
-          fi
-          gh run watch "$id" --interval 30 > /dev/null || true
-          run=$(gh run view "$id" --json conclusion,url)
-          if [ "$(jq -r .conclusion <<<"$run")" != success ]; then
-            echo "::error::CI for $sha ended with $(jq -r .conclusion <<<"$run"): $(jq -r .url <<<"$run")"
-            exit 1
-          fi
 
       - name: Release commit and tag
         env:
