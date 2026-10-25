@@ -8,6 +8,7 @@ import { enumDef, optionId, setKeyedParams } from '$lib/server/testing/params';
 import { updateParamDef } from './param-defs';
 import { search, searchExamples } from './search';
 import { updateType } from './types';
+import { addTypeToCategory, createCategory } from './categories';
 
 /**
  * The spec example: NE555 — 10 in «Шкаф → Полка 2 → Коробка с микросхемами»
@@ -214,6 +215,60 @@ describe('search', () => {
 		});
 		const group = (await search(actor, 'victorinox'))[0]!;
 		expect(formatPath(group.locations[0]!.path)).toBe('Рабочий стол Гараж');
+	});
+
+	it('ranks names first, then categories, descriptions, parameters and links', async () => {
+		const board = await item({ newTypeName: 'Материнская плата', quantity: 1 });
+		await item({ newTypeName: 'Кабель питания материнской платы', quantity: 1 });
+		await item({ newTypeName: 'Подставка', name: 'Ящик под материнки', quantity: 1 });
+		await item({ newTypeName: 'Фотоматериалы', quantity: 1 });
+		await item({
+			newTypeName: 'Термопаста',
+			newTypeDescription: 'для материнской платы',
+			quantity: 1
+		});
+		const ties = await item({ newTypeName: 'Стяжки', quantity: 1 });
+		const category = await createCategory(actor, { name: 'Материалы' });
+		const tiesType = (await db.item.findUniqueOrThrow({ where: { id: ties } })).typeId!;
+		await addTypeToCategory(actor, tiesType, category.id);
+		const screwdriver = await item({ newTypeName: 'Отвёртка', quantity: 1 });
+		await setKeyedParams(actor, { itemId: screwdriver }, [
+			{ key: 'назначение', valueType: 'STRING', text: 'сборка материнки' }
+		]);
+		const pc = await item({ newTypeName: 'Компьютер' });
+		await setKeyedParams(actor, { itemId: pc }, [
+			{ key: 'состоит из', valueType: 'ITEM', refIds: [board] }
+		]);
+		expect((await search(actor, 'матери')).map((g) => g.typeName)).toEqual([
+			'Материнская плата',
+			'Кабель питания материнской платы',
+			'Подставка',
+			'Фотоматериалы',
+			'Стяжки',
+			'Термопаста',
+			'Отвёртка',
+			'Компьютер'
+		]);
+		// The whole name beats a name that starts with it.
+		await item({ newTypeName: 'Материнка', quantity: 1 });
+		expect((await search(actor, 'материнка'))[0]!.typeName).toBe('Материнка');
+	});
+
+	it('ranks loosely written names and a full sticker ID first', async () => {
+		await item({ newTypeName: 'Панелька DIP-8', quantity: 1 });
+		await item({ newTypeName: 'Адаптер', name: 'ADIP8', quantity: 1 });
+		expect((await search(actor, 'dip8')).map((g) => g.typeName)).toEqual([
+			'Панелька DIP-8',
+			'Адаптер'
+		]);
+		await db.sticker.create({
+			data: { code: 'K7M4QX', ownerId: actor.userId, status: 'BOUND', itemId: solderingBox }
+		});
+		await item({ newTypeName: 'K7M-4QX плата', quantity: 1 });
+		expect((await search(actor, 'k7m-4qx')).map((g) => g.typeName)).toEqual([
+			'Ящик',
+			'K7M-4QX плата'
+		]);
 	});
 
 	it('treats LIKE wildcards literally', async () => {

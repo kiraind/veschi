@@ -54,6 +54,26 @@ export function looseText(s: string): string {
 	return s.replace(LOOSE_RE, '');
 }
 
+/** What a loose regular expression allows between two characters, and between two digits (no decimal point). */
+const LOOSE_GAP = '[\\s\u2010\u2011\u2013.-]*';
+const LOOSE_DIGIT_GAP = '[\\s\u2010\u2011\u2013-]*';
+
+/**
+ * A PostgreSQL regular expression body matching `text` loosely, as `looseText`
+ * compares: «dip8» matches «DIP-8» and «DIP 8». Anchors are up to the caller.
+ */
+export function looseRegex(text: string): string {
+	const chars = [...looseText(text)];
+	return chars
+		.map((c, i) => {
+			const escaped = c.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&');
+			if (i === 0) return escaped;
+			const gap = /\d/.test(chars[i - 1]!) && /\d/.test(c) ? LOOSE_DIGIT_GAP : LOOSE_GAP;
+			return gap + escaped;
+		})
+		.join('');
+}
+
 /**
  * Search treats ё and е as the same letter: «ёлка» and «елка» find each other.
  * In SQL the column goes through `translate(…, 'ёЁ', 'еЕ')` (see `foldYoSql`).

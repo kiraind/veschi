@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	foldYo,
 	likePattern,
+	looseRegex,
 	looseText,
 	parseSearchQuery,
 	searchKey,
@@ -72,6 +73,22 @@ describe('looseText', () => {
 	it('keeps a decimal point between digits', () => {
 		expect(looseText('1.5 мм')).toBe('1.5мм');
 		expect(looseText('v.1.5.')).toBe('v1.5');
+	});
+});
+
+describe('looseRegex', () => {
+	const matches = (query: string, s: string) => new RegExp(`^${looseRegex(query)}$`, 'i').test(s);
+
+	it('matches the query written with spaces, hyphens and dots', () => {
+		for (const s of ['DIP-8', 'DIP 8', 'dip8', 'D.I.P 8']) expect(matches('dip8', s), s).toBe(true);
+		expect(matches('ne 555', 'NE555')).toBe(true);
+	});
+
+	it('keeps a decimal point between digits and escapes special characters', () => {
+		expect(matches('15', '1.5')).toBe(false);
+		expect(matches('1.5', '1.5')).toBe(true);
+		expect(matches('a+b', 'a+b')).toBe(true);
+		expect(matches('a+b', 'aab')).toBe(false);
 	});
 });
 
