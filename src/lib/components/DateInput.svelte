@@ -2,6 +2,7 @@
 @component
 Date field shown and typed as ISO «ГГГГ-ММ-ДД» regardless of the browser locale,
 with a Monday-first Russian calendar popover. `value` is 'YYYY-MM-DD' or ''.
+Hyphens are typed for the user: «20261025» becomes «2026-10-25» as it is typed or pasted.
 Usage: `<DateInput bind:value aria-label="Дата" />`. `invalid` is true while the typed
 text is not a date (`value` then keeps the last valid date): outside a form it is
 the only way to know.
@@ -19,6 +20,7 @@ the only way to know.
 	import {
 		MONTH_NAMES,
 		WEEKDAY_NAMES,
+		autoHyphenateDate,
 		formatIsoDate,
 		isoFromParts,
 		monthGrid,
@@ -81,9 +83,27 @@ the only way to know.
 		inputEl?.setCustomValidity(message);
 	}
 
+	// The field before the edit, so that an erased hyphen can be told from a typed digit.
+	let beforeInput = '';
+
+	function onBeforeInput(event: Event) {
+		beforeInput = (event.currentTarget as HTMLInputElement).value;
+	}
+
 	// Read the element itself: don't rely on bind:value having run before this handler.
 	function onInput(event: Event) {
-		text = (event.currentTarget as HTMLInputElement).value;
+		const el = event.currentTarget as HTMLInputElement;
+		const typed = autoHyphenateDate(
+			beforeInput,
+			el.value,
+			el.selectionStart ?? el.value.length,
+			(event as InputEvent).inputType ?? ''
+		);
+		if (typed.text !== el.value) {
+			el.value = typed.text;
+			el.setSelectionRange(typed.caret, typed.caret);
+		}
+		text = typed.text;
 		const normalized = normalizeDateInput(text);
 		if (normalized !== null) {
 			value = normalized;
@@ -155,6 +175,7 @@ the only way to know.
 		type="text"
 		bind:value={text}
 		bind:elementRef={inputEl}
+		onbeforeinput={onBeforeInput}
 		oninput={onInput}
 		onchange={onChange}
 		{placeholder}
