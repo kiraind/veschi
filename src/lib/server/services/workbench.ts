@@ -7,7 +7,7 @@ import { isWorkbenchIconKey } from '$lib/domain/workbench-icons';
 import { diffFields, type ChangeValue } from '$lib/domain/history';
 import { discard } from './archive';
 import { itemSubject, placeRef, recordEvent } from './history';
-import { getPath, getPaths, isContainerItem, type PathNode } from './paths';
+import { getPaths, isContainerItem, type PathNode } from './paths';
 import { isPlainRecord, notTaken, partCount, placePart, sameThing } from './split';
 
 // ---------------------------------------------------------------------------
@@ -252,18 +252,18 @@ export interface WorkbenchItem {
 type HomeState = {
 	id: string;
 	status: string;
-	takenById: string | null;
 	isWorkbench: boolean;
 	type: { isContainer: boolean } | null;
 };
 
-/** Why the item cannot go back to `home` (null = it can). */
-function returnBlocker(home: HomeState | null, homePath: PathNode[]): string | null {
+/**
+ * Why the item cannot go back to `home` (null = it can). A home that is itself on a
+ * bench is fine: the item goes into it there and travels home with it.
+ */
+function returnBlocker(home: HomeState | null): string | null {
 	if (!home) return null;
 	if (home.status !== 'ACTIVE') return 'Исходное место в архиве';
-	if (home.takenById || home.isWorkbench || homePath.some((n) => n.isWorkbench)) {
-		return 'Исходное место само сейчас на рабочем столе';
-	}
+	if (home.isWorkbench) return 'Исходное место — рабочий стол';
 	if (!isContainerItem(home)) return 'Исходное место больше не контейнер';
 	return null;
 }
@@ -293,7 +293,6 @@ export async function listWorkbench(
 					id: true,
 					name: true,
 					status: true,
-					takenById: true,
 					isWorkbench: true,
 					type: { select: { name: true, isContainer: true } }
 				}
@@ -344,7 +343,7 @@ export async function listWorkbench(
 			...n,
 			stickerCode: stickerCodes.get(n.id) ?? null
 		}));
-		const blocker = returnBlocker(i.home, homePath);
+		const blocker = returnBlocker(i.home);
 		return {
 			id: i.id,
 			name: itemDisplayName(i),
@@ -394,7 +393,7 @@ export async function returnHome(
 					include: { type: { select: { isContainer: true } } }
 				})
 			: null;
-		const blocker = returnBlocker(home, home ? await getPath(home.id, tx) : []);
+		const blocker = returnBlocker(home);
 		if (blocker) throw new ConflictError(`${blocker} — положите вещь в другое место`);
 		const subject = await itemSubject(tx, item.id);
 		const event = {
