@@ -535,16 +535,24 @@ describe('workbench service', () => {
 			});
 			await expect(returnHome(actor, knife.id)).rejects.toThrow('в архиве');
 		});
+	});
 
-		it('when the home is itself on a bench', async () => {
-			const box = await item('Коробка');
-			const chip = await item('NE555', box.id);
-			await take(actor, chip.id, { workbenchId: garage });
-			await take(actor, box.id, { workbenchId: garage });
-			const listed = (await listWorkbench(actor)).find((i) => i.id === chip.id);
-			expect(listed?.canReturn).toBe(false);
-			await expect(returnHome(actor, chip.id)).rejects.toThrow('на рабочем столе');
+	it('returns into a home that is itself on a bench', async () => {
+		const shelf = await item('Полка');
+		const box = await item('Коробка', shelf.id);
+		const chip = await item('NE555', box.id);
+		await take(actor, chip.id, { workbenchId: garage });
+		await take(actor, shelf.id, { workbenchId: garage });
+		const listed = (await listWorkbench(actor)).find((i) => i.id === chip.id);
+		expect(listed).toMatchObject({ canReturn: true, returnBlockedReason: null });
+		expect(listed?.homePath.map((n) => n.id)).toEqual([garage, shelf.id, box.id]);
+		await returnHome(actor, chip.id);
+		expect(await reload(chip.id)).toMatchObject({
+			parentId: box.id,
+			homeId: null,
+			takenById: null
 		});
+		expect((await listWorkbench(actor)).map((i) => i.id)).toEqual([shelf.id]);
 	});
 
 	it('rejects returning an item that is not on a bench', async () => {
